@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Mixfile do
+defmodule Membrane.H264.TODO.Mixfile do
   use Mix.Project
 
   @version "0.1.0"
@@ -41,7 +41,9 @@ defmodule Membrane.H264.Mixfile do
       {:membrane_h264_format, "~> 0.3.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false}
+      {:credo, ">= 0.0.0", only: :dev, runtime: false},
+      {:membrane_file_plugin, "~> 0.12.0", only: :test},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.21.0", only: :test}
     ]
   end
 
