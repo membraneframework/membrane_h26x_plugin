@@ -1,6 +1,8 @@
 defmodule Membrane.H264.Parser.Schemes.SPS do
   def scheme, do: [
-    field: {:type_of_nalu, :u8},
+    field: {:forbidden_zero_bit, :u1},
+    field: {:nal_ref_idc, :u2},
+    field: {:nal_unit_type, :u5},
     field: {:profile_idc, :u8},
     field: {:constraint_set0, :u1},
     field: {:constraint_set1, :u1},
@@ -66,7 +68,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
     },
     field: {:vui_parameters_present_flag, :u1},
     if: { {fn vui_parameters_present_flag ->vui_parameters_present_flag == 1 end, [:vui_parameters_present_flag] },
-      vui_parameters()
+      []# vui_parameters()
     }
   ]
 
@@ -110,10 +112,10 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       hrd_parameters()
     },
     field: {:vcl_hrd_parameters_present_flag, :u1},
-    if: { {fn vcl_hrd_parameters_flag -> vcl_hrd_parameters_flag==1 end, [:vcl_hrd_parameters_present_flag]},
+    if: { {fn vcl_hrd_parameters_present_flag -> vcl_hrd_parameters_present_flag==1 end, [:vcl_hrd_parameters_present_flag]},
       hrd_parameters()
     },
-    if: { {fn nal_hrd_parameters_present_flag, vcl_hrd_parameters_flag -> nal_hrd_parameters_present_flag==1 or vcl_hrd_parameters_flag==1 end, [:nal_hrd_parameters_present_flag, :vcl_hrd_parameters_present_flag]},
+    if: { {fn nal_hrd_parameters_present_flag, vcl_hrd_parameters_present_flag -> nal_hrd_parameters_present_flag==1 or vcl_hrd_parameters_present_flag==1 end, [:nal_hrd_parameters_present_flag, :vcl_hrd_parameters_present_flag]},
       field: {:low_delay_hrd_flag, :u1},
     },
     field: {:pic_struct_present_flag, :u1},
@@ -149,7 +151,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
     nextScale = 8
     {state, payload, _lastScale} = 1..sizeOfScalingList |> Enum.reduce({state, payload, lastScale}, fn _j, {state, payload} ->
       {payload, nextScale} = if nextScale !=0 do
-        {delta_scale, payload} = Membrane.H264.FFmpeg.Common.to_integer(payload, negatives: true, unknown_length: true)
+        {delta_scale, payload} = Membrane.H264.Common.to_integer(payload, negatives: true)
         nextScale = rem(lastScale+delta_scale+256, 256)
         {payload, nextScale}
       else

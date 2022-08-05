@@ -5,7 +5,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
     scheme |> Enum.reduce({state, payload}, fn {operator, arguments}, {state, payload} ->
       case operator do
         :field -> {name, type} = arguments
-          {field_value, payload} = parse_field(payload, type)
+          {field_value, payload} = parse_field(payload, state, type)
           full_name = Atom.to_string(name)<>field_prefix |> String.to_atom()
           {Map.put(state, full_name, field_value), payload}
         :if -> {{condition, args_list}, scheme} = arguments
@@ -39,7 +39,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
     end)
   end
 
-  defp parse_field(payload, type) do
+  defp parse_field(payload, state, type) do
     case type do
       :u1 -> <<value::unsigned-size(1), rest::bitstring>> = payload
         {value, rest}
@@ -56,6 +56,9 @@ defmodule Membrane.H264.Parser.NALuPayload do
       :u16 ->  <<value::unsigned-size(16), rest::bitstring>> = payload
         {value, rest}
       :u32 ->  <<value::unsigned-size(32), rest::bitstring>> = payload
+        {value, rest}
+      {:uv, lambda, args} -> size = apply(lambda, get_args(args, state))
+        <<value::unsigned-size(size), rest::bitstring>> = payload
         {value, rest}
       :ue -> Common.to_integer(payload)
       :se -> Common.to_integer(payload, negatives: true)
