@@ -110,22 +110,28 @@ defmodule Membrane.H264.AccessUnitSplitter do
           true
 
         Map.has_key?(nalu.parsed_fields, :field_pic_flag) and
-          Map.has_key?(last_nalu.parsed_fields, :field_pic_flag) and nalu.parsed_fields.field_pic_flag == 1 and
+          Map.has_key?(last_nalu.parsed_fields, :field_pic_flag) and
+          nalu.parsed_fields.field_pic_flag == 1 and
           last_nalu.parsed_fields.field_pic_flag == 1 and
             nalu.parsed_fields.bottom_field_flag != last_nalu.parsed_fields.bottom_field_flag ->
           true
 
         nalu.parsed_fields.nal_ref_idc != last_nalu.parsed_fields.nal_ref_idc and
-            Enum.any?([nalu.parsed_fields.nal_ref_idc, last_nalu.parsed_fields.nal_ref_idc], &(&1 == 0)) ->
+            Enum.any?(
+              [nalu.parsed_fields.nal_ref_idc, last_nalu.parsed_fields.nal_ref_idc],
+              &(&1 == 0)
+            ) ->
           true
 
-        nalu.parsed_fields.pic_order_cnt_type == 0 and last_nalu.parsed_fields.pic_order_cnt_type == 0 and
+        nalu.parsed_fields.pic_order_cnt_type == 0 and
+          last_nalu.parsed_fields.pic_order_cnt_type == 0 and
             nalu.parsed_fields.pic_order_cnt_lsb != last_nalu.parsed_fields.pic_order_cnt_lsb ->
           true
 
         Map.has_key?(nalu.parsed_fields, :delta_pic_order_cnt_bottom) and
           Map.has_key?(last_nalu.parsed_fields, :delta_pic_order_cnt_bottom) and
-            nalu.parsed_fields.delta_pic_order_cnt_bottom != last_nalu.parsed_fields.delta_pic_order_cnt_bottom ->
+            nalu.parsed_fields.delta_pic_order_cnt_bottom !=
+              last_nalu.parsed_fields.delta_pic_order_cnt_bottom ->
           true
 
         true ->

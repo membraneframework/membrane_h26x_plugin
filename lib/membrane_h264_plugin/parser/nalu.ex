@@ -6,19 +6,33 @@ defmodule Membrane.H264.Parser.NALu do
   # See https://yumichan.net/video-processing/video-compression/introduction-to-h264-nal-unit/xw
 
   def parse(payload, state \\ %{__global__: %{}}) do
-    {nalus, state} = payload |> extract_nalus
-    |> Enum.map_reduce(state, fn nalu, state ->
-      {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
-      nalu_start = nalu_start_in_bytes * 8
-      <<_beggining::size(nalu_start), nalu_payload::binary-size(nalu_size_in_bytes),
-        _rest::bitstring>> = payload
-      {state, _rest_of_nalu_payload} = NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
-      state_without_global = state |> Enum.filter(fn {key, _value}-> key !=:__global__ end) |> Map.new
-      new_state = %{__global__: state.__global__}
-      {Map.put(nalu, :parsed_fields, state_without_global), new_state}
-    end)
-    nalus = nalus |> Enum.map(fn nalu -> IO.inspect(nalu.parsed_fields)
-       Map.put(nalu, :type, Schemes.NALu.nalu_types[nalu.parsed_fields.nal_unit_type]) end)
+    {nalus, state} =
+      payload
+      |> extract_nalus
+      |> Enum.map_reduce(state, fn nalu, state ->
+        {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
+        nalu_start = nalu_start_in_bytes * 8
+
+        <<_beggining::size(nalu_start), nalu_payload::binary-size(nalu_size_in_bytes),
+          _rest::bitstring>> = payload
+
+        {state, _rest_of_nalu_payload} =
+          NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
+
+        state_without_global =
+          state |> Enum.filter(fn {key, _value} -> key != :__global__ end) |> Map.new()
+
+        new_state = %{__global__: state.__global__}
+        {Map.put(nalu, :parsed_fields, state_without_global), new_state}
+      end)
+
+    nalus =
+      nalus
+      |> Enum.map(fn nalu ->
+        IO.inspect(nalu.parsed_fields)
+        Map.put(nalu, :type, NALuPayload.nalu_types()[nalu.parsed_fields.nal_unit_type])
+      end)
+
     {nalus, state}
   end
 
@@ -31,5 +45,4 @@ defmodule Membrane.H264.Parser.NALu do
       %{prefixed_poslen: {from, len}, unprefixed_poslen: {from + prefix_len, len - prefix_len}}
     end)
   end
-
 end
