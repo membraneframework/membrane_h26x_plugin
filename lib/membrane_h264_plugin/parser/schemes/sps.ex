@@ -1,8 +1,5 @@
 defmodule Membrane.H264.Parser.Schemes.SPS do
   def scheme, do: [
-    field: {:forbidden_zero_bit, :u1},
-    field: {:nal_ref_idc, :u2},
-    field: {:nal_unit_type, :u5},
     field: {:profile_idc, :u8},
     field: {:constraint_set0, :u1},
     field: {:constraint_set1, :u1},
@@ -69,7 +66,8 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
     field: {:vui_parameters_present_flag, :u1},
     if: { {fn vui_parameters_present_flag ->vui_parameters_present_flag == 1 end, [:vui_parameters_present_flag] },
       []# vui_parameters()
-    }
+    },
+    save_state_as_global_state: {fn field -> {:sps, field} end,  [:seq_parameter_set_id]}
   ]
 
   def vui_parameters, do: [

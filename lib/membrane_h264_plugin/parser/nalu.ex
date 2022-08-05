@@ -1,42 +1,25 @@
 defmodule Membrane.H264.Parser.NALu do
   @moduledoc false
+  alias Membrane.H264.Parser.NALuPayload
+  alias Membrane.H264.Parser.Schemes
 
-  # See https://yumichan.net/video-processing/video-compression/introduction-to-h264-nal-unit/
-  @nalu_types %{
-                0 => :unspecified,
-                1 => :non_idr,
-                2 => :part_a,
-                3 => :part_b,
-                4 => :part_c,
-                5 => :idr,
-                6 => :sei,
-                7 => :sps,
-                8 => :pps,
-                9 => :aud,
-                10 => :end_of_seq,
-                11 => :end_of_stream,
-                12 => :filler_data,
-                13 => :sps_extension,
-                14 => :prefix_nal_unit,
-                15 => :subset_sps,
-                (16..18) => :reserved,
-                19 => :auxiliary_non_part,
-                20 => :extension,
-                (21..23) => :reserved,
-                (24..31) => :unspecified
-              }
-              |> Enum.flat_map(fn
-                {k, v} when is_integer(k) -> [{k, v}]
-                {k, v} -> Enum.map(k, &{&1, v})
-              end)
-              |> Map.new()
+  # See https://yumichan.net/video-processing/video-compression/introduction-to-h264-nal-unit/xw
 
-  @spec parse(binary, boolean) :: [map]
-  def parse(payload, all? \\ false) do
-    payload
-    |> extract_nalus
-    |> then(fn x -> if all?, do: x, else: Enum.drop(x, -1) end)
-    |> Enum.map(&parse_type(&1, payload))
+  def parse(payload, state \\ %{__global__: %{}}) do
+    {nalus, state} = payload |> extract_nalus
+    |> Enum.map_reduce(state, fn nalu, state ->
+      {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
+      nalu_start = nalu_start_in_bytes * 8
+      <<_beggining::size(nalu_start), nalu_payload::binary-size(nalu_size_in_bytes),
+        _rest::bitstring>> = payload
+      {state, _rest_of_nalu_payload} = NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
+      state_without_global = state |> Enum.filter(fn {key, _value}-> key !=:__global__ end) |> Map.new
+      new_state = %{__global__: state.__global__}
+      {Map.put(nalu, :parsed_fields, state_without_global), new_state}
+    end)
+    nalus = nalus |> Enum.map(fn nalu -> IO.inspect(nalu.parsed_fields)
+       Map.put(nalu, :type, Schemes.NALu.nalu_types[nalu.parsed_fields.nal_unit_type]) end)
+    {nalus, state}
   end
 
   defp extract_nalus(payload) do
@@ -49,12 +32,4 @@ defmodule Membrane.H264.Parser.NALu do
     end)
   end
 
-  defp parse_type(nalu, payload) do
-    <<0::1, _nal_ref_idc::unsigned-integer-size(2), nal_unit_type::unsigned-integer-size(5),
-      _rest::bitstring>> = :binary.part(payload, nalu.unprefixed_poslen)
-
-    type = @nalu_types |> Map.fetch!(nal_unit_type)
-
-    Map.put(nalu, :type, type)
-  end
 end
