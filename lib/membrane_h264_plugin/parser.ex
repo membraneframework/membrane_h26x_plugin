@@ -88,7 +88,15 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     payload = state.partial_nalu <> buffer.payload
+    process(payload, [], state)
+  end
 
+  @impl true
+  def handle_end_of_stream(:input, _ctx, %{partial_nalu: nalu} = state) do
+    process(nalu, [end_of_stream: :output], state)
+  end
+
+  defp process(payload, actions, state) do
     {new_payload, state} =
       payload
       |> Parser.NALu.parse()
@@ -102,35 +110,22 @@ defmodule Membrane.H264.Parser do
         state.vcl_state
       )
 
-    state = %{state | parser_buffer: buffer, parser_state: parser_state, vcl_state: vcl_state}
+    state = %{
+      state
+      | parser_buffer: parser_buffer,
+        parser_state: parser_state,
+        vcl_state: vcl_state
+    }
 
     if access_units == [] do
       {:ok, state}
     else
       # FIXME: don't pass hardcoded empty metadata
       buffers = Enum.map(access_units, &wrap_into_buffer(&1, new_payload, state.metadata))
+      new_actions = [{:buffer, {:output, buffers}} | actions]
 
-      {{:ok, buffer: {:output, buffers}}, state}
+      {{:ok, new_actions}, state}
     end
-  end
-
-  @impl true
-  def handle_end_of_stream(:input, _ctx, %{partial_au: au, partial_nalu: nalu} = state) do
-    {_parsed, payload} = au
-
-    new_payload = payload <> nalu
-
-    buffers =
-      new_payload
-      |> Parser.NALu.parse(true)
-      |> wrap_into_buffer(new_payload, state.metadata)
-
-    new_state =
-      state
-      |> Map.put(:partial_au, {[], <<>>})
-      |> Map.put(:partial_nalu, <<>>)
-
-    {{:ok, buffer: {:output, buffers}, end_of_stream: :output}, new_state}
   end
 
   defp save_partial_nalu([], payload, state) do
