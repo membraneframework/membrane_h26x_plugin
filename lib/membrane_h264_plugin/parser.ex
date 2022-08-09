@@ -7,7 +7,7 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__
   alias Membrane.{Buffer, H264}
-  alias Membrane.H264.BinaryParser
+  alias Membrane.H264.AccessUnitSplitter
 
   @ending_nalu_types [:end_of_seq, :end_of_stream]
   @default_last %{unprefixed_poslen: {0, 0}, prefixed_poslen: {0, 0}, type: :reserved}
@@ -71,7 +71,9 @@ defmodule Membrane.H264.Parser do
     state = %{
       caps: opts.caps,
       metadata: %{},
+      nalu_state: %{__global__: %{}},
       partial_nalu: <<>>,
+      buffer_payload: <<>>,
       parser_buffer: [],
       parser_state: :first,
       vcl_state: nil
@@ -93,47 +95,48 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, _ctx, %{partial_nalu: nalu} = state) do
-    process(nalu, [end_of_stream: :output], state)
+    process(nalu, [{:end_of_stream, :output}], state)
   end
 
   defp process(payload, actions, state) do
-    {new_payload, state} =
+    {nalus, state} =
       payload
-      |> Parser.NALu.parse()
+      |> Parser.NALu.parse(state.nalu_state)
       |> save_partial_nalu(payload, state)
 
-    {_nalus, parser_buffer, parser_state, vcl_state, access_units} =
-      BinaryParser.split_binary_into_access_units(
-        new_payload,
+    new_payload = state.buffer_payload <> payload
+    new_nalus = update_parsed_poslens(nalus, &(&1 + byte_size(state.buffer_payload)))
+
+    {access_units, state} =
+      new_nalus
+      |> AccessUnitSplitter.split_nalus_into_access_units(
         state.parser_buffer,
         state.parser_state,
-        state.vcl_state
+        state.vcl_state,
+        []
       )
-
-    state = %{
-      state
-      | parser_buffer: parser_buffer,
-        parser_state: parser_state,
-        vcl_state: vcl_state
-    }
+      |> save_splitter_state(new_payload, state)
 
     if access_units == [] do
-      {:ok, state}
+      {{:ok, actions}, state}
     else
       # FIXME: don't pass hardcoded empty metadata
       buffers = Enum.map(access_units, &wrap_into_buffer(&1, new_payload, state.metadata))
       new_actions = [{:buffer, {:output, buffers}} | actions]
-
       {{:ok, new_actions}, state}
     end
   end
 
-  defp save_partial_nalu([], payload, state) do
-    new_state = Map.update(state, :partial_nalu, <<>>, &(&1 <> payload))
+  defp save_partial_nalu({[], nalu_state}, payload, state) do
+    new_state =
+      state
+      |> Map.update(:partial_nalu, <<>>, &(&1 <> payload))
+      |> Map.put(:nalu_state, nalu_state)
+
     {<<>>, new_state}
   end
 
-  defp save_partial_nalu(nalus, payload, state) do
+  defp save_partial_nalu({nalus, nalu_state}, payload, state) do
     last_nalu_start =
       nalus
       |> List.last()
@@ -142,22 +145,46 @@ defmodule Membrane.H264.Parser do
 
     payload_size = byte_size(payload)
     partial_nalu = :binary.part(payload, last_nalu_start, payload_size - last_nalu_start)
-    new_payload = :binary.part(payload, 0, last_nalu_start)
-    new_state = %{state | partial_nalu: partial_nalu}
+    new_state = %{state | partial_nalu: partial_nalu, nalu_state: nalu_state}
+    new_nalus = Enum.drop(nalus, -1)
 
-    {new_payload, new_state}
+    {new_nalus, new_state}
+  end
+
+  defp save_splitter_state({_nalus, parser_buffer, parser_state, vcl_state, aus}, payload, state) do
+    {buffer_start, buffer_length} = parsed_poslen(parser_buffer)
+
+    new_parser_buffer = update_parsed_poslens(parser_buffer, &(&1 - buffer_start))
+    buffer_payload = :binary.part(payload, buffer_start, buffer_length)
+
+    state = %{
+      state
+      | parser_buffer: new_parser_buffer,
+        buffer_payload: buffer_payload,
+        parser_state: parser_state,
+        vcl_state: vcl_state
+    }
+
+    {aus, state}
   end
 
   defp wrap_into_buffer(access_unit, payload, metadata) do
     access_unit
-    |> then(&parsed_length/1)
+    |> then(&parsed_poslen/1)
     |> then(fn {start, len} -> :binary.part(payload, start, len) end)
     |> then(&%Buffer{payload: &1, metadata: metadata})
   end
 
-  defp parsed_length([]), do: {0, 0}
+  #
+  defp update_parsed_poslens(parsed, fun) do
+    parsed
+    |> update_in([Access.all(), :prefixed_poslen], fn {start, len} -> {fun.(start), len} end)
+    |> update_in([Access.all(), :unprefixed_poslen], fn {start, len} -> {fun.(start), len} end)
+  end
 
-  defp parsed_length(parsed) do
+  defp parsed_poslen([]), do: {0, 0}
+
+  defp parsed_poslen(parsed) do
     {start, _len} =
       parsed
       |> hd()

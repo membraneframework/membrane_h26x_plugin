@@ -1,7 +1,39 @@
 defmodule Membrane.H264.Parser.NALuPayload do
   alias Membrane.H264.Common
   @moduledoc false
-  def parse_scheme(payload, scheme, state \\ %{}, field_prefix \\ "") do
+
+  @nalu_types %{
+                0 => :unspecified,
+                1 => :non_idr,
+                2 => :part_a,
+                3 => :part_b,
+                4 => :part_c,
+                5 => :idr,
+                6 => :sei,
+                7 => :sps,
+                8 => :pps,
+                9 => :aud,
+                10 => :end_of_seq,
+                11 => :end_of_stream,
+                12 => :filler_data,
+                13 => :sps_extension,
+                14 => :prefix_nal_unit,
+                15 => :subset_sps,
+                (16..18) => :reserved,
+                19 => :auxiliary_non_part,
+                20 => :extension,
+                (21..23) => :reserved,
+                (24..31) => :unspecified
+              }
+              |> Enum.flat_map(fn
+                {k, v} when is_integer(k) -> [{k, v}]
+                {k, v} -> Enum.map(k, &{&1, v})
+              end)
+              |> Map.new()
+
+  def nalu_types, do: @nalu_types
+
+  def parse_with_scheme(payload, scheme, state \\ %{__global__: %{}}, field_prefix \\ "") do
     scheme
     |> Enum.reduce({state, payload}, fn {operator, arguments}, {state, payload} ->
       case operator do
@@ -15,7 +47,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
           {{condition, args_list}, scheme} = arguments
 
           if apply(condition, get_args(args_list, state)),
-            do: parse_scheme(payload, scheme, state),
+            do: parse_with_scheme(payload, scheme, state),
             else: {state, payload}
 
         :for ->
@@ -28,7 +60,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
               fn iterator, {state, payload} ->
                 state = Map.put(state, iterator_name, iterator)
 
-                parse_scheme(
+                parse_with_scheme(
                   payload,
                   scheme,
                   state,
@@ -47,6 +79,16 @@ defmodule Membrane.H264.Parser.NALuPayload do
         :execute ->
           fun = arguments
           fun.(state, payload, field_prefix)
+
+        :save_state_as_global_state ->
+          {key_generating_function, args_list} = arguments
+          key = apply(key_generating_function, get_args(args_list, state))
+
+          state_without_global =
+            state |> Enum.filter(fn {key, _value} -> key != :__global__ end) |> Map.new()
+
+          {Map.put(state, :__global__, Map.put(state.__global__, key, state_without_global)),
+           payload}
       end
     end)
   end

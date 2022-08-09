@@ -23,11 +23,12 @@ defmodule Membrane.H264.Common do
 
   def to_integer(binary, negatives: should_support_negatives) do
     zeros_size = cut_zeros(binary)
-    number_size = zeros_size+1
+    number_size = zeros_size + 1
     <<_zeros::size(zeros_size), number::size(number_size), rest::bitstring>> = binary
     number = number - 1
+
     if should_support_negatives do
-      if rem(number, 2)==0, do: -div(number, 2), else: div(number+1, 2)
+      if rem(number, 2) == 0, do: -div(number, 2), else: div(number + 1, 2)
     else
       {number, rest}
     end
@@ -35,8 +36,9 @@ defmodule Membrane.H264.Common do
 
   defp cut_zeros(bitstring, how_many_zeros \\ 0) do
     <<x::1, rest::bitstring>> = bitstring
+
     case x do
-      0 -> cut_zeros(rest, how_many_zeros+1)
+      0 -> cut_zeros(rest, how_many_zeros + 1)
       1 -> how_many_zeros
     end
   end
