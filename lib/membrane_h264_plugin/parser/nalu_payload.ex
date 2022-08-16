@@ -45,6 +45,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :if ->
           {{condition, args_list}, scheme} = arguments
+          condition = make_function(condition)
 
           if apply(condition, get_args(args_list, state)),
             do: parse_with_scheme(payload, scheme, state),
@@ -52,6 +53,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :for ->
           {{iterator_name, max_value, args_list}, scheme} = arguments
+          max_value = make_function(max_value)
 
           {payload, state} =
             Enum.reduce(
@@ -74,14 +76,16 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :calculate ->
           {name, function, args_list} = arguments
+          function = make_function(function)
           {payload, Map.put(state, name, apply(function, get_args(args_list, state)))}
 
         :execute ->
-          fun = arguments
-          fun.(payload, state, field_prefix)
+          function = arguments
+          function.(payload, state, field_prefix)
 
         :save_state_as_global_state ->
           {key_generating_function, args_list} = arguments
+          key_generating_function = make_function(key_generating_function)
           key = apply(key_generating_function, get_args(args_list, state))
 
           state_without_global =
@@ -163,4 +167,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
         Common.to_integer(payload, negatives: true)
     end
   end
+
+  defp make_function(function) when is_function(function), do: function
+  defp make_function(value), do: fn -> value end
 end
