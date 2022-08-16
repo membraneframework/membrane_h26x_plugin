@@ -7,7 +7,7 @@ defmodule Membrane.H264.Parser.Schemes.Slice do
       field: {:slice_type, :ue},
       field: {:pic_parameter_set_id, :ue},
       execute: &load_data_from_sps(&1, &2, &3),
-      if: {{fn x -> x == 1 end, [:separate_colour_plane_flag]}, field: {:colour_plane_id, :u2}},
+      if: {{&(&1 == 1), [:separate_colour_plane_flag]}, field: {:colour_plane_id, :u2}},
       field: {:frame_num, {:uv, &(&1 + 4), [:log2_max_frame_num_minus4]}},
       if:
         {{&(&1 != 1), [:frame_mbs_only_flag]},
