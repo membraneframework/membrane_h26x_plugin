@@ -76,13 +76,12 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
          field: {:frame_crop_top_offset, :ue},
          field: {:frame_crop_bottom_offset, :ue}},
       field: {:vui_parameters_present_flag, :u1},
-      if:
-        {
-          {fn vui_parameters_present_flag -> vui_parameters_present_flag == 1 end,
-           [:vui_parameters_present_flag]},
-          # vui_parameters()
-          []
-        },
+      if: {
+        {fn vui_parameters_present_flag -> vui_parameters_present_flag == 1 end,
+         [:vui_parameters_present_flag]},
+        # vui_parameters()
+        []
+      },
       save_state_as_global_state: {fn field -> {:sps, field} end, [:seq_parameter_set_id]}
     ]
 

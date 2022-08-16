@@ -93,6 +93,8 @@ defmodule Membrane.H264.AccessUnitSplitter do
   end
 
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
+    # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the ITU-T Rec. H.264 (01/2012)
+
     if nalu.type in @vcl_nalus do
       cond do
         last_nalu == nil ->
@@ -125,14 +127,22 @@ defmodule Membrane.H264.AccessUnitSplitter do
 
         nalu.parsed_fields.pic_order_cnt_type == 0 and
           last_nalu.parsed_fields.pic_order_cnt_type == 0 and
-            nalu.parsed_fields.pic_order_cnt_lsb != last_nalu.parsed_fields.pic_order_cnt_lsb ->
+            (nalu.parsed_fields.pic_order_cnt_lsb != last_nalu.parsed_fields.pic_order_cnt_lsb or
+               Map.get(nalu.parsed_fields, :delta_pic_order_cnt_bottom) !=
+                 Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_bottom)) ->
           true
 
-        Map.has_key?(nalu.parsed_fields, :delta_pic_order_cnt_bottom) and
-          Map.has_key?(last_nalu.parsed_fields, :delta_pic_order_cnt_bottom) and
-            nalu.parsed_fields.delta_pic_order_cnt_bottom !=
-              last_nalu.parsed_fields.delta_pic_order_cnt_bottom ->
+        nalu.parsed_fields.pic_order_cnt_type == 1 and
+          last_nalu.parsed_fields.pic_order_cnt_type == 1 and
+            (Map.get(nalu.parsed_fields, :delta_pic_order_cnt_0) !=
+               Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_0) or
+               Map.get(nalu.parsed_fields, :delta_pic_order_cnt_1) !=
+                 Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_1)) ->
           true
+
+        # The following condition to be checked is also specified in the documentation: "IdrPicFlag is equal to 1 for both and idr_pic_id differs in value".
+        # At the same time, it seems that it describes the situation, that we are having two different IDR frames - and that should imply, that their frame_num
+        # should differ, which is already checked in the second condition
 
         true ->
           false
