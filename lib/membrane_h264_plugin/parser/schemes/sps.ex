@@ -172,9 +172,9 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
     lastScale = 8
     nextScale = 8
 
-    {state, payload, _lastScale} =
+    {payload, state, _lastScale} =
       1..sizeOfScalingList
-      |> Enum.reduce({state, payload, lastScale}, fn _j, {state, payload} ->
+      |> Enum.reduce({payload, state, lastScale}, fn _j, {payload, state, _lastScale} ->
         {payload, nextScale} =
           if nextScale != 0 do
             {delta_scale, payload} = Membrane.H264.Common.to_integer(payload, negatives: true)
@@ -185,9 +185,9 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
           end
 
         lastScale = if nextScale == 0, do: lastScale, else: nextScale
-        {state, payload, lastScale}
+        {payload, state, lastScale}
       end)
 
-    {state, payload}
+    {payload, state}
   end
 end

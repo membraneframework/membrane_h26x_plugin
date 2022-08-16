@@ -19,7 +19,7 @@ defmodule Membrane.H264.Parser.Schemes.Slice do
          field: {:pic_order_cnt_lsb, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}}}
     ]
 
-  def load_data_from_sps(state, payload, _prefix) do
+  def load_data_from_sps(payload, state, _prefix) do
     pps = Map.get(state.__global__, {:pps, state.pic_parameter_set_id})
     sps = Map.get(state.__global__, {:sps, pps.seq_parameter_set_id})
 
@@ -37,6 +37,6 @@ defmodule Membrane.H264.Parser.Schemes.Slice do
         Map.get(sps, :log2_max_pic_order_cnt_lsb_minus4)
       )
 
-    {state, payload}
+    {payload, state}
   end
 end

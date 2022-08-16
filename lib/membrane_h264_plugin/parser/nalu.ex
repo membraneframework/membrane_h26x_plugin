@@ -16,7 +16,7 @@ defmodule Membrane.H264.Parser.NALu do
         <<_beggining::size(nalu_start), nalu_payload::binary-size(nalu_size_in_bytes),
           _rest::bitstring>> = payload
 
-        {state, _rest_of_nalu_payload} =
+        {_rest_of_nalu_payload, state} =
           NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
 
         state_without_global =
@@ -29,7 +29,6 @@ defmodule Membrane.H264.Parser.NALu do
     nalus =
       nalus
       |> Enum.map(fn nalu ->
-        IO.inspect(nalu.parsed_fields)
         Map.put(nalu, :type, NALuPayload.nalu_types()[nalu.parsed_fields.nal_unit_type])
       end)
 
