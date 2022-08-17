@@ -7,13 +7,14 @@ defmodule Membrane.H264.Parser.NALu do
 
   @typedoc """
   A type defining the state of the parser. The parser preserves its state in the map, which consists of two parts:
-  * a map under the `:__global__` key
-  * user defined {key, value} pairs, which are put into the state during the parsing process.
-  The user defined part of a state is valid during a time of a single NALu processing, and cleaned after the NALu is
+  * a map under the `:__global__` key - it contains information fetched from a NALu, which might be needed during the parsing of the following NALus.
+  * a map under the `:__local__` key -  it holds information valid during a time of a single NALu processing, and it's cleaned after the NALu is
   completly parsed.
-  If some information needs to be available when other NALu is parsed, it needs to be stored in the map under the `:__global__` key of the parser's state.
+  All information fetched from NALu is put into the `:__local__` map.
+  If some information needs to be available when other NALu is parsed, it needs to be stored in the map under the `:__global__` key of the parser's state, which
+  can be done i.e. with the `save_as_global_state` statements of the scheme syntax.
   """
-  @type state_t :: %{__global__: map()}
+  @type state_t :: %{__global__: map(), __local__: %{}}
 
   @typedoc """
   A type defining the structure of a single NAL unit produced by the parser.
@@ -29,7 +30,7 @@ defmodule Membrane.H264.Parser.NALu do
   @doc """
   Parses the given binary stream, and produces the NAL units of the structurized form.
   """
-  def parse(payload, state \\ %{__global__: %{}}) do
+  def parse(payload, state \\ %{__global__: %{}, __local__: %{}}) do
     {nalus, state} =
       payload
       |> extract_nalus
@@ -43,11 +44,8 @@ defmodule Membrane.H264.Parser.NALu do
         {_rest_of_nalu_payload, state} =
           NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
 
-        state_without_global =
-          state |> Enum.filter(fn {key, _value} -> key != :__global__ end) |> Map.new()
-
-        new_state = %{__global__: state.__global__}
-        {Map.put(nalu, :parsed_fields, state_without_global), new_state}
+        new_state = %{__global__: state.__global__, __local__: %{}}
+        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
       end)
 
     nalus =

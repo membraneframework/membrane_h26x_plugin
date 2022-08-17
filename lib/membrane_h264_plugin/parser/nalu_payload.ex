@@ -69,13 +69,15 @@ defmodule Membrane.H264.Parser.NALuPayload do
         :field ->
           {name, type} = arguments
           {field_value, payload} = parse_field(payload, state, type)
-          {payload, insert_into_parser_state(state, field_value, [name] ++ iterators)}
+
+          {payload,
+           insert_into_parser_state(state, field_value, [:__local__] ++ [name] ++ iterators)}
 
         :if ->
           {condition, scheme} = arguments
           {condition_function, args_list} = make_function(condition)
 
-          if apply(condition_function, get_args(args_list, state)),
+          if apply(condition_function, get_args(args_list, state.__local__)),
             do: parse_with_scheme(payload, scheme, state),
             else: {payload, state}
 
@@ -86,13 +88,13 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
           {payload, state} =
             Enum.reduce(
-              apply(min_value, get_args(min_args_list, state))..apply(
+              apply(min_value, get_args(min_args_list, state.__local__))..apply(
                 max_value,
-                get_args(max_args_list, state)
+                get_args(max_args_list, state.__local__)
               ),
               {payload, state},
               fn iterator, {payload, state} ->
-                state = Map.put(state, iterator_name, iterator)
+                state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
 
                 parse_with_scheme(
                   payload,
@@ -103,13 +105,19 @@ defmodule Membrane.H264.Parser.NALuPayload do
               end
             )
 
-          state = Map.delete(state, iterator_name)
+          state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
           {payload, state}
 
         :calculate ->
           {name, to_calculate} = arguments
           {function, args_list} = make_function(to_calculate)
-          {payload, Map.put(state, name, apply(function, get_args(args_list, state)))}
+
+          {payload,
+           Bunch.Access.put_in(
+             state,
+             [:__local__, name],
+             apply(function, get_args(args_list, state.__local__))
+           )}
 
         :execute ->
           function = arguments
@@ -118,13 +126,9 @@ defmodule Membrane.H264.Parser.NALuPayload do
         :save_state_as_global_state ->
           key_generator = arguments
           {key_generating_function, args_list} = make_function(key_generator)
-          key = apply(key_generating_function, get_args(args_list, state))
+          key = apply(key_generating_function, get_args(args_list, state.__local__))
 
-          state_without_global =
-            state |> Enum.filter(fn {key, _value} -> key != :__global__ end) |> Map.new()
-
-          {payload,
-           Map.put(state, :__global__, Map.put(state.__global__, key, state_without_global))}
+          {payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
       end
     end)
   end
@@ -188,7 +192,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
         {value, rest}
 
       {:uv, lambda, args} ->
-        size = apply(lambda, get_args(args, state))
+        size = apply(lambda, get_args(args, state.__local__))
         <<value::unsigned-size(size), rest::bitstring>> = payload
         {value, rest}
 

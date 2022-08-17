@@ -14,8 +14,8 @@ defmodule Membrane.H264.Parser.Schemes.NALu do
       execute: &parse_proper_nalu_type(&1, &2, &3)
     ]
 
-  defp parse_proper_nalu_type(payload, state, _prefix) do
-    case NALuPayload.nalu_types()[state.nal_unit_type] do
+  defp parse_proper_nalu_type(payload, state, _iterators) do
+    case NALuPayload.nalu_types()[state.__local__.nal_unit_type] do
       :sps ->
         NALuPayload.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
 
