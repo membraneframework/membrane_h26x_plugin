@@ -1,4 +1,8 @@
 defmodule Membrane.H264.Parser.Schemes.SPS do
+  @moduledoc false
+  @behaviour Membrane.H264.Parser.Scheme
+
+  @impl true
   def scheme,
     do: [
       field: {:profile_idc, :u8},
@@ -34,13 +38,13 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
              {{&(&1 == 1), [:seq_scaling_list_present_flag]},
               if:
                 {{&(&1 < 6), [:i]},
-                 execute: fn payload, state, prefix ->
-                   scaling_list(payload, state, prefix, 16)
+                 execute: fn payload, state, iterators ->
+                   scaling_list(payload, state, iterators, 16)
                  end},
               if:
                 {{&(&1 >= 6), [:i]},
-                 execute: fn payload, state, prefix ->
-                   scaling_list(payload, state, prefix, 64)
+                 execute: fn payload, state, iterators ->
+                   scaling_list(payload, state, iterators, 64)
                  end}}
          }},
       field: {:log2_max_frame_num_minus4, :ue},
@@ -149,7 +153,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       field: {:time_offset_length, :u5}
     ]
 
-  def scaling_list(payload, state, _prefix, sizeOfScalingList) do
+  def scaling_list(payload, state, _iterators, sizeOfScalingList) do
     lastScale = 8
     nextScale = 8
 

@@ -4,10 +4,25 @@ defmodule Membrane.H264.AccessUnitSplitter do
   @non_vcl_nalus [:sps, :pps, :aud, :sei]
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
+  @type access_unit_t() :: list(NALu.nalu_t())
+
+  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
+  @doc """
+  Parses the provided binary with the NALu parser and splits the received list of NALus into multiple sublists,
+  with each of these sublists containing NALus from one access unit.
+  """
   def split_binary_into_access_units(binary) do
     {parsed_nalus, _state} = NALu.parse(binary)
-    split_nalus_into_access_units(parsed_nalus)
+
+    {_nalus, _buffer, _state, _previous_primary_coded_picture_nalu, access_units} =
+      split_nalus_into_access_units(parsed_nalus)
+
+    access_units
   end
+
+  # split_nalus_into_access_units/5 defines a finite state machine with two states: :first and :second.
+  # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
+  # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
   defp split_nalus_into_access_units(
          nalus,
@@ -88,12 +103,18 @@ defmodule Membrane.H264.AccessUnitSplitter do
     end
   end
 
-  defp split_nalus_into_access_units([] = nalus, buffer, state, vcl_state, access_units) do
-    {nalus, buffer, state, vcl_state, access_units}
+  defp split_nalus_into_access_units(
+         [] = nalus,
+         buffer,
+         state,
+         previous_primary_coded_picture_nalu,
+         access_units
+       ) do
+    {nalus, buffer, state, previous_primary_coded_picture_nalu, access_units}
   end
 
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
-    # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the ITU-T Rec. H.264 (01/2012)
+    # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the "ITU-T Rec. H.264 (01/2012)"
 
     if nalu.type in @vcl_nalus do
       cond do
@@ -134,10 +155,10 @@ defmodule Membrane.H264.AccessUnitSplitter do
 
         nalu.parsed_fields.pic_order_cnt_type == 1 and
           last_nalu.parsed_fields.pic_order_cnt_type == 1 and
-            (Map.get(nalu.parsed_fields, :delta_pic_order_cnt_0) !=
-               Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_0) or
-               Map.get(nalu.parsed_fields, :delta_pic_order_cnt_1) !=
-                 Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_1)) ->
+            (Bunch.Access.get_in(nalu.parsed_fields, [:delta_pic_order_cnt, 0]) !=
+               Bunch.Access.get_in(last_nalu.parsed_fields, [:delta_pic_order_cnt, 0]) or
+               Bunch.Access.get_in(nalu.parsed_fields, [:delta_pic_order_cnt, 1]) !=
+                 Bunch.Access.get_in(last_nalu.parsed_fields, [:delta_pic_order_cnt, 1])) ->
           true
 
         # The following condition to be checked is also specified in the documentation: "IdrPicFlag is equal to 1 for both and idr_pic_id differs in value".

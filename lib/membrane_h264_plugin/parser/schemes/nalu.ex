@@ -1,38 +1,11 @@
 defmodule Membrane.H264.Parser.Schemes.NALu do
+  @moduledoc false
   alias Membrane.H264.Parser.NALuPayload
   alias Membrane.H264.Parser.Schemes
 
-  @nalu_types %{
-                0 => :unspecified,
-                1 => :non_idr,
-                2 => :part_a,
-                3 => :part_b,
-                4 => :part_c,
-                5 => :idr,
-                6 => :sei,
-                7 => :sps,
-                8 => :pps,
-                9 => :aud,
-                10 => :end_of_seq,
-                11 => :end_of_stream,
-                12 => :filler_data,
-                13 => :sps_extension,
-                14 => :prefix_nal_unit,
-                15 => :subset_sps,
-                (16..18) => :reserved,
-                19 => :auxiliary_non_part,
-                20 => :extension,
-                (21..23) => :reserved,
-                (24..31) => :unspecified
-              }
-              |> Enum.flat_map(fn
-                {k, v} when is_integer(k) -> [{k, v}]
-                {k, v} -> Enum.map(k, &{&1, v})
-              end)
-              |> Map.new()
+  @behaviour Membrane.H264.Parser.Scheme
 
-  def nalu_types, do: @nalu_types
-
+  @impl true
   def scheme(),
     do: [
       field: {:forbidden_zero_bit, :u1},
@@ -42,7 +15,7 @@ defmodule Membrane.H264.Parser.Schemes.NALu do
     ]
 
   defp parse_proper_nalu_type(payload, state, _prefix) do
-    case @nalu_types[state.nal_unit_type] do
+    case NALuPayload.nalu_types()[state.nal_unit_type] do
       :sps ->
         NALuPayload.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
 

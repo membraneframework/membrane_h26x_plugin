@@ -1,7 +1,11 @@
 defmodule Membrane.H264.Parser.Schemes.Slice do
+  @moduledoc false
+  @behaviour Membrane.H264.Parser.Scheme
+
+  @impl true
   def scheme(), do: slice_header()
 
-  def slice_header,
+  defp slice_header,
     do: [
       field: {:first_mb_in_slice, :ue},
       field: {:slice_type, :ue},
@@ -19,7 +23,7 @@ defmodule Membrane.H264.Parser.Schemes.Slice do
          field: {:pic_order_cnt_lsb, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}}}
     ]
 
-  def load_data_from_sps(payload, state, _prefix) do
+  defp load_data_from_sps(payload, state, _prefix) do
     pps = Map.get(state.__global__, {:pps, state.pic_parameter_set_id})
     sps = Map.get(state.__global__, {:sps, pps.seq_parameter_set_id})
 

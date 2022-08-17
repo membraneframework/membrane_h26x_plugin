@@ -1,6 +1,27 @@
 defmodule Membrane.H264.Parser.NALuPayload do
+  @moduledoc """
+  The module providing functions to parse the internal NALu structure.
+  """
   alias Membrane.H264.Common
-  @moduledoc false
+  alias Membrane.H264.Parser.Scheme
+  alias Membrane.H264.Parser.NALu
+
+  @typedoc """
+  A type describing the field types which can be used in NALu scheme definition.
+  Defined as in: 7.2 Specification of syntax functions, categories, and descriptors of the "ITU-T Rec. H.264 (01/2012)"
+  """
+  @type field_t ::
+          :u1
+          | :u2
+          | :u3
+          | :u4
+          | :u5
+          | :u8
+          | :u16
+          | :u16
+          | {:uv, Scheme.value_provider_t()}
+          | :ue
+          | :se
 
   @nalu_types %{
                 0 => :unspecified,
@@ -31,17 +52,24 @@ defmodule Membrane.H264.Parser.NALuPayload do
               end)
               |> Map.new()
 
+  @spec nalu_types() :: %{integer() => atom()}
+  @doc """
+  The function which returns the mapping of form: (nal_unit_type => human friendly NALu type name).
+  nal_unit_type  is a field available in each of the NALus.
+  The mapping is based on: Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes, of "ITU-T Rec. H.264 (01/2012)"
+  """
   def nalu_types, do: @nalu_types
 
-  def parse_with_scheme(payload, scheme, state \\ %{__global__: %{}}, field_prefix \\ "") do
+  @spec parse_with_scheme(binary(), Scheme.scheme_t(), NALu.state_t(), list(integer())) ::
+          {binary(), NALu.state_t()}
+  def parse_with_scheme(payload, scheme, state \\ %{__global__: %{}}, iterators \\ []) do
     scheme
     |> Enum.reduce({payload, state}, fn {operator, arguments}, {payload, state} ->
       case operator do
         :field ->
           {name, type} = arguments
           {field_value, payload} = parse_field(payload, state, type)
-          full_name = (Atom.to_string(name) <> field_prefix) |> String.to_atom()
-          {payload, Map.put(state, full_name, field_value)}
+          {payload, insert_into_parser_state(state, field_value, [name] ++ iterators)}
 
         :if ->
           {condition, scheme} = arguments
@@ -70,7 +98,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
                   payload,
                   scheme,
                   state,
-                  field_prefix <> "_" <> Integer.to_string(iterator)
+                  iterators ++ [iterator]
                 )
               end
             )
@@ -85,7 +113,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :execute ->
           function = arguments
-          function.(payload, state, field_prefix)
+          function.(payload, state, iterators)
 
         :save_state_as_global_state ->
           key_generator = arguments
@@ -174,4 +202,18 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
   defp make_function({function, args}) when is_function(function), do: {function, args}
   defp make_function(value), do: {fn -> value end, []}
+
+  defp insert_into_parser_state(state, value, iterators_list, already_consumed_iterators \\ [])
+
+  defp insert_into_parser_state(state, value, [], already_consumed_iterators) do
+    Bunch.Access.put_in(state, already_consumed_iterators, value)
+  end
+
+  defp insert_into_parser_state(state, value, iterators_list, already_consumed_iterators) do
+    [first | rest] = iterators_list
+    to_insert = Bunch.Access.get_in(state, already_consumed_iterators ++ [first])
+    to_insert = if to_insert == nil, do: %{}, else: to_insert
+    state = Bunch.Access.put_in(state, already_consumed_iterators ++ [first], to_insert)
+    insert_into_parser_state(state, value, rest, already_consumed_iterators ++ [first])
+  end
 end

@@ -1,4 +1,8 @@
 defmodule Membrane.H264.Parser.Schemes.PPS do
+  @moduledoc false
+  @behaviour Membrane.H264.Parser.Scheme
+
+  @impl true
   def scheme,
     do: [
       field: {:pic_parameter_set_id, :ue},
