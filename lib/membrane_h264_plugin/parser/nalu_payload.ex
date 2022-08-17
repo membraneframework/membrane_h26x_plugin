@@ -3,8 +3,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
   The module providing functions to parse the internal NALu structure.
   """
   alias Membrane.H264.Common
-  alias Membrane.H264.Parser.Scheme
-  alias Membrane.H264.Parser.NALu
+  alias Membrane.H264.Parser.{Scheme, State}
 
   @typedoc """
   A type describing the field types which can be used in NALu scheme definition.
@@ -19,7 +18,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
           | :u8
           | :u16
           | :u16
-          | {:uv, Scheme.value_provider_t()}
+          | {:uv, Scheme.value_provider_t(integer())}
           | :ue
           | :se
 
@@ -60,9 +59,17 @@ defmodule Membrane.H264.Parser.NALuPayload do
   """
   def nalu_types, do: @nalu_types
 
-  @spec parse_with_scheme(binary(), Scheme.scheme_t(), NALu.state_t(), list(integer())) ::
-          {binary(), NALu.state_t()}
-  def parse_with_scheme(payload, scheme, state \\ %{__global__: %{}}, iterators \\ []) do
+  @spec parse_with_scheme(binary(), Scheme.scheme_t(), State.t(), list(integer())) ::
+          {bitstring(), State.t()}
+  @doc """
+  Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
+  """
+  def parse_with_scheme(
+        payload,
+        scheme,
+        state \\ %State{__local__: %{}, __global__: %{}},
+        iterators \\ []
+      ) do
     scheme
     |> Enum.reduce({payload, state}, fn {operator, arguments}, {payload, state} ->
       case operator do

@@ -2,19 +2,7 @@ defmodule Membrane.H264.Parser.NALu do
   @moduledoc """
   A module with functions responsible for parsing of the binary stream and producing the NALu structures
   """
-  alias Membrane.H264.Parser.NALuPayload
-  alias Membrane.H264.Parser.Schemes
-
-  @typedoc """
-  A type defining the state of the parser. The parser preserves its state in the map, which consists of two parts:
-  * a map under the `:__global__` key - it contains information fetched from a NALu, which might be needed during the parsing of the following NALus.
-  * a map under the `:__local__` key -  it holds information valid during a time of a single NALu processing, and it's cleaned after the NALu is
-  completly parsed.
-  All information fetched from NALu is put into the `:__local__` map.
-  If some information needs to be available when other NALu is parsed, it needs to be stored in the map under the `:__global__` key of the parser's state, which
-  can be done i.e. with the `save_as_global_state` statements of the scheme syntax.
-  """
-  @type state_t :: %{__global__: map(), __local__: %{}}
+  alias Membrane.H264.Parser.{NALuPayload, Schemes, State}
 
   @typedoc """
   A type defining the structure of a single NAL unit produced by the parser.
@@ -26,7 +14,7 @@ defmodule Membrane.H264.Parser.NALu do
           unprefixed_poslen: {integer(), integer()}
         }
 
-  @spec parse(binary(), state_t()) :: {list(nalu_t), state_t()}
+  @spec parse(binary(), State.t()) :: {list(nalu_t), State.t()}
   @doc """
   Parses the given binary stream, and produces the NAL units of the structurized form.
   """

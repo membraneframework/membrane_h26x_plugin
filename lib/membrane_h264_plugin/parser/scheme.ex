@@ -1,7 +1,4 @@
 defmodule Membrane.H264.Parser.Scheme do
-  alias Membrane.H264.Parser.NALuPayload
-  alias Membrane.H264.Parser.NALu
-
   @moduledoc """
   A module defining the behaviour which should be implemented by each NALu scheme.
   A NALu scheme is defining the internal structure of the NALu and describes the fields which need to by fetched from the binary.
@@ -18,6 +15,7 @@ defmodule Membrane.H264.Parser.Scheme do
   * save_as_global_state_t: saves the current parser state, concerning the NALu which is currently processed, in the map under the `:__global__` key in the state. Information
   from the saved state can be used while parsing the following NALus.
   """
+  alias Membrane.H264.Parser.{NALuPayload, State}
 
   @type field_t :: {any(), NALuPayload.field_t()}
   @type if_t :: {value_provider_t(boolean()), scheme_t()}
@@ -25,7 +23,7 @@ defmodule Membrane.H264.Parser.Scheme do
           {[iterator: any(), from: value_provider_t(integer()), to: value_provider_t(integer())],
            scheme_t()}
   @type calculate_t :: {any(), value_provider_t(any())}
-  @type execute_t :: (binary(), NALu.state_t(), list(integer()) -> {binary(), NALu.state_t()})
+  @type execute_t :: (binary(), State.t(), list(integer()) -> {binary(), State.t()})
   @type save_as_global_state_t :: value_provider_t(any())
 
   @typedoc """

@@ -83,7 +83,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
     ]
 
-  def vui_parameters,
+  defp vui_parameters,
     do: [
       field: {:aspect_ratio_present_flag, :u1},
       if:
@@ -137,7 +137,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
          field: {:max_dec_frame_buffering, :ue}}
     ]
 
-  def hrd_parameters(),
+  defp hrd_parameters(),
     do: [
       field: {:cpb_cnt_minus1, :ue},
       field: {:bit_rate_scale, :u4},
@@ -153,24 +153,26 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       field: {:time_offset_length, :u5}
     ]
 
-  def scaling_list(payload, state, _iterators, sizeOfScalingList) do
-    lastScale = 8
-    nextScale = 8
+  defp scaling_list(payload, state, _iterators, size_of_scaling_list) do
+    last_scale = 8
+    next_scale = 8
 
-    {payload, state, _lastScale} =
-      1..sizeOfScalingList
-      |> Enum.reduce({payload, state, lastScale}, fn _j, {payload, state, _lastScale} ->
-        {payload, nextScale} =
-          if nextScale != 0 do
+    {payload, state, _last_scale} =
+      1..size_of_scaling_list
+      |> Enum.reduce({payload, state, last_scale, next_scale}, fn _j,
+                                                                  {payload, state, _last_scale,
+                                                                   next_scale} ->
+        {payload, next_scale} =
+          if next_scale != 0 do
             {delta_scale, payload} = Membrane.H264.Common.to_integer(payload, negatives: true)
-            nextScale = rem(lastScale + delta_scale + 256, 256)
-            {payload, nextScale}
+            next_scale = rem(last_scale + delta_scale + 256, 256)
+            {payload, next_scale}
           else
-            {payload, nextScale}
+            {payload, next_scale}
           end
 
-        lastScale = if nextScale == 0, do: lastScale, else: nextScale
-        {payload, state, lastScale}
+        last_scale = if next_scale == 0, do: last_scale, else: next_scale
+        {payload, state, last_scale, next_scale}
       end)
 
     {payload, state}

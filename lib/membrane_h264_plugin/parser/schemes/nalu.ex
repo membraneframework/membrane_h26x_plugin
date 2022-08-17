@@ -1,9 +1,8 @@
 defmodule Membrane.H264.Parser.Schemes.NALu do
   @moduledoc false
+  @behaviour Membrane.H264.Parser.Scheme
   alias Membrane.H264.Parser.NALuPayload
   alias Membrane.H264.Parser.Schemes
-
-  @behaviour Membrane.H264.Parser.Scheme
 
   @impl true
   def scheme(),
@@ -28,7 +27,7 @@ defmodule Membrane.H264.Parser.Schemes.NALu do
       :non_idr ->
         NALuPayload.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
 
-      _ ->
+      _unknown_nalu_type ->
         {payload, state}
     end
   end

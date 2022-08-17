@@ -1,4 +1,7 @@
 defmodule Membrane.H264.AccessUnitSplitter do
+  @moduledoc """
+  Module providing functionalities to divide the binary h264 stream into access units.
+  """
   alias Membrane.H264.Parser.NALu
 
   @non_vcl_nalus [:sps, :pps, :aud, :sei]
