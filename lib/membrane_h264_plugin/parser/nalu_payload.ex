@@ -44,20 +44,24 @@ defmodule Membrane.H264.Parser.NALuPayload do
           {payload, Map.put(state, full_name, field_value)}
 
         :if ->
-          {{condition, args_list}, scheme} = arguments
-          condition = make_function(condition)
+          {condition, scheme} = arguments
+          {condition_function, args_list} = make_function(condition)
 
-          if apply(condition, get_args(args_list, state)),
+          if apply(condition_function, get_args(args_list, state)),
             do: parse_with_scheme(payload, scheme, state),
             else: {payload, state}
 
         :for ->
-          {{iterator_name, max_value, args_list}, scheme} = arguments
-          max_value = make_function(max_value)
+          {[iterator: iterator_name, from: min_value, to: max_value], scheme} = arguments
+          {min_value, min_args_list} = make_function(min_value)
+          {max_value, max_args_list} = make_function(max_value)
 
           {payload, state} =
             Enum.reduce(
-              1..apply(max_value, get_args(args_list, state)),
+              apply(min_value, get_args(min_args_list, state))..apply(
+                max_value,
+                get_args(max_args_list, state)
+              ),
               {payload, state},
               fn iterator, {payload, state} ->
                 state = Map.put(state, iterator_name, iterator)
@@ -75,8 +79,8 @@ defmodule Membrane.H264.Parser.NALuPayload do
           {payload, state}
 
         :calculate ->
-          {name, function, args_list} = arguments
-          function = make_function(function)
+          {name, to_calculate} = arguments
+          {function, args_list} = make_function(to_calculate)
           {payload, Map.put(state, name, apply(function, get_args(args_list, state)))}
 
         :execute ->
@@ -84,8 +88,8 @@ defmodule Membrane.H264.Parser.NALuPayload do
           function.(payload, state, field_prefix)
 
         :save_state_as_global_state ->
-          {key_generating_function, args_list} = arguments
-          key_generating_function = make_function(key_generating_function)
+          key_generator = arguments
+          {key_generating_function, args_list} = make_function(key_generator)
           key = apply(key_generating_function, get_args(args_list, state))
 
           state_without_global =
@@ -168,6 +172,6 @@ defmodule Membrane.H264.Parser.NALuPayload do
     end
   end
 
-  defp make_function(function) when is_function(function), do: function
-  defp make_function(value), do: fn -> value end
+  defp make_function({function, args}) when is_function(function), do: {function, args}
+  defp make_function(value), do: {fn -> value end, []}
 end
