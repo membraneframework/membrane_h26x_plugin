@@ -17,36 +17,36 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       field: {:seq_parameter_set_id, :ue},
       if:
         {{&(&1 in [100, 110, 122, 244, 44, 83, 86, 118, 128]), [:profile_idc]},
-         field: {:chroma_format_idc, :ue}},
-      if: {{&(&1 == 3), [:chroma_format_idc]}, field: {:separate_colour_plane_flag, :u1}},
-      field: {:bit_depth_luma_minus8, :ue},
-      field: {:bit_depth_chroma_minus8, :ue},
-      field: {:qpprime_y_zero_transform_bypass_flag, :u1},
-      field: {:seq_scaling_matrix_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:seq_scaling_matrix_present_flag]},
-         for: {
-           [
-             iterator: :i,
-             from: 1,
-             to:
-               {fn chroma_format_idc -> if chroma_format_idc != 3, do: 8, else: 12 end,
-                [:chroma_format_idc]}
-           ],
-           field: {:seq_scaling_list_present, :u1},
-           if:
-             {{&(&1 == 1), [:seq_scaling_list_present_flag]},
+         field: {:chroma_format_idc, :ue},
+         if: {{&(&1 == 3), [:chroma_format_idc]}, field: {:separate_colour_plane_flag, :u1}},
+         field: {:bit_depth_luma_minus8, :ue},
+         field: {:bit_depth_chroma_minus8, :ue},
+         field: {:qpprime_y_zero_transform_bypass_flag, :u1},
+         field: {:seq_scaling_matrix_present_flag, :u1},
+         if:
+           {{&(&1 == 1), [:seq_scaling_matrix_present_flag]},
+            for: {
+              [
+                iterator: :i,
+                from: 1,
+                to:
+                  {fn chroma_format_idc -> if chroma_format_idc != 3, do: 8, else: 12 end,
+                   [:chroma_format_idc]}
+              ],
+              field: {:seq_scaling_list_present, :u1},
               if:
-                {{&(&1 < 6), [:i]},
-                 execute: fn payload, state, iterators ->
-                   scaling_list(payload, state, iterators, 16)
-                 end},
-              if:
-                {{&(&1 >= 6), [:i]},
-                 execute: fn payload, state, iterators ->
-                   scaling_list(payload, state, iterators, 64)
-                 end}}
-         }},
+                {{&(&1 == 1), [:seq_scaling_list_present_flag]},
+                 if:
+                   {{&(&1 < 6), [:i]},
+                    execute: fn payload, state, iterators ->
+                      scaling_list(payload, state, iterators, 16)
+                    end},
+                 if:
+                   {{&(&1 >= 6), [:i]},
+                    execute: fn payload, state, iterators ->
+                      scaling_list(payload, state, iterators, 64)
+                    end}}
+            }}},
       field: {:log2_max_frame_num_minus4, :ue},
       field: {:pic_order_cnt_type, :ue},
       if: {{&(&1 == 0), [:pic_order_cnt_type]}, field: {:log2_max_pic_order_cnt_lsb_minus4, :ue}},
