@@ -7,10 +7,10 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__
   alias Membrane.{Buffer, H264}
-  alias Membrane.H264.BinaryParser
+  alias Membrane.H264.AccessUnitSplitter
 
-  @ending_nalu_types [:end_of_seq, :end_of_stream]
-  @default_last %{unprefixed_poslen: {0, 0}, prefixed_poslen: {0, 0}, type: :reserved}
+  # @ending_nalu_types [:end_of_seq, :end_of_stream]
+  # @default_last %{unprefixed_poslen: {0, 0}, prefixed_poslen: {0, 0}, type: :reserved}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -71,10 +71,11 @@ defmodule Membrane.H264.Parser do
     state = %{
       caps: opts.caps,
       metadata: %{},
-      partial_nalu: <<>>,
-      parser_buffer: [],
-      parser_state: :first,
-      vcl_state: nil
+      unparsed_payload: <<>>,
+      splitter_buffer: [],
+      splitter_state: :first,
+      previous_primary_coded_picture_nalu: nil,
+      parser_state: %Membrane.H264.Parser.State{__global__: %{}, __local__: %{}}
     }
 
     {:ok, state}
@@ -87,72 +88,54 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    payload = state.partial_nalu <> buffer.payload
-    process(payload, [], state)
+    process(state.unparsed_payload <> buffer.payload, [], state)
   end
 
   @impl true
-  def handle_end_of_stream(:input, _ctx, %{partial_nalu: nalu} = state) do
-    process(nalu, [end_of_stream: :output], state)
+  def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
+    # process(payload, [end_of_stream: :output], state)
+    {{:ok, buffer: {:output, %Buffer{payload: payload}}}, state}
   end
 
   defp process(payload, actions, state) do
-    {new_payload, state} =
-      payload
-      |> Parser.NALu.parse()
-      |> save_partial_nalu(payload, state)
+    {nalus, parser_state} = Parser.NALu.parse(payload, state.parser_state)
 
-    {_nalus, parser_buffer, parser_state, vcl_state, access_units} =
-      BinaryParser.split_binary_into_access_units(
-        new_payload,
-        state.parser_buffer,
-        state.parser_state,
-        state.vcl_state
-      )
+    {_rest_of_nalus, splitter_buffer, splitter_state, previous_primary_coded_picture_nalu,
+     access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
+
+    unparsed_payload =
+      splitter_buffer
+      |> then(&parsed_length/1)
+      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
     state = %{
       state
-      | parser_buffer: parser_buffer,
+      | splitter_buffer: splitter_buffer,
         parser_state: parser_state,
-        vcl_state: vcl_state
+        splitter_state: splitter_state,
+        previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
+        unparsed_payload: unparsed_payload
     }
 
     if access_units == [] do
       {:ok, state}
     else
       # FIXME: don't pass hardcoded empty metadata
-      buffers = Enum.map(access_units, &wrap_into_buffer(&1, new_payload, state.metadata))
+
+      buffers = Enum.map(access_units, &wrap_into_buffer(&1, payload, state.metadata))
       new_actions = [{:buffer, {:output, buffers}} | actions]
 
       {{:ok, new_actions}, state}
     end
   end
 
-  defp save_partial_nalu([], payload, state) do
-    new_state = Map.update(state, :partial_nalu, <<>>, &(&1 <> payload))
-    {<<>>, new_state}
-  end
-
-  defp save_partial_nalu(nalus, payload, state) do
-    last_nalu_start =
-      nalus
-      |> List.last()
-      |> Map.get(:prefixed_poslen)
-      |> then(fn {start, _len} -> start end)
-
-    payload_size = byte_size(payload)
-    partial_nalu = :binary.part(payload, last_nalu_start, payload_size - last_nalu_start)
-    new_payload = :binary.part(payload, 0, last_nalu_start)
-    new_state = %{state | partial_nalu: partial_nalu}
-
-    {new_payload, new_state}
-  end
-
   defp wrap_into_buffer(access_unit, payload, metadata) do
     access_unit
     |> then(&parsed_length/1)
     |> then(fn {start, len} -> :binary.part(payload, start, len) end)
-    |> then(&%Buffer{payload: &1, metadata: metadata})
+    |> then(fn payload ->
+      %Buffer{payload: payload, metadata: metadata}
+    end)
   end
 
   defp parsed_length([]), do: {0, 0}

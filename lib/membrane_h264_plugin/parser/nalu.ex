@@ -45,7 +45,7 @@ defmodule Membrane.H264.Parser.NALu do
     {nalus, state}
   end
 
-  defp extract_nalus(payload) do
+  def extract_nalus(payload) do
     payload
     |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
     |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])

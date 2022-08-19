@@ -27,21 +27,21 @@ defmodule Membrane.H264.AccessUnitSplitter do
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
-  defp split_nalus_into_access_units(
-         nalus,
-         buffer \\ [],
-         state \\ :first,
-         previous_primary_coded_picture_nalu \\ nil,
-         access_units \\ []
-       )
+  def split_nalus_into_access_units(
+        nalus,
+        buffer \\ [],
+        state \\ :first,
+        previous_primary_coded_picture_nalu \\ nil,
+        access_units \\ []
+      )
 
-  defp split_nalus_into_access_units(
-         [first_nalu | rest_nalus],
-         buffer,
-         :first,
-         previous_primary_coded_picture_nalu,
-         access_units
-       ) do
+  def split_nalus_into_access_units(
+        [first_nalu | rest_nalus],
+        buffer,
+        :first,
+        previous_primary_coded_picture_nalu,
+        access_units
+      ) do
     cond do
       is_new_primary_coded_vcl_nalu(first_nalu, previous_primary_coded_picture_nalu) ->
         split_nalus_into_access_units(
@@ -66,13 +66,13 @@ defmodule Membrane.H264.AccessUnitSplitter do
     end
   end
 
-  defp split_nalus_into_access_units(
-         [first_nalu | rest_nalus],
-         buffer,
-         :second,
-         previous_primary_coded_picture_nalu,
-         access_units
-       ) do
+  def split_nalus_into_access_units(
+        [first_nalu | rest_nalus],
+        buffer,
+        :second,
+        previous_primary_coded_picture_nalu,
+        access_units
+      ) do
     cond do
       first_nalu.type in @non_vcl_nalus ->
         split_nalus_into_access_units(
@@ -106,13 +106,13 @@ defmodule Membrane.H264.AccessUnitSplitter do
     end
   end
 
-  defp split_nalus_into_access_units(
-         [] = nalus,
-         buffer,
-         state,
-         previous_primary_coded_picture_nalu,
-         access_units
-       ) do
+  def split_nalus_into_access_units(
+        [] = nalus,
+        buffer,
+        state,
+        previous_primary_coded_picture_nalu,
+        access_units
+      ) do
     {nalus, buffer, state, previous_primary_coded_picture_nalu, access_units}
   end
 
