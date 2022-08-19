@@ -1,11 +1,24 @@
 defmodule Membrane.H264.Parser.NALu do
-  @moduledoc false
-  alias Membrane.H264.Parser.NALuPayload
-  alias Membrane.H264.Parser.Schemes
+  @moduledoc """
+  A module with functions responsible for parsing of the binary stream and producing the NALu structures
+  """
+  alias Membrane.H264.Parser.{NALuPayload, Schemes, State}
 
-  # See https://yumichan.net/video-processing/video-compression/introduction-to-h264-nal-unit/xw
+  @typedoc """
+  A type defining the structure of a single NAL unit produced by the parser.
+  """
+  @type nalu_t :: %{
+          parsed_fields: %{atom() => any()},
+          prexifed_poslen: {integer(), integer()},
+          type: atom(),
+          unprefixed_poslen: {integer(), integer()}
+        }
 
-  def parse(payload, state \\ %{__global__: %{}}) do
+  @spec parse(binary(), State.t()) :: {list(nalu_t), State.t()}
+  @doc """
+  Parses the given binary stream, and produces the NAL units of the structurized form.
+  """
+  def parse(payload, state \\ %{__global__: %{}, __local__: %{}}) do
     {nalus, state} =
       payload
       |> extract_nalus
@@ -16,14 +29,11 @@ defmodule Membrane.H264.Parser.NALu do
         <<_beggining::size(nalu_start), nalu_payload::binary-size(nalu_size_in_bytes),
           _rest::bitstring>> = payload
 
-        {state, _rest_of_nalu_payload} =
+        {_rest_of_nalu_payload, state} =
           NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
 
-        state_without_global =
-          state |> Enum.filter(fn {key, _value} -> key != :__global__ end) |> Map.new()
-
-        new_state = %{__global__: state.__global__}
-        {Map.put(nalu, :parsed_fields, state_without_global), new_state}
+        new_state = %{__global__: state.__global__, __local__: %{}}
+        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
       end)
 
     nalus =
