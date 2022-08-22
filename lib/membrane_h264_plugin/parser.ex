@@ -8,16 +8,7 @@ defmodule Membrane.H264.Parser do
   alias __MODULE__
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.AccessUnitSplitter
-
-  @default_caps %H264{
-    alignment: :au,
-    framerate: {30, 1},
-    height: 720,
-    nalu_in_metadata?: false,
-    profile: :high,
-    stream_format: :byte_stream,
-    width: 1280
-  }
+  alias Membrane.H264.Parser.{Caps, NALu, State}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -75,7 +66,7 @@ defmodule Membrane.H264.Parser do
       splitter_buffer: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      parser_state: %Membrane.H264.Parser.State{__global__: %{}, __local__: %{}},
+      parser_state: %State{__global__: %{}, __local__: %{}},
       sps: opts.sps,
       skip: opts.skip_until_parameters?
     }
@@ -101,7 +92,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process(payload, actions, state) do
-    {nalus, parser_state} = Parser.NALu.parse(payload, state.parser_state)
+    {nalus, parser_state} = NALu.parse(payload, state.parser_state)
 
     {_rest_of_nalus, splitter_buffer, splitter_state, previous_primary_coded_picture_nalu,
      access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
@@ -143,7 +134,7 @@ defmodule Membrane.H264.Parser do
 
   defp aus_into_actions(aus, payload, acc \\ [], state)
 
-  defp aus_into_actions(aus, payload, acc, %{caps: caps} = state) do
+  defp aus_into_actions(aus, payload, acc, state) do
     index = Enum.find_index(aus, &au_with_nalu_of_type?(&1, :sps))
 
     if index == nil do
@@ -160,7 +151,7 @@ defmodule Membrane.H264.Parser do
         |> then(& &1.prefixed_poslen)
         |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
-      caps = get_caps(sps_map)
+      caps = Caps.parse_caps(sps_map)
 
       actions = [
         caps: {:output, caps},
@@ -205,7 +196,7 @@ defmodule Membrane.H264.Parser do
       {nil, true} ->
         {[], state}
 
-      {caps, _skip} ->
+      {_caps, _skip} ->
         {[aus_into_buffer_action(aus, payload, state)], state}
     end
   end
@@ -219,60 +210,12 @@ defmodule Membrane.H264.Parser do
     end)
   end
 
-  defp get_caps(sps_nalu) do
-    sps = sps_nalu.parsed_fields
-
-    width_in_mbs = sps.pic_width_in_mbs_minus1 + 1
-    width = width_in_mbs * 16
-
-    height_in_map_units = sps.pic_width_in_mbs_minus1 + 1
-    height_in_mbs = (2 - sps.frame_mbs_only_flag) * height_in_map_units
-    height = height_in_mbs * 16
-
-    profile = get_profile(sps_nalu)
-
-    %H264{@default_caps | width: width, height: height, profile: profile}
-  end
-
   defp get_options_caps(%{sps: <<>>} = state) do
-    {@default_caps, state}
+    {Caps.default_caps(), state}
   end
 
   defp get_options_caps(%{sps: sps, parser_state: parser_state} = state) do
     {[sps | _rest], new_parser_state} = NALu.parse(sps, parser_state)
-    {get_caps(sps), %{state | parser_state: new_parser_state}}
-  end
-
-  @profiles_description [
-    high_cavlc_4_4_4_intra: [profile_idc: 44],
-    constrained_baseline: [profile_idc: 66, constraint_set1: 1],
-    baseline: [profile_idc: 66],
-    main: [profile_idc: 77],
-    extended: [profile_idc: 88],
-    constrained_high: [profile_idc: 100, constraint_set4: 1, constraint_set5: 1],
-    progressive_high: [profile_idc: 100, constraint_set4: 1],
-    high: [profile_idc: 100],
-    high_10_intra: [profile_idc: 110, constraint_set3: 1],
-    high_10: [profile_idc: 110],
-    hight_4_2_2_intra: [profile_idc: 122, constraint_set3: 1],
-    high_4_2_2: [profile_idc: 122],
-    high_4_4_4_intra: [profile_idc: 244, constraint_set3: 1],
-    high_4_4_4_predictive: [profile_idc: 244]
-  ]
-
-  defp get_profile(sps_nalu) do
-    fields = sps_nalu.parsed_fields
-
-    {profile_name, _constraints_list} =
-      @profiles_description
-      |> Enum.find({nil, nil}, fn {_profile_name, constraints_list} ->
-        constraints_list
-        |> Enum.all?(fn {key, value} ->
-          Map.has_key?(fields, key) and fields[key] == value
-        end)
-      end)
-
-    if profile_name == nil, do: raise("Cannot read the profile name based on SPS's fields.")
-    profile_name
+    {Caps.parse_caps(sps), %{state | parser_state: new_parser_state}}
   end
 end
