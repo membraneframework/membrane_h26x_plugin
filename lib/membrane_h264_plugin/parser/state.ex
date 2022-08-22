@@ -2,6 +2,7 @@ defmodule Membrane.H264.Parser.State do
   @moduledoc """
   This module defines a structure which holds the state of the parser.
   """
+  use Bunch.Access
 
   @typedoc """
   A type defining the state of the parser. The parser preserves its state in the map, which consists of two parts:
@@ -12,9 +13,7 @@ defmodule Membrane.H264.Parser.State do
   If some information needs to be available when other NALu is parsed, it needs to be stored in the map under the `:__global__` key of the parser's state, which
   can be done i.e. with the `save_as_global_state` statements of the scheme syntax.
   """
-  @type t :: %{__global__: map(), __local__: %{}}
-
-  use Bunch.Access
+  @type t :: %__MODULE__{__global__: %{}, __local__: %{}}
 
   @enforce_keys [:__global__, :__local__]
   defstruct @enforce_keys

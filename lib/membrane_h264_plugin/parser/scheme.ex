@@ -18,10 +18,10 @@ defmodule Membrane.H264.Parser.Scheme do
   alias Membrane.H264.Parser.{NALuPayload, State}
 
   @type field_t :: {any(), NALuPayload.field_t()}
-  @type if_t :: {value_provider_t(boolean()), scheme_t()}
+  @type if_t :: {value_provider_t(boolean()), t()}
   @type for_t ::
           {[iterator: any(), from: value_provider_t(integer()), to: value_provider_t(integer())],
-           scheme_t()}
+           t()}
   @type calculate_t :: {any(), value_provider_t(any())}
   @type execute_t :: (binary(), State.t(), list(integer()) -> {binary(), State.t()})
   @type save_as_global_state_t :: value_provider_t(any())
@@ -35,7 +35,7 @@ defmodule Membrane.H264.Parser.Scheme do
   """
   @type value_provider_t(return_type) :: return_type | {(... -> return_type), list(any())}
 
-  @type scheme_t :: [
+  @type t :: [
           field: field_t(),
           if: if_t(),
           for: for_t(),
@@ -44,5 +44,5 @@ defmodule Membrane.H264.Parser.Scheme do
           save_as_global_state: save_as_global_state_t()
         ]
 
-  @callback scheme() :: scheme_t()
+  @callback scheme() :: t()
 end

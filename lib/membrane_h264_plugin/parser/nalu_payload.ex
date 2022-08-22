@@ -59,7 +59,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
   """
   def nalu_types, do: @nalu_types
 
-  @spec parse_with_scheme(binary(), Scheme.scheme_t(), State.t(), list(integer())) ::
+  @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
           {bitstring(), State.t()}
   @doc """
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
@@ -166,37 +166,37 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
   defp parse_field(payload, state, type) do
     case type do
-      :u1 ->
-        <<value::unsigned-size(1), rest::bitstring>> = payload
-        {value, rest}
+      # :u1 ->
+      #   <<value::unsigned-size(1), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u2 ->
-        <<value::unsigned-size(2), rest::bitstring>> = payload
-        {value, rest}
+      # :u2 ->
+      #   <<value::unsigned-size(2), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u3 ->
-        <<value::unsigned-size(3), rest::bitstring>> = payload
-        {value, rest}
+      # :u3 ->
+      #   <<value::unsigned-size(3), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u4 ->
-        <<value::unsigned-size(4), rest::bitstring>> = payload
-        {value, rest}
+      # :u4 ->
+      #   <<value::unsigned-size(4), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u5 ->
-        <<value::unsigned-size(5), rest::bitstring>> = payload
-        {value, rest}
+      # :u5 ->
+      #   <<value::unsigned-size(5), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u8 ->
-        <<value::unsigned-size(8), rest::bitstring>> = payload
-        {value, rest}
+      # :u8 ->
+      #   <<value::unsigned-size(8), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u16 ->
-        <<value::unsigned-size(16), rest::bitstring>> = payload
-        {value, rest}
+      # :u16 ->
+      #   <<value::unsigned-size(16), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u32 ->
-        <<value::unsigned-size(32), rest::bitstring>> = payload
-        {value, rest}
+      # :u32 ->
+      #   <<value::unsigned-size(32), rest::bitstring>> = payload
+      #   {value, rest}
 
       {:uv, lambda, args} ->
         size = apply(lambda, get_args(args, state.__local__))
@@ -208,6 +208,11 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
       :se ->
         Common.to_integer(payload, negatives: true)
+
+      unsigned_int ->
+        how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()
+        <<value::unsigned-size(how_many_bits), rest::bitstring>> = payload
+        {value, rest}
     end
   end
 

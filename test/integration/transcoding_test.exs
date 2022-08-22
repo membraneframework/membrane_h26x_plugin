@@ -42,7 +42,7 @@ defmodule Membrane.H264.TranscodingTest do
   describe "TranscodingPipeline should" do
     @describetag :tmp_dir
     test "transcode 10 720p frames", ctx do
-      perform_test("10-720p", ctx.tmp_dir, 10000)
+      perform_test("10-720p", ctx.tmp_dir, 10_000)
     end
 
     test "transcode 100 240p frames", ctx do
