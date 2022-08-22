@@ -59,7 +59,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
   """
   def nalu_types, do: @nalu_types
 
-  @spec parse_with_scheme(binary(), Scheme.scheme_t(), State.t(), list(integer())) ::
+  @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
           {bitstring(), State.t()}
   @doc """
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
@@ -82,38 +82,11 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :if ->
           {condition, scheme} = arguments
-          {condition_function, args_list} = make_function(condition)
-
-          if apply(condition_function, get_args(args_list, state.__local__)),
-            do: parse_with_scheme(payload, scheme, state),
-            else: {payload, state}
+          run_conditionally(payload, state, scheme, condition)
 
         :for ->
           {[iterator: iterator_name, from: min_value, to: max_value], scheme} = arguments
-          {min_value, min_args_list} = make_function(min_value)
-          {max_value, max_args_list} = make_function(max_value)
-
-          {payload, state} =
-            Enum.reduce(
-              apply(min_value, get_args(min_args_list, state.__local__))..apply(
-                max_value,
-                get_args(max_args_list, state.__local__)
-              ),
-              {payload, state},
-              fn iterator, {payload, state} ->
-                state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
-
-                parse_with_scheme(
-                  payload,
-                  scheme,
-                  state,
-                  iterators ++ [iterator]
-                )
-              end
-            )
-
-          state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
-          {payload, state}
+          loop(payload, state, scheme, iterators, iterator_name, min_value, max_value)
 
         :calculate ->
           {name, to_calculate} = arguments
@@ -138,6 +111,41 @@ defmodule Membrane.H264.Parser.NALuPayload do
           {payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
       end
     end)
+  end
+
+  defp run_conditionally(payload, state, scheme, condition) do
+    {condition_function, args_list} = make_function(condition)
+
+    if apply(condition_function, get_args(args_list, state.__local__)),
+      do: parse_with_scheme(payload, scheme, state),
+      else: {payload, state}
+  end
+
+  defp loop(payload, state, scheme, previous_iterators, iterator_name, min_value, max_value) do
+    {min_value, min_args_list} = make_function(min_value)
+    {max_value, max_args_list} = make_function(max_value)
+
+    {state, payload} =
+      Enum.reduce(
+        apply(min_value, get_args(min_args_list, state.__local__))..apply(
+          max_value,
+          get_args(max_args_list, state.__local__)
+        ),
+        {payload, state},
+        fn iterator, {payload, state} ->
+          state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
+
+          parse_with_scheme(
+            payload,
+            scheme,
+            state,
+            previous_iterators ++ [iterator]
+          )
+        end
+      )
+
+    state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
+    {state, payload}
   end
 
   defp get_args(args_names, state) do
@@ -166,37 +174,37 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
   defp parse_field(payload, state, type) do
     case type do
-      :u1 ->
-        <<value::unsigned-size(1), rest::bitstring>> = payload
-        {value, rest}
+      # :u1 ->
+      #   <<value::unsigned-size(1), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u2 ->
-        <<value::unsigned-size(2), rest::bitstring>> = payload
-        {value, rest}
+      # :u2 ->
+      #   <<value::unsigned-size(2), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u3 ->
-        <<value::unsigned-size(3), rest::bitstring>> = payload
-        {value, rest}
+      # :u3 ->
+      #   <<value::unsigned-size(3), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u4 ->
-        <<value::unsigned-size(4), rest::bitstring>> = payload
-        {value, rest}
+      # :u4 ->
+      #   <<value::unsigned-size(4), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u5 ->
-        <<value::unsigned-size(5), rest::bitstring>> = payload
-        {value, rest}
+      # :u5 ->
+      #   <<value::unsigned-size(5), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u8 ->
-        <<value::unsigned-size(8), rest::bitstring>> = payload
-        {value, rest}
+      # :u8 ->
+      #   <<value::unsigned-size(8), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u16 ->
-        <<value::unsigned-size(16), rest::bitstring>> = payload
-        {value, rest}
+      # :u16 ->
+      #   <<value::unsigned-size(16), rest::bitstring>> = payload
+      #   {value, rest}
 
-      :u32 ->
-        <<value::unsigned-size(32), rest::bitstring>> = payload
-        {value, rest}
+      # :u32 ->
+      #   <<value::unsigned-size(32), rest::bitstring>> = payload
+      #   {value, rest}
 
       {:uv, lambda, args} ->
         size = apply(lambda, get_args(args, state.__local__))
@@ -208,6 +216,11 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
       :se ->
         Common.to_integer(payload, negatives: true)
+
+      unsigned_int ->
+        how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()
+        <<value::unsigned-size(how_many_bits), rest::bitstring>> = payload
+        {value, rest}
     end
   end
 
