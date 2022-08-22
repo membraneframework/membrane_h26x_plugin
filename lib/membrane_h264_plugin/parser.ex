@@ -94,7 +94,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
     # process(payload, [end_of_stream: :output], state)
-    {{:ok, buffer: {:output, %Buffer{payload: payload}}}, state}
+    {{:ok, buffer: {:output, %Buffer{payload: payload}}, end_of_stream: :output}, state}
   end
 
   defp process(payload, actions, state) do
