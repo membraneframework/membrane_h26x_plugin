@@ -82,38 +82,11 @@ defmodule Membrane.H264.Parser.NALuPayload do
 
         :if ->
           {condition, scheme} = arguments
-          {condition_function, args_list} = make_function(condition)
-
-          if apply(condition_function, get_args(args_list, state.__local__)),
-            do: parse_with_scheme(payload, scheme, state),
-            else: {payload, state}
+          run_conditionally(payload, state, scheme, condition)
 
         :for ->
           {[iterator: iterator_name, from: min_value, to: max_value], scheme} = arguments
-          {min_value, min_args_list} = make_function(min_value)
-          {max_value, max_args_list} = make_function(max_value)
-
-          {payload, state} =
-            Enum.reduce(
-              apply(min_value, get_args(min_args_list, state.__local__))..apply(
-                max_value,
-                get_args(max_args_list, state.__local__)
-              ),
-              {payload, state},
-              fn iterator, {payload, state} ->
-                state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
-
-                parse_with_scheme(
-                  payload,
-                  scheme,
-                  state,
-                  iterators ++ [iterator]
-                )
-              end
-            )
-
-          state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
-          {payload, state}
+          loop(payload, state, scheme, iterators, iterator_name, min_value, max_value)
 
         :calculate ->
           {name, to_calculate} = arguments
@@ -138,6 +111,41 @@ defmodule Membrane.H264.Parser.NALuPayload do
           {payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
       end
     end)
+  end
+
+  defp run_conditionally(payload, state, scheme, condition) do
+    {condition_function, args_list} = make_function(condition)
+
+    if apply(condition_function, get_args(args_list, state.__local__)),
+      do: parse_with_scheme(payload, scheme, state),
+      else: {payload, state}
+  end
+
+  defp loop(payload, state, scheme, previous_iterators, iterator_name, min_value, max_value) do
+    {min_value, min_args_list} = make_function(min_value)
+    {max_value, max_args_list} = make_function(max_value)
+
+    {state, payload} =
+      Enum.reduce(
+        apply(min_value, get_args(min_args_list, state.__local__))..apply(
+          max_value,
+          get_args(max_args_list, state.__local__)
+        ),
+        {payload, state},
+        fn iterator, {payload, state} ->
+          state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
+
+          parse_with_scheme(
+            payload,
+            scheme,
+            state,
+            previous_iterators ++ [iterator]
+          )
+        end
+      )
+
+    state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
+    {state, payload}
   end
 
   defp get_args(args_names, state) do
