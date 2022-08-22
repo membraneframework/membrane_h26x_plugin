@@ -9,9 +9,6 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.AccessUnitSplitter
 
-  # @ending_nalu_types [:end_of_seq, :end_of_stream]
-  # @default_last %{unprefixed_poslen: {0, 0}, prefixed_poslen: {0, 0}, type: :reserved}
-
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -92,6 +89,7 @@ defmodule Membrane.H264.Parser do
   end
 
   @impl true
+
   def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
     # process(payload, [end_of_stream: :output], state)
     {{:ok, buffer: {:output, %Buffer{payload: payload}}, end_of_stream: :output}, state}
@@ -105,7 +103,7 @@ defmodule Membrane.H264.Parser do
 
     unparsed_payload =
       splitter_buffer
-      |> then(&parsed_length/1)
+      |> then(&parsed_poslen/1)
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
     state = %{
@@ -118,29 +116,28 @@ defmodule Membrane.H264.Parser do
     }
 
     if access_units == [] do
-      {:ok, state}
+      {{:ok, actions}, state}
     else
       # FIXME: don't pass hardcoded empty metadata
 
       buffers = Enum.map(access_units, &wrap_into_buffer(&1, payload, state.metadata))
       new_actions = [{:buffer, {:output, buffers}} | actions]
-
       {{:ok, new_actions}, state}
     end
   end
 
   defp wrap_into_buffer(access_unit, payload, metadata) do
     access_unit
-    |> then(&parsed_length/1)
+    |> then(&parsed_poslen/1)
     |> then(fn {start, len} -> :binary.part(payload, start, len) end)
     |> then(fn payload ->
       %Buffer{payload: payload, metadata: metadata}
     end)
   end
 
-  defp parsed_length([]), do: {0, 0}
+  defp parsed_poslen([]), do: {0, 0}
 
-  defp parsed_length(parsed) do
+  defp parsed_poslen(parsed) do
     {start, _len} =
       parsed
       |> hd()

@@ -3,17 +3,17 @@ defmodule Membrane.H264.ProcessAllTest do
 
   use ExUnit.Case
   import Membrane.Testing.Assertions
-  alias Membrane.H264
+  alias Membrane.{H264, ParentSpec}
   alias Membrane.Testing.Pipeline
 
   defp make_pipeline(in_path, out_path) do
-    Pipeline.start_link(%Pipeline.Options{
-      elements: [
-        file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
-        parser: H264.Parser,
-        sink: %Membrane.File.Sink{location: out_path}
-      ]
-    })
+    children = [
+      file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
+      parser: H264.Parser,
+      sink: %Membrane.File.Sink{location: out_path}
+    ]
+
+    Pipeline.start_link(links: ParentSpec.link_linear(children))
   end
 
   defp perform_test(filename, tmp_dir, timeout) do
@@ -31,6 +31,7 @@ defmodule Membrane.H264.ProcessAllTest do
 
   describe "ProcessAllPipeline should" do
     @describetag :tmp_dir
+
     test "process all 10 720p frames", ctx do
       perform_test("10-720p", ctx.tmp_dir, 1000)
     end
