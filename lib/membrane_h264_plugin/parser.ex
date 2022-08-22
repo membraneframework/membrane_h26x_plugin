@@ -169,7 +169,7 @@ defmodule Membrane.H264.Parser do
 
       new_state = %{state | caps: caps, sps: sps_payload}
 
-      aus_into_actions(tl(aus_with_sps), acc ++ no_sps_actions ++ actions, new_state)
+      aus_into_actions(tl(aus_with_sps), payload, acc ++ no_sps_actions ++ actions, new_state)
     end
   end
 
