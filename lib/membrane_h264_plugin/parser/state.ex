@@ -14,6 +14,8 @@ defmodule Membrane.H264.Parser.State do
   """
   @type t :: %{__global__: map(), __local__: %{}}
 
+  use Bunch.Access
+
   @enforce_keys [:__global__, :__local__]
   defstruct @enforce_keys
 end

@@ -7,9 +7,7 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__
   alias Membrane.{Buffer, H264}
-
-  @ending_nalu_types [:end_of_seq, :end_of_stream]
-  @default_last %{unprefixed_poslen: {0, 0}, prefixed_poslen: {0, 0}, type: :reserved}
+  alias Membrane.H264.AccessUnitSplitter
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -70,8 +68,11 @@ defmodule Membrane.H264.Parser do
     state = %{
       caps: opts.caps,
       metadata: %{},
-      partial_au: {[], <<>>},
-      partial_nalu: <<>>
+      unparsed_payload: <<>>,
+      splitter_buffer: [],
+      splitter_state: :first,
+      previous_primary_coded_picture_nalu: nil,
+      parser_state: %Membrane.H264.Parser.State{__global__: %{}, __local__: %{}}
     }
 
     {:ok, state}
@@ -84,104 +85,59 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    payload = state.partial_nalu <> buffer.payload
-
-    {access_units, payload, state} =
-      payload
-      |> Parser.NALu.parse()
-      |> Enum.chunk_while([], &chunk_au_fun/2, &{:cont, Enum.reverse(&1), []})
-      |> save_partial_nalu(payload, state)
-      |> then(fn {aus, payload, state} -> add_partial_au(aus, payload, state) end)
-      |> then(fn {aus, payload, state} -> save_partial_au(aus, payload, state) end)
-
-    if access_units == [] do
-      {:ok, state}
-    else
-      buffers = Enum.map(access_units, &wrap_into_buffer(&1, payload, state.metadata))
-
-      {{:ok, buffer: {:output, buffers}}, state}
-    end
+    process(state.unparsed_payload <> buffer.payload, [], state)
   end
 
   @impl true
-  def handle_end_of_stream(:input, _ctx, %{partial_au: au, partial_nalu: nalu} = state) do
-    {_parsed, payload} = au
 
-    new_payload = payload <> nalu
+  def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
+    # process(payload, [end_of_stream: :output], state)
+    {{:ok, buffer: {:output, %Buffer{payload: payload}}, end_of_stream: :output}, state}
+  end
 
-    buffers =
-      new_payload
-      |> Parser.NALu.parse(true)
-      |> wrap_into_buffer(new_payload, state.metadata)
+  defp process(payload, actions, state) do
+    {nalus, parser_state} = Parser.NALu.parse(payload, state.parser_state)
 
-    new_state =
+    {_rest_of_nalus, splitter_buffer, splitter_state, previous_primary_coded_picture_nalu,
+     access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
+
+    unparsed_payload =
+      splitter_buffer
+      |> then(&parsed_poslen/1)
+      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+
+    state = %{
       state
-      |> Map.put(:partial_au, {[], <<>>})
-      |> Map.put(:partial_nalu, <<>>)
+      | splitter_buffer: splitter_buffer,
+        parser_state: parser_state,
+        splitter_state: splitter_state,
+        previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
+        unparsed_payload: unparsed_payload
+    }
 
-    {{:ok, buffer: {:output, buffers}, end_of_stream: :output}, new_state}
-  end
-
-  defp chunk_au_fun(nalu, []), do: {:cont, [nalu]}
-
-  defp chunk_au_fun(nalu, acc) do
-    case nalu.type do
-      :aud -> {:cont, Enum.reverse(acc), [nalu]}
-      :end_of_seq -> {:cont, Enum.reverse([nalu | acc]), []}
-      :end_of_stream -> {:halt, Enum.reverse([nalu | acc])}
-      _type -> {:cont, [nalu | acc]}
-    end
-  end
-
-  defp save_partial_nalu(access_units, payload, state) do
-    payload_size = byte_size(payload)
-
-    partial_start =
-      access_units
-      |> List.last([@default_last])
-      |> parsed_length()
-      |> then(fn {start, len} -> start + len end)
-
-    partial_nalu = :binary.part(payload, partial_start, payload_size - partial_start)
-    new_payload = :binary.part(payload, 0, partial_start)
-    new_state = %{state | partial_nalu: partial_nalu}
-    {access_units, new_payload, new_state}
-  end
-
-  defp add_partial_au(access_units, payload, state) do
-    {au_parsed, au_payload} = state.partial_au
-
-    size = byte_size(au_payload)
-    update_size = fn {from, len} -> {from + size, len} end
-
-    [head | tail] = Enum.map(access_units, &update_parsed_poslens(&1, update_size))
-
-    {[au_parsed ++ head | tail], au_payload <> payload, state}
-  end
-
-  defp save_partial_au(access_units, payload, state) do
-    partial_parsed = List.last(access_units, [@default_last])
-    last_partial_nalu = List.last(partial_parsed, @default_last)
-
-    if last_partial_nalu.type in @ending_nalu_types do
-      {access_units, payload, %{state | partial_au: {[], <<>>}}}
+    if access_units == [] do
+      {{:ok, actions}, state}
     else
-      {start, len} = parsed_length(partial_parsed)
-      partial_payload = :binary.part(payload, start, len)
+      # FIXME: don't pass hardcoded empty metadata
 
-      update_start = fn {from, len} -> {from - start, len} end
-      new_partial_parsed = update_parsed_poslens(partial_parsed, update_start)
-
-      new_state = %{state | partial_au: {new_partial_parsed, partial_payload}}
-      new_access_units = Enum.drop(access_units, -1)
-      new_payload = :binary.part(payload, 0, start)
-      {new_access_units, new_payload, new_state}
+      buffers = Enum.map(access_units, &wrap_into_buffer(&1, payload, state.metadata))
+      new_actions = [{:buffer, {:output, buffers}} | actions]
+      {{:ok, new_actions}, state}
     end
   end
 
-  defp parsed_length([]), do: {0, 0}
+  defp wrap_into_buffer(access_unit, payload, metadata) do
+    access_unit
+    |> then(&parsed_poslen/1)
+    |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+    |> then(fn payload ->
+      %Buffer{payload: payload, metadata: metadata}
+    end)
+  end
 
-  defp parsed_length(parsed) do
+  defp parsed_poslen([]), do: {0, 0}
+
+  defp parsed_poslen(parsed) do
     {start, _len} =
       parsed
       |> hd()
@@ -194,18 +150,5 @@ defmodule Membrane.H264.Parser do
       |> then(fn {last_start, last_len} -> last_start + last_len - start end)
 
     {start, len}
-  end
-
-  defp update_parsed_poslens(parsed, fun) do
-    parsed
-    |> update_in([Access.all(), :prefixed_poslen], fun)
-    |> update_in([Access.all(), :unprefixed_poslen], fun)
-  end
-
-  defp wrap_into_buffer(access_unit, payload, metadata) do
-    access_unit
-    |> then(&parsed_length/1)
-    |> then(fn {start, len} -> :binary.part(payload, start, len) end)
-    |> then(&%Buffer{payload: &1, metadata: metadata})
   end
 end

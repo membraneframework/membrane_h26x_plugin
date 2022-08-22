@@ -3,7 +3,7 @@ defmodule Membrane.H264.TranscodingTest do
 
   use ExUnit.Case
   import Membrane.Testing.Assertions
-  alias Membrane.H264
+  alias Membrane.{H264, ParentSpec}
   alias Membrane.Testing.Pipeline
 
   @caps %H264{
@@ -17,15 +17,15 @@ defmodule Membrane.H264.TranscodingTest do
   }
 
   defp make_pipeline(in_path, out_path, caps) do
-    Pipeline.start_link(%Pipeline.Options{
-      elements: [
-        file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
-        parser: %H264.Parser{caps: caps},
-        decoder: H264.FFmpeg.Decoder,
-        encoder: %H264.FFmpeg.Encoder{preset: :fast, crf: 30},
-        sink: %Membrane.File.Sink{location: out_path}
-      ]
-    })
+    children = [
+      file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
+      parser: %H264.Parser{caps: caps},
+      decoder: H264.FFmpeg.Decoder,
+      encoder: %H264.FFmpeg.Encoder{preset: :fast, crf: 30},
+      sink: %Membrane.File.Sink{location: out_path}
+    ]
+
+    Pipeline.start_link(links: ParentSpec.link_linear(children))
   end
 
   defp perform_test(filename, tmp_dir, timeout, caps \\ @caps) do
@@ -42,7 +42,7 @@ defmodule Membrane.H264.TranscodingTest do
   describe "TranscodingPipeline should" do
     @describetag :tmp_dir
     test "transcode 10 720p frames", ctx do
-      perform_test("10-720p", ctx.tmp_dir, 1000)
+      perform_test("10-720p", ctx.tmp_dir, 10000)
     end
 
     test "transcode 100 240p frames", ctx do
