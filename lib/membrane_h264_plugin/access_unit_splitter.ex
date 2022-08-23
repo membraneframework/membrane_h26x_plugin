@@ -9,11 +9,11 @@ defmodule Membrane.H264.AccessUnitSplitter do
 
   @type access_unit_t() :: list(NALu.nalu_t())
 
-  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
   @doc """
   Parses the provided binary with the NALu parser and splits the received list of NALus into multiple sublists,
   with each of these sublists containing NALus from one access unit.
   """
+  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
   def split_binary_into_access_units(binary) do
     {parsed_nalus, _state} = NALu.parse(binary)
 

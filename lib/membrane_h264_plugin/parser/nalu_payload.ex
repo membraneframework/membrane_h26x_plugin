@@ -51,19 +51,19 @@ defmodule Membrane.H264.Parser.NALuPayload do
               end)
               |> Map.new()
 
-  @spec nalu_types() :: %{integer() => atom()}
   @doc """
   The function which returns the mapping of form: (nal_unit_type => human friendly NALu type name).
   nal_unit_type  is a field available in each of the NALus.
   The mapping is based on: Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes, of "ITU-T Rec. H.264 (01/2012)"
   """
+  @spec nalu_types() :: %{integer() => atom()}
   def nalu_types, do: @nalu_types
 
-  @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
-          {bitstring(), State.t()}
   @doc """
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
   """
+  @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
+          {bitstring(), State.t()}
   def parse_with_scheme(
         payload,
         scheme,
