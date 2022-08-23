@@ -94,8 +94,8 @@ defmodule Membrane.H264.Parser do
       payload
       |> :binary.part(actions_size, byte_size(payload) - actions_size)
       |> then(fn payload ->
-      %Buffer{payload: payload, metadata: state.metadata}
-    end)
+        %Buffer{payload: payload, metadata: state.metadata}
+      end)
 
     {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
   end
@@ -143,8 +143,10 @@ defmodule Membrane.H264.Parser do
 
   defp get_payload_from_actions(actions) do
     actions
-    |> Enum.filter(fn {action, rest} -> action == :buffer end)
-    |> Enum.reduce(<<>>, fn {:buffer, {_pad, %Buffer{payload: payload}}}, acc -> acc <> payload end)
+    |> Enum.filter(fn {action, _rest} -> action == :buffer end)
+    |> Enum.reduce(<<>>, fn {:buffer, {_pad, %Buffer{payload: payload}}}, acc ->
+      acc <> payload
+    end)
   end
 
   defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
@@ -162,28 +164,13 @@ defmodule Membrane.H264.Parser do
     else
       {aus_before_sps, aus_with_sps} = Enum.split(aus, index)
       {no_sps_actions, state} = prepare_actions_without_sps(aus_before_sps, payload, state)
-
-      sps_map = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
-
-      sps_payload =
-        sps_map
-        |> then(& &1.prefixed_poslen)
-        |> then(fn {start, len} -> :binary.part(payload, start, len) end)
-
-      caps = Caps.parse_caps(sps_map)
-
-      actions = [
-        caps: {:output, caps},
-        buffer: {:output, wrap_into_buffer(hd(aus_with_sps), payload, state)}
-      ]
-
-      new_state = %{state | caps: caps, sps: sps_payload}
+      {sps_actions, state} = prepare_actions_with_sps(aus_with_sps, payload, state)
 
       prepare_actions_for_aus(
         tl(aus_with_sps),
         payload,
-        acc ++ no_sps_actions ++ actions,
-        new_state
+        acc ++ no_sps_actions ++ sps_actions,
+        state
       )
     end
   end
@@ -219,6 +206,26 @@ defmodule Membrane.H264.Parser do
       {_caps, _skip} ->
         {[aus_into_buffer_action(aus, payload, state)], state}
     end
+  end
+
+  defp prepare_actions_with_sps(aus_with_sps, payload, state) do
+    sps_map = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
+
+    sps_payload =
+      sps_map
+      |> then(& &1.prefixed_poslen)
+      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+
+    caps = Caps.parse_caps(sps_map)
+
+    actions = [
+      caps: {:output, caps},
+      buffer: {:output, wrap_into_buffer(hd(aus_with_sps), payload, state)}
+    ]
+
+    new_state = %{state | caps: caps, sps: sps_payload}
+
+    {actions, new_state}
   end
 
   defp wrap_into_buffer(access_unit, payload, metadata) do
