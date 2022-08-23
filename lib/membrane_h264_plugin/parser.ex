@@ -80,17 +80,27 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    process(state.unparsed_payload <> buffer.payload, [], state)
+    process(state.unparsed_payload <> buffer.payload, state)
   end
 
   @impl true
-
   def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
-    # process(payload, [end_of_stream: :output], state)
-    {{:ok, buffer: {:output, %Buffer{payload: payload}}, end_of_stream: :output}, state}
+    {{:ok, actions}, state} = process(payload, state)
+    actions_payload = get_payload_from_actions(actions)
+
+    actions_size = byte_size(actions_payload)
+
+    rest_buffer =
+      payload
+      |> :binary.part(actions_size, byte_size(payload) - actions_size)
+      |> then(fn payload ->
+      %Buffer{payload: payload, metadata: state.metadata}
+    end)
+
+    {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
   end
 
-  defp process(payload, actions, state) do
+  defp process(payload, state) do
     {nalus, parser_state} = NALu.parse(payload, state.parser_state)
 
     {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
@@ -111,7 +121,7 @@ defmodule Membrane.H264.Parser do
     }
 
     {new_actions, state} = prepare_actions_for_aus(access_units, payload, state)
-    {{:ok, new_actions ++ actions}, state}
+    {{:ok, new_actions}, state}
   end
 
   defp parsed_poslen([]), do: {0, 0}
@@ -129,6 +139,12 @@ defmodule Membrane.H264.Parser do
       |> then(fn {last_start, last_len} -> last_start + last_len - start end)
 
     {start, len}
+  end
+
+  defp get_payload_from_actions(actions) do
+    actions
+    |> Enum.filter(fn {action, rest} -> action == :buffer end)
+    |> Enum.reduce(<<>>, fn {:buffer, {_pad, %Buffer{payload: payload}}}, acc -> acc <> payload end)
   end
 
   defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
