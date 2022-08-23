@@ -212,10 +212,10 @@ defmodule Membrane.H264.Parser.NALuPayload do
         {value, rest}
 
       :ue ->
-        Common.to_integer(payload)
+        Common.ExpGolombConverter.to_integer(payload)
 
       :se ->
-        Common.to_integer(payload, negatives: true)
+        Common.ExpGolombConverter.to_integer(payload, negatives: true)
 
       unsigned_int ->
         how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()
