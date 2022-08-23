@@ -22,7 +22,33 @@ end
 
 ## Usage
 
-TODO
+The following pipeline takes H264 file, parses it, and then decodes it to the raw video.
+
+```elixir
+defmodule Decoding.Pipeline do
+  use Membrane.Pipeline
+
+  alias Membrane.{File, H264, ParentSpec}
+
+  @impl true
+  def handle_init(_ptions) do
+    children = [
+      source: %File.Source{chunk_size: 40_960, location: "input.h264"},
+      parser: H264.Parser,
+      decoder: H264.FFmpeg.Decoder,
+      sink: %File.Sink{location: "output.raw"}
+    ]
+
+    {{:ok, [spec: %ParentSpec{links: ParentSpec.link_linear(children)}, playback: :playing]}, nil}
+  end
+
+  @impl true
+  def handle_element_end_of_stream(:sink, _ctx_, _state) do
+    {{:ok, playback: :stopped}, nil}
+  end
+end
+```
+
 
 ## Copyright and License
 

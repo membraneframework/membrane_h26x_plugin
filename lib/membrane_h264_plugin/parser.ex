@@ -110,7 +110,7 @@ defmodule Membrane.H264.Parser do
         unparsed_payload: unparsed_payload
     }
 
-    {new_actions, state} = aus_into_actions(access_units, payload, state)
+    {new_actions, state} = prepare_actions_for_aus(access_units, payload, state)
     {{:ok, new_actions ++ actions}, state}
   end
 
@@ -131,21 +131,21 @@ defmodule Membrane.H264.Parser do
     {start, len}
   end
 
-  defp aus_into_actions(aus, payload, acc \\ [], state)
+  defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
 
-  defp aus_into_actions([], _payload, acc, state) do
+  defp prepare_actions_for_aus([], _payload, acc, state) do
     {acc, state}
   end
 
-  defp aus_into_actions(aus, payload, acc, state) do
+  defp prepare_actions_for_aus(aus, payload, acc, state) do
     index = Enum.find_index(aus, &au_with_nalu_of_type?(&1, :sps))
 
     if index == nil do
-      {actions, state} = no_sps_actions(aus, payload, state)
+      {actions, state} = prepare_actions_without_sps(aus, payload, state)
       {acc ++ actions, state}
     else
       {aus_before_sps, aus_with_sps} = Enum.split(aus, index)
-      {no_sps_actions, state} = no_sps_actions(aus_before_sps, payload, state)
+      {no_sps_actions, state} = prepare_actions_without_sps(aus_before_sps, payload, state)
 
       sps_map = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
 
@@ -163,7 +163,12 @@ defmodule Membrane.H264.Parser do
 
       new_state = %{state | caps: caps, sps: sps_payload}
 
-      aus_into_actions(tl(aus_with_sps), payload, acc ++ no_sps_actions ++ actions, new_state)
+      prepare_actions_for_aus(
+        tl(aus_with_sps),
+        payload,
+        acc ++ no_sps_actions ++ actions,
+        new_state
+      )
     end
   end
 
@@ -180,14 +185,14 @@ defmodule Membrane.H264.Parser do
     |> then(&{:buffer, {:output, &1}})
   end
 
-  defp no_sps_actions([], _payload, state) do
+  defp prepare_actions_without_sps([], _payload, state) do
     {[], state}
   end
 
-  defp no_sps_actions(aus, payload, %{caps: caps, skip: skip} = state) do
+  defp prepare_actions_without_sps(aus, payload, %{caps: caps, skip: skip} = state) do
     case {caps, skip} do
       {nil, false} ->
-        {options_caps, state} = get_options_caps(state)
+        {options_caps, state} = get_caps_from_options(state)
         caps_action = {:caps, {:output, options_caps}}
         buffers_actions = aus_into_buffer_action(aus, payload, state)
         {[caps_action, buffers_actions], %{state | caps: options_caps}}
@@ -209,11 +214,11 @@ defmodule Membrane.H264.Parser do
     end)
   end
 
-  defp get_options_caps(%{sps: <<>>} = state) do
+  defp get_caps_from_options(%{sps: <<>>} = state) do
     {Caps.default_caps(), state}
   end
 
-  defp get_options_caps(%{sps: sps, parser_state: parser_state} = state) do
+  defp get_caps_from_options(%{sps: sps, parser_state: parser_state} = state) do
     {[sps | _rest], new_parser_state} = NALu.parse(sps, parser_state)
     {Caps.parse_caps(sps), %{state | parser_state: new_parser_state}}
   end
