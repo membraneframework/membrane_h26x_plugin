@@ -5,7 +5,6 @@ defmodule Membrane.H264.Parser do
 
   require Membrane.Logger
 
-  alias __MODULE__
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.AccessUnitSplitter
   alias Membrane.H264.Parser.{Caps, NALu, State}
@@ -63,7 +62,7 @@ defmodule Membrane.H264.Parser do
       caps: nil,
       metadata: %{},
       unparsed_payload: <<>>,
-      splitter_buffer: [],
+      splitter_nalus_buffer: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
       parser_state: %State{__global__: %{}, __local__: %{}},
@@ -94,17 +93,17 @@ defmodule Membrane.H264.Parser do
   defp process(payload, actions, state) do
     {nalus, parser_state} = NALu.parse(payload, state.parser_state)
 
-    {_rest_of_nalus, splitter_buffer, splitter_state, previous_primary_coded_picture_nalu,
+    {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
      access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
 
     unparsed_payload =
-      splitter_buffer
+      splitter_nalus_buffer
       |> then(&parsed_poslen/1)
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
     state = %{
       state
-      | splitter_buffer: splitter_buffer,
+      | splitter_nalus_buffer: splitter_nalus_buffer,
         parser_state: parser_state,
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
@@ -134,6 +133,10 @@ defmodule Membrane.H264.Parser do
 
   defp aus_into_actions(aus, payload, acc \\ [], state)
 
+  defp aus_into_actions([], _payload, acc, state) do
+    {acc, state}
+  end
+
   defp aus_into_actions(aus, payload, acc, state) do
     index = Enum.find_index(aus, &au_with_nalu_of_type?(&1, :sps))
 
@@ -162,10 +165,6 @@ defmodule Membrane.H264.Parser do
 
       aus_into_actions(tl(aus_with_sps), payload, acc ++ no_sps_actions ++ actions, new_state)
     end
-  end
-
-  defp aus_into_actions([], _payload, acc, state) do
-    {acc, state}
   end
 
   defp au_with_nalu_of_type?(au, type) do

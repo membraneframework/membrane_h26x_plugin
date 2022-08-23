@@ -36,12 +36,20 @@ defmodule Membrane.H264.Parser.Caps do
   def parse_caps(sps_nalu) do
     sps = sps_nalu.parsed_fields
 
-    width_in_mbs = sps.pic_width_in_mbs_minus1 + 1
-    width = width_in_mbs * 16
+    {width_offset, height_offset} =
+      if sps.frame_cropping_flag == 1,
+        do:
+          {sps.frame_crop_right_offset + sps.frame_crop_left_offset,
+           sps.frame_crop_top_offset * (2 - sps.frame_mbs_only_flag) +
+             sps.frame_crop_bottom_offset * (2 - sps.frame_mbs_only_flag)},
+        else: {0, 0}
 
-    height_in_map_units = sps.pic_width_in_mbs_minus1 + 1
+    width_in_mbs = sps.pic_width_in_mbs_minus1 + 1
+    width = width_in_mbs * 16 - width_offset
+
+    height_in_map_units = sps.pic_height_in_map_units_minus1 + 1
     height_in_mbs = (2 - sps.frame_mbs_only_flag) * height_in_map_units
-    height = height_in_mbs * 16
+    height = height_in_mbs * 16 - height_offset
 
     profile = parse_profile(sps_nalu)
 
