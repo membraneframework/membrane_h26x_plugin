@@ -1,6 +1,7 @@
 defmodule Membrane.H264.Parser.Schemes.SPS do
   @moduledoc false
   @behaviour Membrane.H264.Parser.Scheme
+  alias Membrane.H264.Parser.Scheme
 
   @impl true
   def scheme,
@@ -77,65 +78,69 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
       field: {:vui_parameters_present_flag, :u1},
       if: {
         {&(&1 == 1), [:vui_parameters_present_flag]},
-        # vui_parameters()
-        []
+        vui_parameters(true)
       },
       save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
     ]
 
-  defp vui_parameters,
-    do: [
-      field: {:aspect_ratio_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:aspect_ratio_present_flag]},
-         field: {:aspect_ratio_idc, :u8},
-         if:
-           {{&(&1 == 255), [:aspect_ratio_idc]},
-            field: {:sar_width, :u16}, field: {:sar_height, :u16}}},
-      field: {:overscan_info_present_flag, :u1},
-      if: {{&(&1 == 1), [:overscan_info_present_flag]}, field: {:overscan_appropriate_flag, :u1}},
-      field: {:video_signal_type_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:video_signal_type_present_flag]},
-         field: {:video_format, :u3},
-         field: {:video_full_range_flag, :u1},
-         field: {:colour_description_present_flag, :u1},
-         if:
-           {{&(&1 == 1), [:colour_description_present_flag]},
-            field: {:colour_primaries, :u8},
-            field: {:transfer_characteristics, :u8},
-            field: {:matrix_coefficients, :u8}}},
-      field: {:chroma_loc_info_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:chroma_loc_info_present_flag]},
-         field: {:chroma_sample_loc_type_top_field, :ue},
-         field: {:chroma_sample_loc_type_bottom_field, :ue}},
-      field: {:timing_info_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:timing_info_present_flag]},
-         field: {:num_units_in_tick, :u32},
-         field: {:time_scale, :u32},
-         field: {:fixed_frame_rate_flag, :u1}},
-      field: {:nal_hrd_parameters_present_flag, :u1},
-      if: {{&(&1 == 1), [:nal_hrd_parameters_present_flag]}, hrd_parameters()},
-      field: {:vcl_hrd_parameters_present_flag, :u1},
-      if: {{&(&1 == 1), [:vcl_hrd_parameters_present_flag]}, hrd_parameters()},
-      if:
-        {{&(&1 == 1 or &2 == 1),
-          [:nal_hrd_parameters_present_flag, :vcl_hrd_parameters_present_flag]},
-         field: {:low_delay_hrd_flag, :u1}},
-      field: {:pic_struct_present_flag, :u1},
-      field: {:bitstream_restriction_flag, :u1},
-      if:
-        {{&(&1 == 1), [:bitstream_restriction_flag]},
-         field: {:motion_vectors_over_pic_boundaries_flag, :u1},
-         field: {:max_bytes_per_pic_denom, :ue},
-         field: {:max_bits_per_mb_denom, :ue},
-         field: {:log2_max_mv_length_horizontal, :ue},
-         field: {:log2_max_mv_length_vertical, :ue},
-         field: {:max_num_reorder_frames, :ue},
-         field: {:max_dec_frame_buffering, :ue}}
-    ]
+  @spec vui_parameters(boolean()) :: Scheme.t()
+  def vui_parameters(should_skip) do
+    if should_skip == true,
+      do: [],
+      else: [
+        field: {:aspect_ratio_present_flag, :u1},
+        if:
+          {{&(&1 == 1), [:aspect_ratio_present_flag]},
+           field: {:aspect_ratio_idc, :u8},
+           if:
+             {{&(&1 == 255), [:aspect_ratio_idc]},
+              field: {:sar_width, :u16}, field: {:sar_height, :u16}}},
+        field: {:overscan_info_present_flag, :u1},
+        if:
+          {{&(&1 == 1), [:overscan_info_present_flag]}, field: {:overscan_appropriate_flag, :u1}},
+        field: {:video_signal_type_present_flag, :u1},
+        if:
+          {{&(&1 == 1), [:video_signal_type_present_flag]},
+           field: {:video_format, :u3},
+           field: {:video_full_range_flag, :u1},
+           field: {:colour_description_present_flag, :u1},
+           if:
+             {{&(&1 == 1), [:colour_description_present_flag]},
+              field: {:colour_primaries, :u8},
+              field: {:transfer_characteristics, :u8},
+              field: {:matrix_coefficients, :u8}}},
+        field: {:chroma_loc_info_present_flag, :u1},
+        if:
+          {{&(&1 == 1), [:chroma_loc_info_present_flag]},
+           field: {:chroma_sample_loc_type_top_field, :ue},
+           field: {:chroma_sample_loc_type_bottom_field, :ue}},
+        field: {:timing_info_present_flag, :u1},
+        if:
+          {{&(&1 == 1), [:timing_info_present_flag]},
+           field: {:num_units_in_tick, :u32},
+           field: {:time_scale, :u32},
+           field: {:fixed_frame_rate_flag, :u1}},
+        field: {:nal_hrd_parameters_present_flag, :u1},
+        if: {{&(&1 == 1), [:nal_hrd_parameters_present_flag]}, hrd_parameters()},
+        field: {:vcl_hrd_parameters_present_flag, :u1},
+        if: {{&(&1 == 1), [:vcl_hrd_parameters_present_flag]}, hrd_parameters()},
+        if:
+          {{&(&1 == 1 or &2 == 1),
+            [:nal_hrd_parameters_present_flag, :vcl_hrd_parameters_present_flag]},
+           field: {:low_delay_hrd_flag, :u1}},
+        field: {:pic_struct_present_flag, :u1},
+        field: {:bitstream_restriction_flag, :u1},
+        if:
+          {{&(&1 == 1), [:bitstream_restriction_flag]},
+           field: {:motion_vectors_over_pic_boundaries_flag, :u1},
+           field: {:max_bytes_per_pic_denom, :ue},
+           field: {:max_bits_per_mb_denom, :ue},
+           field: {:log2_max_mv_length_horizontal, :ue},
+           field: {:log2_max_mv_length_vertical, :ue},
+           field: {:max_num_reorder_frames, :ue},
+           field: {:max_dec_frame_buffering, :ue}}
+      ]
+  end
 
   defp hrd_parameters(),
     do: [
@@ -164,7 +169,9 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
                                                                    next_scale} ->
         {payload, next_scale} =
           if next_scale != 0 do
-            {delta_scale, payload} = Membrane.H264.Common.to_integer(payload, negatives: true)
+            {delta_scale, payload} =
+              Membrane.H264.Common.ExpGolombConverter.to_integer(payload, negatives: true)
+
             next_scale = rem(last_scale + delta_scale + 256, 256)
             {payload, next_scale}
           else

@@ -9,11 +9,11 @@ defmodule Membrane.H264.AccessUnitSplitter do
 
   @type access_unit_t() :: list(NALu.nalu_t())
 
-  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
   @doc """
   Parses the provided binary with the NALu parser and splits the received list of NALus into multiple sublists,
   with each of these sublists containing NALus from one access unit.
   """
+  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
   def split_binary_into_access_units(binary) do
     {parsed_nalus, _state} = NALu.parse(binary)
 
@@ -27,6 +27,25 @@ defmodule Membrane.H264.AccessUnitSplitter do
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
+  @doc """
+  This function splits the given list of NAL units into the access units. It can be used when the access unit splitter is used for the stream
+  which is not completly available at the time of function invoction, because apart from the list of access units the functions returns it's state,
+  to be used in next invocation.
+  When the whole stream is available at the invocation time, the use can use `split_binary_into_access_units/1`.
+
+  Under the hood, `split_nalus_into_access_units/5` defines a finite state machine with two states: :first and :second.
+  The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
+  The state :second describes the state after processing the primary coded picture NALu of a given access unit.
+  """
+  @spec split_nalus_into_access_units(
+          list(NALu.nalu_t()),
+          list(NALu.nalu_t()),
+          :first | :second,
+          NALu.nalu_t() | nil,
+          list(access_unit_t())
+        ) ::
+          {list(NALu.nalu_t()), list(NALu.nalu_t()), :first | :second, NALu.nalu_t() | nil,
+           list(access_unit_t())}
   def split_nalus_into_access_units(
         nalus,
         buffer \\ [],
@@ -116,6 +135,10 @@ defmodule Membrane.H264.AccessUnitSplitter do
     {nalus, buffer, state, previous_primary_coded_picture_nalu, access_units}
   end
 
+  # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply
+  # that the function is unreadible - in fact, what the function does, is simply checking the sequence of conditions, as
+  # specifiec in the documentation
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
     # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the "ITU-T Rec. H.264 (01/2012)"
 

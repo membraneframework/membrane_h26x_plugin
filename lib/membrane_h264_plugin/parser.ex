@@ -1,13 +1,24 @@
 defmodule Membrane.H264.Parser do
-  @moduledoc false
+  @moduledoc """
+  Membrane element providing parser for H264 encoded video stream.
+
+  This parser splits the stream into h264 access units,
+  each of which is a sequence of NAL units corresponding to one
+  video frame. See `alignment` option. The other alignments are not supported
+  at the moment.
+
+  The parser parses caps from the SPS. Because caps must be sent before
+  the first buffers, parser drops the stream until the first SPS is received
+  by default. See `skip_until_parameters?` option.
+  """
 
   use Membrane.Filter
 
   require Membrane.Logger
 
-  alias __MODULE__
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.AccessUnitSplitter
+  alias Membrane.H264.Parser.{Caps, NALu, State}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -28,20 +39,6 @@ defmodule Membrane.H264.Parser do
                 Only `:au` alignment is supported at the moment.
                 """
               ],
-              caps: [
-                default: %H264{
-                  alignment: :au,
-                  framerate: {0, 1},
-                  height: 720,
-                  nalu_in_metadata?: false,
-                  profile: :high,
-                  stream_format: :byte_stream,
-                  width: 1280
-                },
-                description: """
-                For development only.
-                """
-              ],
               sps: [
                 type: :binary,
                 default: <<>>,
@@ -57,6 +54,17 @@ defmodule Membrane.H264.Parser do
                 Picture Parameter Set NAL unit - if absent in the stream, should
                 be provided via this option.
                 """
+              ],
+              skip_until_parameters?: [
+                type: :boolean,
+                default: true,
+                description: """
+                Determines whether to drop the stream until the first set of SPS and PPS is received.
+
+                If this option is set to `false` and no SPS is provided by the
+                `sps` option, the parser will send default 30fps, 720p caps
+                as first caps.
+                """
               ]
 
   @impl true
@@ -66,13 +74,15 @@ defmodule Membrane.H264.Parser do
     end
 
     state = %{
-      caps: opts.caps,
+      caps: nil,
       metadata: %{},
       unparsed_payload: <<>>,
-      splitter_buffer: [],
+      splitter_nalus_buffer: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      parser_state: %Membrane.H264.Parser.State{__global__: %{}, __local__: %{}}
+      parser_state: %State{__global__: %{}, __local__: %{}},
+      sps: opts.sps,
+      skip: opts.skip_until_parameters?
     }
 
     {:ok, state}
@@ -80,59 +90,53 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_caps(:input, _caps, _ctx, state) do
-    {{:ok, caps: {:output, state.caps}}, state}
+    {:ok, state}
   end
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    process(state.unparsed_payload <> buffer.payload, [], state)
+    process(state.unparsed_payload <> buffer.payload, state)
   end
 
   @impl true
-
   def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
-    # process(payload, [end_of_stream: :output], state)
-    {{:ok, buffer: {:output, %Buffer{payload: payload}}, end_of_stream: :output}, state}
+    {{:ok, actions}, state} = process(payload, state)
+    actions_payload = get_payload_from_actions(actions)
+
+    actions_size = byte_size(actions_payload)
+
+    rest_buffer =
+      payload
+      |> :binary.part(actions_size, byte_size(payload) - actions_size)
+      |> then(fn payload ->
+        %Buffer{payload: payload, metadata: state.metadata}
+      end)
+
+    {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
   end
 
-  defp process(payload, actions, state) do
-    {nalus, parser_state} = Parser.NALu.parse(payload, state.parser_state)
+  defp process(payload, state) do
+    {nalus, parser_state} = NALu.parse(payload, state.parser_state)
 
-    {_rest_of_nalus, splitter_buffer, splitter_state, previous_primary_coded_picture_nalu,
+    {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
      access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
 
     unparsed_payload =
-      splitter_buffer
+      splitter_nalus_buffer
       |> then(&parsed_poslen/1)
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
     state = %{
       state
-      | splitter_buffer: splitter_buffer,
+      | splitter_nalus_buffer: splitter_nalus_buffer,
         parser_state: parser_state,
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
         unparsed_payload: unparsed_payload
     }
 
-    if access_units == [] do
-      {{:ok, actions}, state}
-    else
-      # FIXME: don't pass hardcoded empty metadata
-
-      buffers = Enum.map(access_units, &wrap_into_buffer(&1, payload, state.metadata))
-      new_actions = [{:buffer, {:output, buffers}} | actions]
-      {{:ok, new_actions}, state}
-    end
-  end
-
-  defp wrap_into_buffer(access_unit, payload, metadata) do
-    access_unit
-    |> then(&parsed_poslen/1)
-    |> then(fn {start, len} -> :binary.part(payload, start, len) end)
-    |> then(fn payload ->
-      %Buffer{payload: payload, metadata: metadata}
-    end)
+    {new_actions, state} = prepare_actions_for_aus(access_units, payload, state)
+    {{:ok, new_actions}, state}
   end
 
   defp parsed_poslen([]), do: {0, 0}
@@ -150,5 +154,110 @@ defmodule Membrane.H264.Parser do
       |> then(fn {last_start, last_len} -> last_start + last_len - start end)
 
     {start, len}
+  end
+
+  defp get_payload_from_actions(actions) do
+    actions
+    |> Enum.filter(fn {action, _rest} -> action == :buffer end)
+    |> Enum.reduce(<<>>, fn {:buffer, {_pad, %Buffer{payload: payload}}}, acc ->
+      acc <> payload
+    end)
+  end
+
+  defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
+
+  defp prepare_actions_for_aus([], _payload, acc, state) do
+    {acc, state}
+  end
+
+  defp prepare_actions_for_aus(aus, payload, acc, state) do
+    index = Enum.find_index(aus, &au_with_nalu_of_type?(&1, :sps))
+
+    if index == nil do
+      {actions, state} = prepare_actions_without_sps(aus, payload, state)
+      {acc ++ actions, state}
+    else
+      {aus_before_sps, aus_with_sps} = Enum.split(aus, index)
+      {no_sps_actions, state} = prepare_actions_without_sps(aus_before_sps, payload, state)
+      {sps_actions, state} = prepare_actions_with_sps(aus_with_sps, payload, state)
+
+      prepare_actions_for_aus(
+        tl(aus_with_sps),
+        payload,
+        acc ++ no_sps_actions ++ sps_actions,
+        state
+      )
+    end
+  end
+
+  defp au_with_nalu_of_type?(au, type) do
+    au
+    |> get_in([Access.all(), :type])
+    |> Enum.any?(&(&1 == type))
+  end
+
+  defp aus_into_buffer_action(aus, payload, %{metadata: metadata}) do
+    aus
+    # TODO: don't pass hardcoded empty metadata
+    |> Enum.map(&wrap_into_buffer(&1, payload, metadata))
+    |> then(&{:buffer, {:output, &1}})
+  end
+
+  defp prepare_actions_without_sps([], _payload, state) do
+    {[], state}
+  end
+
+  defp prepare_actions_without_sps(aus, payload, %{caps: caps, skip: skip} = state) do
+    case {caps, skip} do
+      {nil, false} ->
+        {options_caps, state} = get_caps_from_options(state)
+        caps_action = {:caps, {:output, options_caps}}
+        buffers_actions = aus_into_buffer_action(aus, payload, state)
+        {[caps_action, buffers_actions], %{state | caps: options_caps}}
+
+      {nil, true} ->
+        {[], state}
+
+      {_caps, _skip} ->
+        {[aus_into_buffer_action(aus, payload, state)], state}
+    end
+  end
+
+  defp prepare_actions_with_sps(aus_with_sps, payload, state) do
+    sps_nalu = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
+
+    sps_payload =
+      sps_nalu
+      |> then(& &1.prefixed_poslen)
+      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+
+    caps = Caps.parse_caps(sps_nalu)
+
+    actions = [
+      caps: {:output, caps},
+      buffer: {:output, wrap_into_buffer(hd(aus_with_sps), payload, state)}
+    ]
+
+    new_state = %{state | caps: caps, sps: sps_payload}
+
+    {actions, new_state}
+  end
+
+  defp wrap_into_buffer(access_unit, payload, metadata) do
+    access_unit
+    |> then(&parsed_poslen/1)
+    |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+    |> then(fn payload ->
+      %Buffer{payload: payload, metadata: metadata}
+    end)
+  end
+
+  defp get_caps_from_options(%{sps: <<>>} = state) do
+    {Caps.default_caps(), state}
+  end
+
+  defp get_caps_from_options(%{sps: sps, parser_state: parser_state} = state) do
+    {[sps | _rest], new_parser_state} = NALu.parse(sps, parser_state)
+    {Caps.parse_caps(sps), %{state | parser_state: new_parser_state}}
   end
 end

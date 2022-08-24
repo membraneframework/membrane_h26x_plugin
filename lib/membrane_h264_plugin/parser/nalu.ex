@@ -14,11 +14,11 @@ defmodule Membrane.H264.Parser.NALu do
           unprefixed_poslen: {integer(), integer()}
         }
 
-  @spec parse(binary(), State.t()) :: {list(nalu_t), State.t()}
   @doc """
   Parses the given binary stream, and produces the NAL units of the structurized form.
   """
-  def parse(payload, state \\ %{__global__: %{}, __local__: %{}}) do
+  @spec parse(binary(), State.t()) :: {list(nalu_t), State.t()}
+  def parse(payload, state \\ %State{__global__: %{}, __local__: %{}}) do
     {nalus, state} =
       payload
       |> extract_nalus
@@ -45,7 +45,7 @@ defmodule Membrane.H264.Parser.NALu do
     {nalus, state}
   end
 
-  def extract_nalus(payload) do
+  defp extract_nalus(payload) do
     payload
     |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
     |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
