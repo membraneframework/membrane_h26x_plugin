@@ -9,7 +9,7 @@ defmodule Membrane.H264.Parser.Caps do
     alignment: :au,
     framerate: {30, 1},
     height: 720,
-    nalu_in_metadata?: false,
+    nalu_in_metadata?: true,
     profile: :high,
     stream_format: :byte_stream,
     width: 1280

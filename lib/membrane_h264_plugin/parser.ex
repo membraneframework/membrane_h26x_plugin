@@ -228,13 +228,38 @@ defmodule Membrane.H264.Parser do
     {actions, new_state}
   end
 
-  defp wrap_into_buffer(access_unit, payload, metadata) do
+  defp wrap_into_buffer(access_unit, payload, _state) do
+    metadata = prepare_metadata(access_unit)
+
     access_unit
     |> then(&parsed_poslen/1)
     |> then(fn {start, len} -> :binary.part(payload, start, len) end)
     |> then(fn payload ->
       %Buffer{payload: payload, metadata: metadata}
     end)
+  end
+
+  defp prepare_metadata(nalus) do
+    is_keyframe = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
+
+    nalus =
+      nalus
+      |> Enum.zip(0..(length(nalus) - 1))
+      |> Enum.map(fn {nalu, i} ->
+        %{
+          metadata: %{
+            h264: %{
+              end_access_unit: i == length(nalus) - 1,
+              new_access_unit: i == 0,
+              type: nalu.type
+            }
+          },
+          prefixed_poslen: nalu.prefixed_poslen,
+          unprefixed_poslen: nalu.unprefixed_poslen
+        }
+      end)
+
+    %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
 
   defp get_caps_from_options(%{sps: <<>>} = state) do
