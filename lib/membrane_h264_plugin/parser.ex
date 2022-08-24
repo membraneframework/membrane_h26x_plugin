@@ -183,7 +183,7 @@ defmodule Membrane.H264.Parser do
 
   defp aus_into_buffer_action(aus, payload, %{metadata: metadata}) do
     aus
-    # FIXME: don't pass hardcoded empty metadata
+    # TODO: don't pass hardcoded empty metadata
     |> Enum.map(&wrap_into_buffer(&1, payload, metadata))
     |> then(&{:buffer, {:output, &1}})
   end
@@ -209,14 +209,14 @@ defmodule Membrane.H264.Parser do
   end
 
   defp prepare_actions_with_sps(aus_with_sps, payload, state) do
-    sps_map = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
+    sps_nalu = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
 
     sps_payload =
-      sps_map
+      sps_nalu
       |> then(& &1.prefixed_poslen)
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
-    caps = Caps.parse_caps(sps_map)
+    caps = Caps.parse_caps(sps_nalu)
 
     actions = [
       caps: {:output, caps},
