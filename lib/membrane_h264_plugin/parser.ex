@@ -1,5 +1,16 @@
 defmodule Membrane.H264.Parser do
-  @moduledoc false
+  @moduledoc """
+  Membrane element providing parser for H264 encoded video stream.
+
+  This parser splits the stream into h264 access units,
+  each of which is a sequence of NAL units corresponding to one
+  video frame. See `alignment` option. The other alignments are not supported
+  at the moment.
+
+  The parser parses caps from the SPS. Because caps must be sent before
+  the first buffers, parser drops the stream until the first SPS is received
+  by default. See `skip_until_parameters?` option.
+  """
 
   use Membrane.Filter
 
@@ -49,6 +60,10 @@ defmodule Membrane.H264.Parser do
                 default: true,
                 description: """
                 Determines whether to drop the stream until the first set of SPS and PPS is received.
+
+                If this option is set to `false` and no SPS is provided by the
+                `sps` option, the parser will send default 30fps, 720p caps
+                as first caps.
                 """
               ]
 
