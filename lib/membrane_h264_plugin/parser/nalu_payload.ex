@@ -125,7 +125,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
     {min_value, min_args_list} = make_function(min_value)
     {max_value, max_args_list} = make_function(max_value)
 
-    {state, payload} =
+    {payload, state} =
       Enum.reduce(
         apply(min_value, get_args(min_args_list, state.__local__))..apply(
           max_value,
@@ -145,7 +145,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
       )
 
     state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
-    {state, payload}
+    {payload, state}
   end
 
   defp get_args(args_names, state) do
