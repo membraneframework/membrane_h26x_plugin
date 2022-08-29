@@ -69,7 +69,10 @@ defmodule Membrane.H264.Parser do
       sps: opts.sps,
       skip: opts.skip_until_parameters?,
       pts: nil,
-      dts: nil
+      dts: nil,
+      prev_pts: nil,
+      prev_dts: nil,
+      unparsed_size: 0
     }
 
     {:ok, state}
@@ -82,8 +85,19 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    state = %{state | pts: buffer |> Map.get(:pts), dts: buffer |> Map.get(:dts)}
-    process(state.unparsed_payload <> buffer.payload, state)
+    pts = Map.get(buffer, :pts)
+    dts = Map.get(buffer, :dts)
+    state = %{state | pts: pts, dts: dts}
+    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
+
+    state = %{
+      state
+      | prev_pts: pts,
+        prev_dts: dts,
+        unparsed_size: bit_size(state.unparsed_payload)
+    }
+
+    {{:ok, actions}, state}
   end
 
   @impl true
@@ -238,10 +252,12 @@ defmodule Membrane.H264.Parser do
     access_unit
     |> then(&parsed_poslen/1)
     |> then(fn {start, len} ->
-      :binary.part(payload, start, len)
+      pts = if start < state.unparsed_size, do: state.prev_pts, else: state.pts
+      dts = if start < state.unparsed_size, do: state.prev_dts, else: state.dts
+      {:binary.part(payload, start, len), pts, dts}
     end)
-    |> then(fn payload ->
-      %Buffer{payload: payload, metadata: metadata, pts: state.pts, dts: state.dts}
+    |> then(fn {payload, pts, dts} ->
+      %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
     end)
   end
 
