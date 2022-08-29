@@ -67,7 +67,9 @@ defmodule Membrane.H264.Parser do
       previous_primary_coded_picture_nalu: nil,
       parser_state: %State{__global__: %{}, __local__: %{}},
       sps: opts.sps,
-      skip: opts.skip_until_parameters?
+      skip: opts.skip_until_parameters?,
+      pts: nil,
+      dts: nil
     }
 
     {:ok, state}
@@ -80,6 +82,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
+    state = %{state | pts: buffer |> Map.get(:pts), dts: buffer |> Map.get(:dts)}
     process(state.unparsed_payload <> buffer.payload, state)
   end
 
@@ -94,7 +97,8 @@ defmodule Membrane.H264.Parser do
       payload
       |> :binary.part(actions_size, byte_size(payload) - actions_size)
       |> then(fn payload ->
-        %Buffer{payload: payload, metadata: state.metadata}
+        metadata = prepare_metadata(state.splitter_nalus_buffer)
+        %Buffer{payload: payload, metadata: metadata, pts: state.pts, dts: state.dts}
       end)
 
     {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
@@ -181,10 +185,10 @@ defmodule Membrane.H264.Parser do
     |> Enum.any?(&(&1 == type))
   end
 
-  defp aus_into_buffer_action(aus, payload, %{metadata: metadata}) do
+  defp aus_into_buffer_action(aus, payload, state) do
     aus
     # TODO: don't pass hardcoded empty metadata
-    |> Enum.map(&wrap_into_buffer(&1, payload, metadata))
+    |> Enum.map(&wrap_into_buffer(&1, payload, state))
     |> then(&{:buffer, {:output, &1}})
   end
 
@@ -228,36 +232,58 @@ defmodule Membrane.H264.Parser do
     {actions, new_state}
   end
 
-  defp wrap_into_buffer(access_unit, payload, _state) do
+  defp wrap_into_buffer(access_unit, payload, state) do
     metadata = prepare_metadata(access_unit)
 
     access_unit
     |> then(&parsed_poslen/1)
-    |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+    |> then(fn {start, len} ->
+      :binary.part(payload, start, len)
+    end)
     |> then(fn payload ->
-      %Buffer{payload: payload, metadata: metadata}
+      %Buffer{payload: payload, metadata: metadata, pts: state.pts, dts: state.dts}
     end)
   end
 
   defp prepare_metadata(nalus) do
     is_keyframe = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
+    nalu_start = 0
 
     nalus =
       nalus
       |> Enum.zip(0..(length(nalus) - 1))
-      |> Enum.map(fn {nalu, i} ->
-        %{
+      |> Enum.map_reduce(nalu_start, fn {nalu, i}, nalu_start ->
+        unprefixed_start_offset =
+          (nalu.unprefixed_poslen |> elem(0)) - (nalu.prefixed_poslen |> elem(0))
+
+        metadata = %{
           metadata: %{
             h264: %{
-              end_access_unit: i == length(nalus) - 1,
-              new_access_unit: i == 0,
               type: nalu.type
             }
           },
-          prefixed_poslen: nalu.prefixed_poslen,
-          unprefixed_poslen: nalu.unprefixed_poslen
+          prefixed_poslen: {nalu_start, nalu.prefixed_poslen |> elem(1)},
+          unprefixed_poslen:
+            {unprefixed_start_offset + nalu_start, nalu.unprefixed_poslen |> elem(1)}
         }
+
+        metadata =
+          if i == length(nalus) - 1 do
+            put_in(metadata, [:metadata, :h264, :end_access_unit], true)
+          else
+            metadata
+          end
+
+        metadata =
+          if i == 0 do
+            put_in(metadata, [:metadata, :h264, :new_access_unit], %{key_frame?: is_keyframe})
+          else
+            metadata
+          end
+
+        {metadata, nalu_start + (nalu.prefixed_poslen |> elem(1))}
       end)
+      |> elem(0)
 
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end

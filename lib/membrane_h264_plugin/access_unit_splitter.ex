@@ -111,7 +111,7 @@ defmodule Membrane.H264.AccessUnitSplitter do
           access_units ++ [buffer]
         )
 
-      first_nalu.type in @vcl_nalus ->
+      first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
         split_nalus_into_access_units(
           rest_nalus,
           buffer ++ [first_nalu],
@@ -145,6 +145,13 @@ defmodule Membrane.H264.AccessUnitSplitter do
     if nalu.type in @vcl_nalus do
       cond do
         last_nalu == nil ->
+          true
+
+        # in case of a nalu holding the keyframe, return true
+        # this one wasn't specified in the documentation, however it seems logical to do so
+        # and not doing that has made the application crash
+
+        nalu.type == :idr ->
           true
 
         nalu.parsed_fields.frame_num != last_nalu.parsed_fields.frame_num ->
