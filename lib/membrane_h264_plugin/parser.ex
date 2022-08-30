@@ -68,11 +68,7 @@ defmodule Membrane.H264.Parser do
       parser_state: %State{__global__: %{}, __local__: %{}},
       sps: opts.sps,
       skip: opts.skip_until_parameters?,
-      pts: nil,
-      dts: nil,
-      prev_pts: nil,
-      prev_dts: nil,
-      unparsed_size: 0
+      timestamps_mapping: []
     }
 
     {:ok, state}
@@ -87,16 +83,22 @@ defmodule Membrane.H264.Parser do
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     pts = Map.get(buffer, :pts)
     dts = Map.get(buffer, :dts)
-    state = %{state | pts: pts, dts: dts}
-    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
 
     state = %{
       state
-      | prev_pts: pts,
-        prev_dts: dts,
-        unparsed_size: bit_size(state.unparsed_payload)
+      | timestamps_mapping:
+          state.timestamps_mapping ++ [{bit_size(state.unparsed_payload), {pts, dts}}]
     }
 
+    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
+    actions_size = bit_size(get_payload_from_actions(actions))
+
+    timestamps_mapping =
+      state.timestamps_mapping
+      |> Enum.map(fn {index, {pts, dts}} -> {index - actions_size, {pts, dts}} end)
+      |> Enum.filter(fn {index, {_pts, _dts}} -> index >= 0 end)
+
+    state = %{state | timestamps_mapping: timestamps_mapping}
     {{:ok, actions}, state}
   end
 
@@ -112,7 +114,8 @@ defmodule Membrane.H264.Parser do
       |> :binary.part(actions_size, byte_size(payload) - actions_size)
       |> then(fn payload ->
         metadata = prepare_metadata(state.splitter_nalus_buffer)
-        %Buffer{payload: payload, metadata: metadata, pts: state.pts, dts: state.dts}
+        {pts, dts} = prepare_timestamp(state.timestamps_mapping, actions_size)
+        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
       end)
 
     {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
@@ -162,8 +165,15 @@ defmodule Membrane.H264.Parser do
   defp get_payload_from_actions(actions) do
     actions
     |> Enum.filter(fn {action, _rest} -> action == :buffer end)
-    |> Enum.reduce(<<>>, fn {:buffer, {_pad, %Buffer{payload: payload}}}, acc ->
-      acc <> payload
+    |> Enum.reduce(<<>>, fn {:buffer, {_pad, buf}}, acc ->
+      case buf do
+        %Buffer{payload: payload} ->
+          acc <> payload
+
+        list_of_buffers ->
+          acc <>
+            (list_of_buffers |> Enum.map_join(& &1.payload))
+      end
     end)
   end
 
@@ -201,7 +211,6 @@ defmodule Membrane.H264.Parser do
 
   defp aus_into_buffer_action(aus, payload, state) do
     aus
-    # TODO: don't pass hardcoded empty metadata
     |> Enum.map(&wrap_into_buffer(&1, payload, state))
     |> then(&{:buffer, {:output, &1}})
   end
@@ -235,10 +244,11 @@ defmodule Membrane.H264.Parser do
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
     caps = Caps.parse_caps(sps_nalu)
+    buffer = wrap_into_buffer(hd(aus_with_sps), payload, state)
 
     actions = [
       caps: {:output, caps},
-      buffer: {:output, wrap_into_buffer(hd(aus_with_sps), payload, state)}
+      buffer: {:output, buffer}
     ]
 
     new_state = %{state | caps: caps, sps: sps_payload}
@@ -249,16 +259,32 @@ defmodule Membrane.H264.Parser do
   defp wrap_into_buffer(access_unit, payload, state) do
     metadata = prepare_metadata(access_unit)
 
-    access_unit
-    |> then(&parsed_poslen/1)
-    |> then(fn {start, len} ->
-      pts = if start < state.unparsed_size, do: state.prev_pts, else: state.pts
-      dts = if start < state.unparsed_size, do: state.prev_dts, else: state.dts
-      {:binary.part(payload, start, len), pts, dts}
-    end)
-    |> then(fn {payload, pts, dts} ->
-      %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
-    end)
+    buffer =
+      access_unit
+      |> then(&parsed_poslen/1)
+      |> then(fn {start, len} ->
+        {pts, dts} = prepare_timestamp(state.timestamps_mapping, start)
+        {:binary.part(payload, start, len), pts, dts}
+      end)
+      |> then(fn {payload, pts, dts} ->
+        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
+      end)
+
+    buffer
+  end
+
+  defp prepare_timestamp(timestamps_mapping, start_pos) do
+    result =
+      timestamps_mapping
+      |> Enum.find(fn
+        {index, {_pts, _dts}} -> index >= start_pos
+        _else -> false
+      end)
+
+    case result do
+      {_index, {pts, dts}} -> {pts, dts}
+      _else -> {nil, nil}
+    end
   end
 
   defp prepare_metadata(nalus) do
