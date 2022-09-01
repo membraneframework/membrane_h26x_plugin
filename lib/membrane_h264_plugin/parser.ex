@@ -165,16 +165,18 @@ defmodule Membrane.H264.Parser do
   defp get_payload_from_actions(actions) do
     actions
     |> Enum.filter(fn {action, _rest} -> action == :buffer end)
-    |> Enum.reduce(<<>>, fn {:buffer, {_pad, buf}}, acc ->
-      case buf do
-        %Buffer{payload: payload} ->
-          acc <> payload
+    |> Enum.reduce(<<>>, &concatenate_payload_from_buffers_action(&1, &2))
+  end
 
-        list_of_buffers ->
-          acc <>
-            (list_of_buffers |> Enum.map_join(& &1.payload))
-      end
-    end)
+  defp concatenate_payload_from_buffers_action({:buffer, {_pad, buf}}, acc) do
+    case buf do
+      %Buffer{payload: payload} ->
+        acc <> payload
+
+      list_of_buffers ->
+        acc <>
+          (list_of_buffers |> Enum.map_join(& &1.payload))
+    end
   end
 
   defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
