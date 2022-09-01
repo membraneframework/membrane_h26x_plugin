@@ -1,6 +1,13 @@
 defmodule Membrane.H264.AccessUnitSplitter do
   @moduledoc """
   Module providing functionalities to divide the binary h264 stream into access units.
+  The access unit splitter's behaviour is based on 7.4.1.2.3 "Order of NAL units and coded pictures and association to access units"
+  of the "ITU-T Rec. H.264 (01/2012)" specification. The most crucial part of the access unit splitter is the mechanism
+  to detect new primary coded video picture.
+  WARNING: Our implementation of that mechanism is based on:
+  7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)", however it adds one more
+  additional condition which, when satisfied, says that the given VCL NALu is a new primary coded picture. That condition is whether the picture
+  is a keyframe or not.
   """
   alias Membrane.H264.Parser.NALu
 
@@ -111,7 +118,7 @@ defmodule Membrane.H264.AccessUnitSplitter do
           access_units ++ [buffer]
         )
 
-      first_nalu.type in @vcl_nalus ->
+      first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
         split_nalus_into_access_units(
           rest_nalus,
           buffer ++ [first_nalu],
@@ -140,11 +147,18 @@ defmodule Membrane.H264.AccessUnitSplitter do
   # specifiec in the documentation
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
-    # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the "ITU-T Rec. H.264 (01/2012)"
+    # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)"
 
     if nalu.type in @vcl_nalus do
       cond do
         last_nalu == nil ->
+          true
+
+        # in case of a nalu holding the keyframe, return true
+        # this one wasn't specified in the documentation, however it seems logical to do so
+        # and not doing that has made the application crash
+
+        nalu.type == :idr ->
           true
 
         nalu.parsed_fields.frame_num != last_nalu.parsed_fields.frame_num ->
