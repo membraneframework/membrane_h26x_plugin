@@ -1,6 +1,13 @@
 defmodule Membrane.H264.AccessUnitSplitter do
   @moduledoc """
   Module providing functionalities to divide the binary h264 stream into access units.
+  The access unit splitter's behaviour is based on 7.4.1.2.3 "Order of NAL units and coded pictures and association to access units"
+  of the "ITU-T Rec. H.264 (01/2012)" specification. The most crucial part of the access unit splitter is the mechanism
+  to detect new primary coded video picture.
+  WARNING: Our implementation of that mechanism is based on:
+  7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)", however it adds one more
+  additional condition which, when satisfied, says that the given VCL NALu is a new primary coded picture. That condition is whether the picture
+  is a keyframe or not.
   """
   alias Membrane.H264.Parser.NALu
 
@@ -140,7 +147,7 @@ defmodule Membrane.H264.AccessUnitSplitter do
   # specifiec in the documentation
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
-    # See: 7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture of the "ITU-T Rec. H.264 (01/2012)"
+    # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)"
 
     if nalu.type in @vcl_nalus do
       cond do
