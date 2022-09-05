@@ -3,9 +3,7 @@ defmodule Membrane.H264.Parser.Schemes.Slice do
   @behaviour Membrane.H264.Parser.Scheme
 
   @impl true
-  def scheme(), do: slice_header()
-
-  defp slice_header,
+  def scheme(),
     do: [
       field: {:first_mb_in_slice, :ue},
       field: {:slice_type, :ue},

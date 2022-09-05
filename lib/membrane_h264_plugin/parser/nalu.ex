@@ -21,7 +21,7 @@ defmodule Membrane.H264.Parser.NALu do
   def parse(payload, state \\ %State{__global__: %{}, __local__: %{}}) do
     {nalus, state} =
       payload
-      |> extract_nalus
+      |> extract_nalus()
       |> Enum.map_reduce(state, fn nalu, state ->
         {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
         nalu_start = nalu_start_in_bytes * 8
@@ -32,7 +32,7 @@ defmodule Membrane.H264.Parser.NALu do
         {_rest_of_nalu_payload, state} =
           NALuPayload.parse_with_scheme(nalu_payload, Schemes.NALu.scheme(), state)
 
-        new_state = %{__global__: state.__global__, __local__: %{}}
+        new_state = %State{__global__: state.__global__, __local__: %{}}
         {Map.put(nalu, :parsed_fields, state.__local__), new_state}
       end)
 
