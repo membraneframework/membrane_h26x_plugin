@@ -77,7 +77,8 @@ defmodule Membrane.H264.TODO.Mixfile do
       extras: ["README.md", "LICENSE"],
       formatters: ["html"],
       source_ref: "v#{@version}",
-      nest_modules_by_prefix: [Membrane.H264]
+      nest_modules_by_prefix: [Membrane.H264],
+      filter_modules: "Membrane\.H264\.Parser$"
     ]
   end
 end
