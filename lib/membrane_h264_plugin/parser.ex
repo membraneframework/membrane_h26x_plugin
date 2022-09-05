@@ -29,17 +29,7 @@ defmodule Membrane.H264.Parser do
     demand_mode: :auto,
     caps: {H264, stream_format: :byte_stream}
 
-  def_options alignment: [
-                type: :atom,
-                spec: :au | :nal,
-                default: :au,
-                description: """
-                Stream units carried by each output buffer. See `t:Membrane.H264.alignment_t`.
-
-                Only `:au` alignment is supported at the moment.
-                """
-              ],
-              sps: [
+  def_options sps: [
                 type: :binary,
                 default: <<>>,
                 description: """
@@ -69,10 +59,6 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_init(opts) do
-    if opts.alignment != :au do
-      raise("Invalid element options, only `:au` alignment is available")
-    end
-
     state = %{
       caps: nil,
       metadata: %{},
