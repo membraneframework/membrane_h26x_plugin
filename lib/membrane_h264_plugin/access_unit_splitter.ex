@@ -144,7 +144,7 @@ defmodule Membrane.H264.AccessUnitSplitter do
 
   # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply
   # that the function is unreadible - in fact, what the function does, is simply checking the sequence of conditions, as
-  # specifiec in the documentation
+  # specified in the documentation
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
     # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)"

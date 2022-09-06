@@ -10,7 +10,7 @@ defmodule Membrane.H264.CapsTest do
     children = [
       file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
       parser: H264.Parser,
-      sink: %Membrane.Testing.Sink{}
+      sink: Membrane.Testing.Sink
     ]
 
     Pipeline.start_link(links: ParentSpec.link_linear(children))
@@ -26,7 +26,7 @@ defmodule Membrane.H264.CapsTest do
   }
 
   defp perform_test(filename, timeout) do
-    in_path = "../fixtures/input-#{filename}.h264" |> Path.expand(__DIR__)
+    in_path = Path.expand("../fixtures/input-#{filename}.h264", __DIR__)
     assert {:ok, pid} = make_pipeline(in_path)
     {profile, width, height} = @video_parameters[filename]
     assert_sink_caps(pid, :sink, %H264{profile: ^profile, width: ^width, height: ^height})
@@ -37,28 +37,28 @@ defmodule Membrane.H264.CapsTest do
   end
 
   describe "Parser should" do
-    # test "read the proper caps for: 10 720p frames" do
-    #   perform_test("10-720p", 1000)
-    # end
+    test "read the proper caps for: 10 720p frames" do
+      perform_test("10-720p", 1000)
+    end
 
-    # test "read the proper caps for: 100 240p frames" do
-    #   perform_test("100-240p", 1000)
-    # end
+    test "read the proper caps for: 100 240p frames" do
+      perform_test("100-240p", 1000)
+    end
 
     test "read the proper caps for: 20 360p frames with 422 subsampling" do
       perform_test("20-360p-I422", 1000)
     end
 
-    # test "read the proper caps for: 10 720p frames with B frames in main profile" do
-    #   perform_test("10-720p-main", 1000)
-    # end
+    test "read the proper caps for: 10 720p frames with B frames in main profile" do
+      perform_test("10-720p-main", 1000)
+    end
 
-    # test "read the proper caps for: 10 720p frames with no b frames" do
-    #   perform_test("10-720p-no-b-frames", 10)
-    # end
+    test "read the proper caps for: 10 720p frames with no b frames" do
+      perform_test("10-720p-no-b-frames", 10)
+    end
 
-    # test "read the proper caps for: 100 240p frames with no b frames" do
-    #   perform_test("100-240p-no-b-frames", 100)
-    # end
+    test "read the proper caps for: 100 240p frames with no b frames" do
+      perform_test("100-240p-no-b-frames", 100)
+    end
   end
 end

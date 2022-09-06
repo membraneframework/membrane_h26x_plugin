@@ -246,7 +246,7 @@ defmodule Membrane.H264.Parser do
       |> then(& &1.prefixed_poslen)
       |> then(fn {start, len} -> :binary.part(payload, start, len) end)
 
-    caps = Caps.parse_caps(sps_nalu)
+    caps = Caps.from_caps(sps_nalu)
     buffer = wrap_into_buffer(hd(aus_with_sps), payload, state)
 
     actions = [
@@ -339,6 +339,6 @@ defmodule Membrane.H264.Parser do
 
   defp get_caps_from_options(%{sps: sps, parser_state: parser_state} = state) do
     {[sps | _rest], new_parser_state} = NALu.parse(sps, parser_state)
-    {Caps.parse_caps(sps), %{state | parser_state: new_parser_state}}
+    {Caps.from_caps(sps), %{state | parser_state: new_parser_state}}
   end
 end

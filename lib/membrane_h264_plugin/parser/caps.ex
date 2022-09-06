@@ -26,7 +26,7 @@ defmodule Membrane.H264.Parser.Caps do
     high: [profile_idc: 100],
     high_10_intra: [profile_idc: 110, constraint_set3: 1],
     high_10: [profile_idc: 110],
-    hight_4_2_2_intra: [profile_idc: 122, constraint_set3: 1],
+    high_4_2_2_intra: [profile_idc: 122, constraint_set3: 1],
     high_4_2_2: [profile_idc: 122],
     high_4_4_4_intra: [profile_idc: 244, constraint_set3: 1],
     high_4_4_4_predictive: [profile_idc: 244]
@@ -36,8 +36,8 @@ defmodule Membrane.H264.Parser.Caps do
   Prepares the `Membrane.H264.t()` caps based on the parsed SPS NALu.
   During the process, the function determines the profile of the h264 stream and the picture resolution.
   """
-  @spec parse_caps(sps_nalu :: map()) :: H264.t()
-  def parse_caps(sps_nalu) do
+  @spec from_caps(sps_nalu :: map()) :: H264.t()
+  def from_caps(sps_nalu) do
     sps = sps_nalu.parsed_fields
 
     {width_offset, height_offset} =
