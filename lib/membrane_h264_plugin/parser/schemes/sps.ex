@@ -1,10 +1,12 @@
 defmodule Membrane.H264.Parser.Schemes.SPS do
   @moduledoc false
   @behaviour Membrane.H264.Parser.Scheme
+
+  alias Membrane.H264.Common.ExpGolombConverter
   alias Membrane.H264.Parser.Scheme
 
   @impl true
-  def scheme,
+  def scheme(),
     do: [
       field: {:profile_idc, :u8},
       field: {:constraint_set0, :u1},
@@ -170,7 +172,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
         {payload, next_scale} =
           if next_scale != 0 do
             {delta_scale, payload} =
-              Membrane.H264.Common.ExpGolombConverter.to_integer(payload, negatives: true)
+              ExpGolombConverter.to_integer(payload, negatives: true)
 
             next_scale = rem(last_scale + delta_scale + 256, 256)
             {payload, next_scale}

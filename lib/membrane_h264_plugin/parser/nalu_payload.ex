@@ -57,7 +57,7 @@ defmodule Membrane.H264.Parser.NALuPayload do
   The mapping is based on: Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes, of "ITU-T Rec. H.264 (01/2012)"
   """
   @spec nalu_types() :: %{integer() => atom()}
-  def nalu_types, do: @nalu_types
+  def nalu_types(), do: @nalu_types
 
   @doc """
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.

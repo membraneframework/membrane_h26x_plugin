@@ -3,7 +3,7 @@ defmodule Membrane.H264.Parser.Schemes.PPS do
   @behaviour Membrane.H264.Parser.Scheme
 
   @impl true
-  def scheme,
+  def scheme(),
     do: [
       field: {:pic_parameter_set_id, :ue},
       field: {:seq_parameter_set_id, :ue},

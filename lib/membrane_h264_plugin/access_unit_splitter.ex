@@ -147,7 +147,8 @@ defmodule Membrane.H264.AccessUnitSplitter do
   # specified in the documentation
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
-    # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture" of the "ITU-T Rec. H.264 (01/2012)"
+    # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
+    # of the "ITU-T Rec. H.264 (01/2012)"
 
     if nalu.type in @vcl_nalus do
       cond do
@@ -201,9 +202,10 @@ defmodule Membrane.H264.AccessUnitSplitter do
                  Bunch.Access.get_in(last_nalu.parsed_fields, [:delta_pic_order_cnt, 1])) ->
           true
 
-        # The following condition to be checked is also specified in the documentation: "IdrPicFlag is equal to 1 for both and idr_pic_id differs in value".
-        # At the same time, it seems that it describes the situation, that we are having two different IDR frames - and that should imply, that their frame_num
-        # should differ, which is already checked in the second condition
+        # The following condition to be checked is also specified in the documentation: "IdrPicFlag is equal to 1 for
+        # both and idr_pic_id differs in value".
+        # At the same time, it seems that it describes the situation, that we are having two different IDR frames - and
+        # that should imply, that their frame_num should differ, which is already checked in the second condition
 
         true ->
           false
