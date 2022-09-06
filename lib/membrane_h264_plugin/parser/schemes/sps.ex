@@ -171,8 +171,7 @@ defmodule Membrane.H264.Parser.Schemes.SPS do
                                                                    next_scale} ->
         {payload, next_scale} =
           if next_scale != 0 do
-            {delta_scale, payload} =
-              ExpGolombConverter.to_integer(payload, negatives: true)
+            {delta_scale, payload} = ExpGolombConverter.to_integer(payload, negatives: true)
 
             next_scale = rem(last_scale + delta_scale + 256, 256)
             {payload, next_scale}
