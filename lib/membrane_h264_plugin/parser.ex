@@ -17,8 +17,8 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{Buffer, H264}
-  alias Membrane.H264.AccessUnitSplitter
-  alias Membrane.H264.Parser.{Caps, NALu, State}
+  alias Membrane.H264.Parser.AccessUnitSplitter
+  alias Membrane.H264.Parser.{Caps, NALuSplitter, State, SchemeParser, Schemes, NALuTypes}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -123,7 +123,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process(payload, state) do
-    {nalus, parser_state} = NALu.parse(payload, state.parser_state)
+    {nalus, parser_state} = parse(payload, state.parser_state)
 
     {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
      access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
@@ -338,7 +338,71 @@ defmodule Membrane.H264.Parser do
   end
 
   defp get_caps_from_options(%{sps: sps, parser_state: parser_state} = state) do
-    {[sps | _rest], new_parser_state} = NALu.parse(sps, parser_state)
+    {[sps | _rest], new_parser_state} = parse(sps, parser_state)
     {Caps.from_caps(sps), %{state | parser_state: new_parser_state}}
+  end
+
+  defp parse(payload, state) do
+    {nalus, state} =
+      payload
+      |> NALuSplitter.extract_nalus()
+      |> Enum.map_reduce(state, fn nalu, state ->
+        {nalu_start_in_bytes, _nalu_size_in_bytes} = nalu.unprefixed_poslen
+        nalu_start = nalu_start_in_bytes * 8
+
+        <<_beggining::size(nalu_start), header_bits::binary-size(1), _rest::bitstring>> = payload
+
+        {_rest_of_nalu_payload, state} =
+          SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
+
+        new_state = %State{__global__: state.__global__, __local__: %{}}
+        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
+      end)
+
+    nalus =
+      nalus
+      |> Enum.map(fn nalu ->
+        Map.put(nalu, :type, NALuTypes.get_type(nalu.parsed_fields.nal_unit_type))
+      end)
+
+    {nalus, state} =
+      nalus
+      |> Enum.map_reduce(state, fn nalu, state ->
+        {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
+        nalu_start = nalu_start_in_bytes * 8
+        nalu_without_header_size_in_bytes = nalu_size_in_bytes - 1
+
+        <<_beggining::size(nalu_start), _header_bits::8,
+          nalu_body_payload::binary-size(nalu_without_header_size_in_bytes),
+          _rest::bitstring>> = payload
+
+        state = Map.put(state, :__local__, nalu.parsed_fields)
+
+        {_rest_of_nalu_payload, state} = parse_proper_nalu_type(nalu_body_payload, state)
+
+        new_state = %State{__global__: state.__global__, __local__: %{}}
+        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
+      end)
+
+    {nalus, state}
+  end
+
+  defp parse_proper_nalu_type(payload, state) do
+    case NALuTypes.get_type(state.__local__.nal_unit_type) do
+      :sps ->
+        SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
+
+      :pps ->
+        SchemeParser.parse_with_scheme(payload, Schemes.PPS.scheme(), state)
+
+      :idr ->
+        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
+
+      :non_idr ->
+        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
+
+      _unknown_nalu_type ->
+        {payload, state}
+    end
   end
 end

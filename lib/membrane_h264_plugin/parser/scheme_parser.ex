@@ -1,6 +1,6 @@
-defmodule Membrane.H264.Parser.NALuPayload do
+defmodule Membrane.H264.Parser.SchemeParser do
   @moduledoc """
-  The module providing functions to parse the internal NALu structure.
+  The module providing functions to parse the binary based on the given Scheme
   """
   alias Membrane.H264.Common
   alias Membrane.H264.Parser.{Scheme, State}
@@ -21,43 +21,6 @@ defmodule Membrane.H264.Parser.NALuPayload do
           | {:uv, Scheme.value_provider_t(integer())}
           | :ue
           | :se
-
-  @nalu_types %{
-                0 => :unspecified,
-                1 => :non_idr,
-                2 => :part_a,
-                3 => :part_b,
-                4 => :part_c,
-                5 => :idr,
-                6 => :sei,
-                7 => :sps,
-                8 => :pps,
-                9 => :aud,
-                10 => :end_of_seq,
-                11 => :end_of_stream,
-                12 => :filler_data,
-                13 => :sps_extension,
-                14 => :prefix_nal_unit,
-                15 => :subset_sps,
-                (16..18) => :reserved,
-                19 => :auxiliary_non_part,
-                20 => :extension,
-                (21..23) => :reserved,
-                (24..31) => :unspecified
-              }
-              |> Enum.flat_map(fn
-                {k, v} when is_integer(k) -> [{k, v}]
-                {k, v} -> Enum.map(k, &{&1, v})
-              end)
-              |> Map.new()
-
-  @doc """
-  The function which returns the mapping of form: (nal_unit_type => human friendly NALu type name).
-  nal_unit_type  is a field available in each of the NALus.
-  The mapping is based on: Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes, of "ITU-T Rec. H.264 (01/2012)"
-  """
-  @spec nalu_types() :: %{integer() => atom()}
-  def nalu_types(), do: @nalu_types
 
   @doc """
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.

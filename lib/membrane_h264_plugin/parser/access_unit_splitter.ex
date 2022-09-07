@@ -1,4 +1,4 @@
-defmodule Membrane.H264.AccessUnitSplitter do
+defmodule Membrane.H264.Parser.AccessUnitSplitter do
   @moduledoc """
   Module providing functionalities to divide the binary h264 stream into access units.
   The access unit splitter's behaviour is based on 7.4.1.2.3 "Order of NAL units and coded pictures and association to access units"
@@ -15,20 +15,6 @@ defmodule Membrane.H264.AccessUnitSplitter do
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
   @type access_unit_t() :: list(NALu.nalu_t())
-
-  @doc """
-  Parses the provided binary with the NALu parser and splits the received list of NALus into multiple sublists,
-  with each of these sublists containing NALus from one access unit.
-  """
-  @spec split_binary_into_access_units(binary()) :: list(access_unit_t())
-  def split_binary_into_access_units(binary) do
-    {parsed_nalus, _state} = NALu.parse(binary)
-
-    {_nalus, _buffer, _state, _previous_primary_coded_picture_nalu, access_units} =
-      split_nalus_into_access_units(parsed_nalus)
-
-    access_units
-  end
 
   # split_nalus_into_access_units/5 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
