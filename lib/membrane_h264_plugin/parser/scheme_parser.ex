@@ -36,24 +36,20 @@ defmodule Membrane.H264.Parser.SchemeParser do
       ) do
     scheme
     |> Enum.reduce({payload, state}, fn {operator, arguments}, {payload, state} ->
-      case operator do
-        :field ->
-          {name, type} = arguments
+      case {operator, arguments} do
+        {:field, {name, type}} ->
           {field_value, payload} = parse_field(payload, state, type)
 
           {payload,
            insert_into_parser_state(state, field_value, [:__local__] ++ [name] ++ iterators)}
 
-        :if ->
-          {condition, scheme} = arguments
+        {:if, {condition, scheme}} ->
           run_conditionally(payload, state, scheme, condition)
 
-        :for ->
-          {[iterator: iterator_name, from: min_value, to: max_value], scheme} = arguments
+        {:for, {[iterator: iterator_name, from: min_value, to: max_value], scheme}} ->
           loop(payload, state, scheme, iterators, iterator_name, min_value, max_value)
 
-        :calculate ->
-          {name, to_calculate} = arguments
+        {:calculate, {name, to_calculate}} ->
           {function, args_list} = make_function(to_calculate)
 
           {payload,
@@ -63,12 +59,10 @@ defmodule Membrane.H264.Parser.SchemeParser do
              apply(function, get_args(args_list, state.__local__))
            )}
 
-        :execute ->
-          function = arguments
+        {:execute, function} ->
           function.(payload, state, iterators)
 
-        :save_state_as_global_state ->
-          key_generator = arguments
+        {:save_state_as_global_state, key_generator} ->
           {key_generating_function, args_list} = make_function(key_generator)
           key = apply(key_generating_function, get_args(args_list, state.__local__))
 

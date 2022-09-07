@@ -32,33 +32,15 @@ defmodule Membrane.H264.Parser.SchemeParser.Schemes.Slice do
         Map.get(sps, :separate_colour_plane_flag, 0)
       )
 
-    state =
-      Bunch.Access.put_in(
-        state,
-        [:__local__, :log2_max_frame_num_minus4],
-        Map.get(sps, :log2_max_frame_num_minus4)
-      )
+    sps_fields =
+      Map.take(sps, [
+        :log2_max_frame_num_minus4,
+        :frame_mbs_only_flag,
+        :pic_order_cnt_type,
+        :log2_max_pic_order_cnt_lsb_minus4
+      ])
 
-    state =
-      Bunch.Access.put_in(
-        state,
-        [:__local__, :frame_mbs_only_flag],
-        Map.get(sps, :frame_mbs_only_flag)
-      )
-
-    state =
-      Bunch.Access.put_in(
-        state,
-        [:__local__, :pic_order_cnt_type],
-        Map.get(sps, :pic_order_cnt_type)
-      )
-
-    state =
-      Bunch.Access.put_in(
-        state,
-        [:__local__, :log2_max_pic_order_cnt_lsb_minus4],
-        Map.get(sps, :log2_max_pic_order_cnt_lsb_minus4)
-      )
+    state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
 
     {payload, state}
   end

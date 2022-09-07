@@ -36,14 +36,14 @@ defmodule Membrane.H264.Parser.SchemeParser.Scheme do
   """
   @type value_provider_t(return_type) :: return_type | {(... -> return_type), list(any())}
 
-  @type t :: [
-          field: field_t(),
-          if: if_t(),
-          for: for_t(),
-          calculate: calculate_t(),
-          execute: execute_t(),
-          save_as_global_state: save_as_global_state_t()
-        ]
+  @type directive_t ::
+          {:field, field_t()}
+          | {:if, if_t()}
+          | {:for, for_t()}
+          | {:calculate, calculate_t()}
+          | {:execute, execute_t()}
+          | {:save_as_global_state, save_as_global_state_t()}
+  @type t :: list(directive_t())
 
   @callback scheme() :: t()
 end
