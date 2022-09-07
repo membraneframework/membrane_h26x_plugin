@@ -18,7 +18,8 @@ defmodule Membrane.H264.Parser do
 
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.Parser.AccessUnitSplitter
-  alias Membrane.H264.Parser.{Caps, NALuSplitter, NALuTypes, SchemeParser, Schemes, State}
+  alias Membrane.H264.Parser.{Caps, NALuSplitter, NALuTypes, SchemeParser}
+  alias Membrane.H264.Parser.SchemeParser.{Schemes, State}
 
   def_input_pad :input,
     demand_unit: :buffers,

@@ -1,6 +1,6 @@
-defmodule Membrane.H264.Parser.Schemes.Slice do
+defmodule Membrane.H264.Parser.SchemeParser.Schemes.Slice do
   @moduledoc false
-  @behaviour Membrane.H264.Parser.Scheme
+  @behaviour Membrane.H264.Parser.SchemeParser.Scheme
 
   @impl true
   def scheme(),

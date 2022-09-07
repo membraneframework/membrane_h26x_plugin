@@ -11,10 +11,10 @@ defmodule AccessUnitSplitterTest do
       AccessUnitSplitter,
       NALuSplitter,
       NALuTypes,
-      SchemeParser,
-      Schemes,
-      State
+      SchemeParser
     }
+
+    alias Membrane.H264.Parser.SchemeParser.{Schemes, State}
 
     @spec parse(binary(), State.t()) :: AccessUnitSplitter.access_unit_t()
     def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do

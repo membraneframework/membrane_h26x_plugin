@@ -3,7 +3,8 @@ defmodule Membrane.H264.Parser.SchemeParser do
   The module providing functions to parse the binary based on the given Scheme
   """
   alias Membrane.H264.Common
-  alias Membrane.H264.Parser.{Scheme, State}
+  alias Membrane.H264.Parser.SchemeParser.Scheme
+  alias Membrane.H264.Parser.SchemeParser.State
 
   @typedoc """
   A type describing the field types which can be used in NALu scheme definition.

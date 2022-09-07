@@ -1,8 +1,8 @@
-defmodule Membrane.H264.Parser.Scheme do
+defmodule Membrane.H264.Parser.SchemeParser.Scheme do
   @moduledoc """
   A module defining the behaviour which should be implemented by each NALu scheme.
   A NALu scheme is defining the internal structure of the NALu and describes the fields which need to by fetched from the binary.
-  The `Membrane.H264.Parser.Scheme` behaviour defines a single callback: `scheme/0`, which returns the description of NALu structure.
+  The `Membrane.H264.Parser.SchemeParserScheme` behaviour defines a single callback: `scheme/0`, which returns the description of NALu structure.
 
   The syntax which can be used to describe the NALu scheme is designed to match the syntax forms used in 7.1. chapter of the "ITU-T Rec. H.264 (01/2012)".
   The scheme is read by the parser in an imperative manner, line by line.
@@ -15,7 +15,8 @@ defmodule Membrane.H264.Parser.Scheme do
   * save_as_global_state_t: saves the current parser state, concerning the NALu which is currently processed, in the map under the `:__global__` key in the state. Information
   from the saved state can be used while parsing the following NALus.
   """
-  alias Membrane.H264.Parser.{SchemeParser, State}
+  alias Membrane.H264.Parser.SchemeParser
+  alias Membrane.H264.Parser.SchemeParser.State
 
   @type field_t :: {any(), SchemeParser.field_t()}
   @type if_t :: {value_provider_t(boolean()), t()}
