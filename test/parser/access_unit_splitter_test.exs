@@ -18,7 +18,7 @@ defmodule AccessUnitSplitterTest do
 
     @spec parse(binary(), State.t()) :: AccessUnitSplitter.access_unit_t()
     def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do
-      {nalus, state} =
+      {nalus, _state} =
         payload
         |> NALuSplitter.extract_nalus()
         |> Enum.map_reduce(state, fn nalu, state ->
