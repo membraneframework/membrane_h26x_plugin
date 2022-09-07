@@ -9,12 +9,12 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   additional condition which, when satisfied, says that the given VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
-  alias Membrane.H264.Parser.NALu
+  alias Membrane.H264.Parser.NALuSplitter
 
   @non_vcl_nalus [:sps, :pps, :aud, :sei]
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
-  @type access_unit_t() :: list(NALu.nalu_t())
+  @type access_unit_t() :: list(NALuSplitter.nalu_t())
 
   # split_nalus_into_access_units/5 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
@@ -31,14 +31,14 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   The state :second describes the state after processing the primary coded picture NALu of a given access unit.
   """
   @spec split_nalus_into_access_units(
-          list(NALu.nalu_t()),
-          list(NALu.nalu_t()),
+          list(NALuSplitter.nalu_t()),
+          list(NALuSplitter.nalu_t()),
           :first | :second,
-          NALu.nalu_t() | nil,
+          NALuSplitter.nalu_t() | nil,
           list(access_unit_t())
         ) ::
-          {list(NALu.nalu_t()), list(NALu.nalu_t()), :first | :second, NALu.nalu_t() | nil,
-           list(access_unit_t())}
+          {list(NALuSplitter.nalu_t()), list(NALuSplitter.nalu_t()), :first | :second,
+           NALuSplitter.nalu_t() | nil, list(access_unit_t())}
   def split_nalus_into_access_units(
         nalus,
         buffer \\ [],

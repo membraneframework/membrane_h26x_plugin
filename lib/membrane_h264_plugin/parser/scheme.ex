@@ -15,9 +15,9 @@ defmodule Membrane.H264.Parser.Scheme do
   * save_as_global_state_t: saves the current parser state, concerning the NALu which is currently processed, in the map under the `:__global__` key in the state. Information
   from the saved state can be used while parsing the following NALus.
   """
-  alias Membrane.H264.Parser.{NALuPayload, State}
+  alias Membrane.H264.Parser.{SchemeParser, State}
 
-  @type field_t :: {any(), NALuPayload.field_t()}
+  @type field_t :: {any(), SchemeParser.field_t()}
   @type if_t :: {value_provider_t(boolean()), t()}
   @type for_t ::
           {[iterator: any(), from: value_provider_t(integer()), to: value_provider_t(integer())],

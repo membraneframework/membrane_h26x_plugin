@@ -5,19 +5,18 @@ defmodule AccessUnitSplitterTest do
 
   alias Membrane.H264.FFmpeg.Parser.Native, as: NativeParser
 
-
-
   defmodule FullBinaryParser do
     @moduledoc false
     alias Membrane.H264.Parser.{
       AccessUnitSplitter,
       NALuSplitter,
-      State,
-      Schemes,
+      NALuTypes,
       SchemeParser,
-      NALuTypes
+      Schemes,
+      State
     }
 
+    @spec parse(binary(), State.t()) :: AccessUnitSplitter.access_unit_t()
     def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do
       {nalus, state} =
         payload
