@@ -19,7 +19,7 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.Parser.AccessUnitSplitter
   alias Membrane.H264.Parser.{Caps, NALuSplitter, NALuTypes, SchemeParser}
-  alias Membrane.H264.Parser.SchemeParser.{Schemes, State}
+  alias Membrane.H264.Parser.SchemeParser.Schemes
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -67,7 +67,8 @@ defmodule Membrane.H264.Parser do
       splitter_nalus_buffer: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      parser_state: %State{__global__: %{}, __local__: %{}},
+      scheme_parser_state: %SchemeParser.State{__global__: %{}, __local__: %{}},
+      pps: opts.pps,
       sps: opts.sps,
       skip: opts.skip_until_parameters?,
       timestamps_mapping: []
@@ -124,7 +125,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process(payload, state) do
-    {nalus, parser_state} = parse(payload, state.parser_state)
+    {nalus, scheme_parser_state} = parse(payload, state.scheme_parser_state)
 
     {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
      access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
@@ -137,7 +138,7 @@ defmodule Membrane.H264.Parser do
     state = %{
       state
       | splitter_nalus_buffer: splitter_nalus_buffer,
-        parser_state: parser_state,
+        scheme_parser_state: scheme_parser_state,
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
         unparsed_payload: unparsed_payload
@@ -338,9 +339,9 @@ defmodule Membrane.H264.Parser do
     {Caps.default_caps(), state}
   end
 
-  defp get_caps_from_options(%{sps: sps, parser_state: parser_state} = state) do
-    {[sps | _rest], new_parser_state} = parse(sps, parser_state)
-    {Caps.from_caps(sps), %{state | parser_state: new_parser_state}}
+  defp get_caps_from_options(%{sps: sps, scheme_parser_state: scheme_parser_state} = state) do
+    {[sps | _rest], new_scheme_parser_state} = parse(sps, scheme_parser_state)
+    {Caps.from_caps(sps), %{state | scheme_parser_state: new_scheme_parser_state}}
   end
 
   defp parse(payload, state) do
@@ -356,7 +357,7 @@ defmodule Membrane.H264.Parser do
         {_rest_of_nalu_payload, state} =
           SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
 
-        new_state = %State{__global__: state.__global__, __local__: %{}}
+        new_state = %SchemeParser.State{__global__: state.__global__, __local__: %{}}
         {Map.put(nalu, :parsed_fields, state.__local__), new_state}
       end)
 
@@ -381,7 +382,7 @@ defmodule Membrane.H264.Parser do
 
         {_rest_of_nalu_payload, state} = parse_proper_nalu_type(nalu_body_payload, state)
 
-        new_state = %State{__global__: state.__global__, __local__: %{}}
+        new_state = %SchemeParser.State{__global__: state.__global__, __local__: %{}}
         {Map.put(nalu, :parsed_fields, state.__local__), new_state}
       end)
 
