@@ -40,7 +40,7 @@ defmodule Decoding.Pipeline do
   @impl true
   def handle_init(_ptions) do
     children = [
-      source: %File.Source{chunk_size: 40_960, location: "input.h264"},
+      source: %File.Source{location: "test/fixtures/input-10-720p-main.h264"},
       parser: H264.Parser,
       decoder: H264.FFmpeg.Decoder,
       sink: %File.Sink{location: "output.raw"}
