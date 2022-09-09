@@ -71,7 +71,7 @@ defmodule Membrane.H264.Parser do
       sps: opts.sps,
       should_skip_bufffers?: true,
       timestamps_mapping: [],
-      unparsed_payload: opts.sps <> opts.pps,
+      unparsed_payload: opts.sps <> opts.pps
     }
 
     {:ok, state}
@@ -92,36 +92,47 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, _ctx, state) do
-
-    {nalus, _scheme_parser_state} = parse(state.unparsed_payload, state.scheme_parser_state, nil, nil, false)
-
+    {nalus, _scheme_parser_state} =
+      parse(state.unparsed_payload, state.scheme_parser_state, nil, nil, false)
 
     {[], splitter_nalus_buffer, _splitter_state, _previous_primary_coded_picture_nalu,
-     access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus, state.splitter_nalus_buffer, state.splitter_state, state.previous_primary_coded_picture_nalu)
+     access_units} =
+      AccessUnitSplitter.split_nalus_into_access_units(
+        nalus,
+        state.splitter_nalus_buffer,
+        state.splitter_state,
+        state.previous_primary_coded_picture_nalu
+      )
 
     actions = prepare_actions_for_aus(access_units)
 
+    sent_remaining_buffers_actions =
+      if splitter_nalus_buffer != [] do
+        rest_buffer = wrap_into_buffer(splitter_nalus_buffer)
+        [buffer: {:output, rest_buffer}]
+      else
+        []
+      end
 
-    sent_remaining_buffers_actions = if splitter_nalus_buffer != [] do
-      rest_buffer = wrap_into_buffer(splitter_nalus_buffer)
-      [buffer: {:output, rest_buffer}]
-    else
-      []
-    end
-    {{:ok, actions++sent_remaining_buffers_actions++[end_of_stream: :output]}, state}
+    {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
   end
 
   defp process(payload, state, pts, dts) do
-
     {nalus, scheme_parser_state} = parse(payload, state.scheme_parser_state, pts, dts)
-    unparsed_payload_start = nalus |> Enum.reduce(0, fn nalu, acc -> acc+byte_size(nalu.payload) end )
-    unparsed_payload = :binary.part(payload, unparsed_payload_start, byte_size(payload)-unparsed_payload_start)
 
+    unparsed_payload_start =
+      nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
 
-    {[], splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
-     access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus, state.splitter_nalus_buffer, state.splitter_state, state.previous_primary_coded_picture_nalu)
+    unparsed_payload =
+      :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
 
-
+    {[], splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu, access_units} =
+      AccessUnitSplitter.split_nalus_into_access_units(
+        nalus,
+        state.splitter_nalus_buffer,
+        state.splitter_state,
+        state.previous_primary_coded_picture_nalu
+      )
 
     state = %{
       state
@@ -131,22 +142,24 @@ defmodule Membrane.H264.Parser do
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
         unparsed_payload: unparsed_payload
     }
+
     actions = prepare_actions_for_aus(access_units)
     {{:ok, actions}, state}
   end
 
-
   defp prepare_actions_for_aus(aus) do
     Enum.reduce(aus, [], fn au, acc ->
-      sps_actions = if au_with_nalu_of_type?(au, :sps) do
-        sps_nalu = au |> Enum.find(&(&1.type == :sps))
-        caps = Caps.from_caps(sps_nalu)
-        [caps: {:output, caps}]
-      else
-        []
-      end
-      acc++sps_actions++au_into_buffer_action(au)
-    end )
+      sps_actions =
+        if au_with_nalu_of_type?(au, :sps) do
+          sps_nalu = au |> Enum.find(&(&1.type == :sps))
+          caps = Caps.from_caps(sps_nalu)
+          [caps: {:output, caps}]
+        else
+          []
+        end
+
+      acc ++ sps_actions ++ au_into_buffer_action(au)
+    end)
   end
 
   defp au_with_nalu_of_type?(au, type) do
@@ -156,20 +169,23 @@ defmodule Membrane.H264.Parser do
   end
 
   defp au_into_buffer_action(au) do
-   [{:buffer, {:output, wrap_into_buffer(au)}}]
+    [{:buffer, {:output, wrap_into_buffer(au)}}]
   end
 
   defp wrap_into_buffer(access_unit) do
     metadata = prepare_metadata(access_unit)
     pts = access_unit |> Enum.at(0) |> then(& &1.pts)
     dts = access_unit |> Enum.at(0) |> then(& &1.dts)
+
     buffer =
       access_unit
       |> Enum.reduce(<<>>, fn nalu, acc ->
-         acc<>nalu.payload end)
+        acc <> nalu.payload
+      end)
       |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
       end)
+
     buffer
   end
 
@@ -188,7 +204,7 @@ defmodule Membrane.H264.Parser do
           },
           prefixed_poslen: {nalu_start, byte_size(nalu.payload)},
           unprefixed_poslen:
-            {nalu_start + nalu.prefix_length, byte_size(nalu.payload)-nalu.prefix_length}
+            {nalu_start + nalu.prefix_length, byte_size(nalu.payload) - nalu.prefix_length}
         }
 
         metadata =
@@ -212,14 +228,15 @@ defmodule Membrane.H264.Parser do
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
 
-
   defp parse(payload, state, pts, dts, should_skip_last_nalu? \\ true) do
     {nalus, state} =
       payload
       |> NALuSplitter.extract_nalus(pts, dts, should_skip_last_nalu?)
       |> Enum.map_reduce(state, fn nalu, state ->
         prefix_length = nalu.prefix_length
-        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::bitstring>> = nalu.payload
+
+        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::bitstring>> =
+          nalu.payload
 
         {_rest_of_nalu_payload, state} =
           SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)

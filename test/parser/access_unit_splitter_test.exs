@@ -22,8 +22,8 @@ defmodule AccessUnitSplitterTest do
         payload
         |> NALuSplitter.extract_nalus(nil, nil, false)
         |> Enum.map_reduce(state, fn nalu, state ->
-
           prefix_length = nalu.prefix_length
+
           <<_prefix::binary-size(prefix_length), header_bits::binary-size(1),
             nalu_body_payload::bitstring>> = nalu.payload
 
