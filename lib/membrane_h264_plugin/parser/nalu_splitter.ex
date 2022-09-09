@@ -7,17 +7,18 @@ defmodule Membrane.H264.Parser.NALuSplitter do
 
 
   @doc """
-  A function which takes a binary h264 stream as a input and produces a list of `NALu.t()` structures, with the `prefixed_poslen` and `unprefixed_poslen` fields
+  A function which takes a binary h264 stream as a input and produces a list of `NALu.t()` structures, with the `payload` and `prefix_length` fields
   set to the appropriate values, corresponding to the position of the NAL unit in the input binary.
   """
-  @spec extract_nalus(binary()) :: [NALu.t()]
-  def extract_nalus(payload) do
+  @spec extract_nalus(binary(), non_neg_integer()|nil, non_neg_integer()|nil, boolean()) :: [NALu.t()]
+  def extract_nalus(payload, pts, dts, should_skip_last_nalu?) do
     payload
     |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
     |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
+    |> then(& if should_skip_last_nalu?, do: Enum.drop(&1, -1), else: &1)
     |> Enum.map(fn [{from, prefix_len}, {to, _}] ->
       len = to - from
-      %NALu{prefixed_poslen: {from, len}, unprefixed_poslen: {from + prefix_len, len - prefix_len}}
+      %NALu{payload: :binary.part(payload, from, len), prefix_length: prefix_len, pts: pts, dts: dts}
     end)
   end
 end

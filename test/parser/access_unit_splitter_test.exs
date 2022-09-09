@@ -20,15 +20,12 @@ defmodule AccessUnitSplitterTest do
     def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do
       {nalus, _state} =
         payload
-        |> NALuSplitter.extract_nalus()
+        |> NALuSplitter.extract_nalus(nil, nil, false)
         |> Enum.map_reduce(state, fn nalu, state ->
-          {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
-          nalu_start = nalu_start_in_bytes * 8
-          nalu_without_header_size_in_bytes = nalu_size_in_bytes - 1
 
-          <<_beggining::size(nalu_start), header_bits::binary-size(1),
-            nalu_body_payload::binary-size(nalu_without_header_size_in_bytes),
-            _rest::bitstring>> = payload
+          prefix_length = nalu.prefix_length
+          <<_prefix::binary-size(prefix_length), header_bits::binary-size(1),
+            nalu_body_payload::bitstring>> = nalu.payload
 
           {_rest_of_nalu_payload, state} =
             SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
@@ -82,8 +79,8 @@ defmodule AccessUnitSplitterTest do
       au_lengths =
         for au <- aus,
             do:
-              Enum.reduce(au, 0, fn %{prefixed_poslen: {_from, len}}, acc ->
-                len + acc
+              Enum.reduce(au, 0, fn %{payload: payload}, acc ->
+                byte_size(payload) + acc
               end)
 
       {:ok, decoder_ref} = NativeParser.create()

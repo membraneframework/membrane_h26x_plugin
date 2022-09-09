@@ -8,11 +8,13 @@ defmodule Membrane.H264.Parser.NALu do
   """
   @type t :: %{
     parsed_fields: %{atom() => any()},
-    prexifed_poslen: {integer(), integer()},
+    prefix_length: pos_integer(),
     type: atom(),
-    unprefixed_poslen: {integer(), integer()}
+    payload: binary(),
+    pts: non_neg_integer()|nil,
+    dts: non_neg_integer()|nil
   }
 
-  @enforce_keys [:prefixed_poslen, :unprefixed_poslen]
-  defstruct @enforce_keys ++ [:type, :parsed_fields]
+  @enforce_keys [:payload, :prefix_length]
+  defstruct @enforce_keys ++ [:type, :parsed_fields, :pts, :dts]
 end

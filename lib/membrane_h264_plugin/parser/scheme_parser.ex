@@ -63,6 +63,7 @@ defmodule Membrane.H264.Parser.SchemeParser do
           function.(payload, state, iterators)
 
         {:save_state_as_global_state, key_generator} ->
+
           {key_generating_function, args_list} = make_function(key_generator)
           key = apply(key_generating_function, get_args(args_list, state.__local__))
 
