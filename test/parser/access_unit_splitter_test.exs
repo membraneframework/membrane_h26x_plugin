@@ -20,7 +20,7 @@ defmodule AccessUnitSplitterTest do
     def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do
       {nalus, _state} =
         payload
-        |> NALuSplitter.extract_nalus(nil, nil, false)
+        |> NALuSplitter.extract_nalus(nil, nil, nil, nil, false)
         |> Enum.map_reduce(state, fn nalu, state ->
           prefix_length = nalu.prefix_length
 

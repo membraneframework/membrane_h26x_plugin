@@ -71,7 +71,9 @@ defmodule Membrane.H264.Parser do
       sps: opts.sps,
       should_skip_bufffers?: true,
       timestamps_mapping: [],
-      unparsed_payload: opts.sps <> opts.pps
+      unparsed_payload: opts.sps <> opts.pps,
+      last_pts: nil,
+      last_dts: nil
     }
 
     {:ok, state}
@@ -86,14 +88,18 @@ defmodule Membrane.H264.Parser do
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     pts = Map.get(buffer, :pts)
     dts = Map.get(buffer, :dts)
-    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state, pts, dts)
+
+    {{:ok, actions}, state} =
+      process(state.unparsed_payload <> buffer.payload, state, pts, dts)
+
+    state = %{state | last_pts: pts, last_dts: dts}
     {{:ok, actions}, state}
   end
 
   @impl true
   def handle_end_of_stream(:input, _ctx, state) do
     {nalus, _scheme_parser_state} =
-      parse(state.unparsed_payload, state.scheme_parser_state, nil, nil, false)
+      parse(state.unparsed_payload, state.scheme_parser_state, nil, nil, state.last_pts, state.last_dts, false)
 
     {[], splitter_nalus_buffer, _splitter_state, _previous_primary_coded_picture_nalu,
      access_units} =
@@ -118,7 +124,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process(payload, state, pts, dts) do
-    {nalus, scheme_parser_state} = parse(payload, state.scheme_parser_state, pts, dts)
+    {nalus, scheme_parser_state} = parse(payload, state.scheme_parser_state, pts, dts, state.last_pts, state.last_dts)
 
     unparsed_payload_start =
       nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
@@ -228,10 +234,16 @@ defmodule Membrane.H264.Parser do
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
 
-  defp parse(payload, state, pts, dts, should_skip_last_nalu? \\ true) do
+  defp parse(payload, state, pts, dts, last_pts, last_dts, should_skip_last_nalu? \\ true) do
     {nalus, state} =
       payload
-      |> NALuSplitter.extract_nalus(pts, dts, should_skip_last_nalu?)
+      |> NALuSplitter.extract_nalus(
+        pts,
+        dts,
+        last_pts,
+        last_dts,
+        should_skip_last_nalu?
+      )
       |> Enum.map_reduce(state, fn nalu, state ->
         prefix_length = nalu.prefix_length
 
