@@ -18,7 +18,7 @@ defmodule Membrane.H264.Parser do
 
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.Parser.AccessUnitSplitter
-  alias Membrane.H264.Parser.{Caps, NALuSplitter, NALuTypes, SchemeParser}
+  alias Membrane.H264.Parser.{Caps, NALu, NALuSplitter, NALuTypes, SchemeParser}
   alias Membrane.H264.Parser.SchemeParser.Schemes
 
   def_input_pad :input,
@@ -256,43 +256,25 @@ defmodule Membrane.H264.Parser do
       |> Enum.map_reduce(state, fn nalu, state ->
         prefix_length = nalu.prefix_length
 
-        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::binary>> =
+        <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
           nalu.payload
 
-        {_rest_of_nalu_payload, state} =
-          SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
+        new_state = SchemeParser.State.new(state)
 
-        new_state = %SchemeParser.State{__global__: state.__global__, __local__: %{}}
-        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
-      end)
+        {parsed_fields, state} =
+          SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader.scheme(), new_state)
 
-    nalus =
-      nalus
-      |> Enum.map(fn nalu ->
-        Map.put(nalu, :type, NALuTypes.get_type(nalu.parsed_fields.nal_unit_type))
-      end)
+        type = NALuTypes.get_type(parsed_fields.nal_unit_type)
+        {parsed_fields, state} = parse_proper_nalu_type(nalu_body, state, type)
 
-    {nalus, state} =
-      nalus
-      |> Enum.map_reduce(state, fn nalu, state ->
-        prefix_length = nalu.prefix_length
-
-        <<_prefix::binary-size(prefix_length), _header_bits::binary-size(1),
-          nalu_body_payload::binary>> = nalu.payload
-
-        state = Map.put(state, :__local__, nalu.parsed_fields)
-
-        {_rest_of_nalu_payload, state} = parse_proper_nalu_type(nalu_body_payload, state)
-
-        new_state = %SchemeParser.State{__global__: state.__global__, __local__: %{}}
-        {Map.put(nalu, :parsed_fields, state.__local__), new_state}
+        {%NALu{nalu | parsed_fields: parsed_fields, type: type}, state}
       end)
 
     {nalus, state}
   end
 
-  defp parse_proper_nalu_type(payload, state) do
-    case NALuTypes.get_type(state.__local__.nal_unit_type) do
+  defp parse_proper_nalu_type(payload, state, type) do
+    case type do
       :sps ->
         SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
 
@@ -306,7 +288,7 @@ defmodule Membrane.H264.Parser do
         SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
 
       _unknown_nalu_type ->
-        {payload, state}
+        {%{}, state}
     end
   end
 end

@@ -27,13 +27,23 @@ defmodule Membrane.H264.Parser.SchemeParser do
   Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
   """
   @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
-          {bitstring(), State.t()}
+          {map(), State.t()}
   def parse_with_scheme(
         payload,
         scheme,
         state \\ %State{__local__: %{}, __global__: %{}},
         iterators \\ []
       ) do
+    {_remaining_payload, state} = do_parse_with_scheme(payload, scheme, state, iterators)
+    {state.__local__, state}
+  end
+
+  defp do_parse_with_scheme(
+         payload,
+         scheme,
+         state,
+         iterators
+       ) do
     scheme
     |> Enum.reduce({payload, state}, fn {operator, arguments}, {payload, state} ->
       case {operator, arguments} do
@@ -75,7 +85,7 @@ defmodule Membrane.H264.Parser.SchemeParser do
     {condition_function, args_list} = make_function(condition)
 
     if apply(condition_function, get_args(args_list, state.__local__)),
-      do: parse_with_scheme(payload, scheme, state),
+      do: do_parse_with_scheme(payload, scheme, state, []),
       else: {payload, state}
   end
 
@@ -93,7 +103,7 @@ defmodule Membrane.H264.Parser.SchemeParser do
         fn iterator, {payload, state} ->
           state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
 
-          parse_with_scheme(
+          do_parse_with_scheme(
             payload,
             scheme,
             state,

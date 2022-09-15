@@ -9,6 +9,7 @@ defmodule AccessUnitSplitterTest do
     @moduledoc false
     alias Membrane.H264.Parser.{
       AccessUnitSplitter,
+      NALu,
       NALuSplitter,
       NALuTypes,
       SchemeParser
@@ -24,22 +25,19 @@ defmodule AccessUnitSplitterTest do
         |> Enum.map_reduce(state, fn nalu, state ->
           prefix_length = nalu.prefix_length
 
-          <<_prefix::binary-size(prefix_length), header_bits::binary-size(1),
-            nalu_body_payload::bitstring>> = nalu.payload
+          <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
+            nalu.payload
 
-          {_rest_of_nalu_payload, state} =
-            SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
+          new_state = SchemeParser.State.new(state)
 
-          {_rest_of_nalu_payload, state} = parse_proper_nalu_type(nalu_body_payload, state)
+          {header_parsed_fields, state} =
+            SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader.scheme(), new_state)
 
-          new_state = %State{__global__: state.__global__, __local__: %{}}
-          {Map.put(nalu, :parsed_fields, state.__local__), new_state}
-        end)
+          type = NALuTypes.get_type(header_parsed_fields.nal_unit_type)
 
-      nalus =
-        nalus
-        |> Enum.map(fn nalu ->
-          Map.put(nalu, :type, NALuTypes.get_type(nalu.parsed_fields.nal_unit_type))
+          {full_nalu_parsed_fields, state} = parse_proper_nalu_type(nalu_body, state, type)
+
+          {%NALu{nalu | parsed_fields: full_nalu_parsed_fields, type: type}, state}
         end)
 
       {_nalus, _buffer, _state, _previous_primary_coded_picture_nalu, aus} =
@@ -48,8 +46,8 @@ defmodule AccessUnitSplitterTest do
       aus
     end
 
-    defp parse_proper_nalu_type(payload, state) do
-      case NALuTypes.get_type(state.__local__.nal_unit_type) do
+    defp parse_proper_nalu_type(payload, state, type) do
+      case type do
         :sps ->
           SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
 
@@ -63,7 +61,7 @@ defmodule AccessUnitSplitterTest do
           SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
 
         _unknown_nalu_type ->
-          {payload, state}
+          {%{}, state}
       end
     end
   end
