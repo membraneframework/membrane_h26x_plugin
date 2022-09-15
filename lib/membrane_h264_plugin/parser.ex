@@ -72,8 +72,6 @@ defmodule Membrane.H264.Parser do
       should_skip_bufffers?: true,
       timestamps_mapping: [],
       unparsed_payload: opts.sps <> opts.pps,
-      pts: nil,
-      dts: nil,
       last_pts: nil,
       last_dts: nil
     }
@@ -90,7 +88,6 @@ defmodule Membrane.H264.Parser do
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     pts = Map.get(buffer, :pts)
     dts = Map.get(buffer, :dts)
-    state = %{state | pts: pts, dts: dts}
 
     payload = state.unparsed_payload <> buffer.payload
 
@@ -98,8 +95,8 @@ defmodule Membrane.H264.Parser do
       parse(
         payload,
         state.scheme_parser_state,
-        state.pts,
-        state.dts,
+        pts,
+        dts,
         state.last_pts,
         state.last_dts
       )
