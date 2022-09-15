@@ -31,11 +31,11 @@ defmodule Membrane.H264.Parser.SchemeParser do
   def parse_with_scheme(
         payload,
         scheme,
-        state \\ %State{__local__: %{}, __global__: %{}},
+        state \\ State.new(),
         iterators \\ []
       ) do
     {_remaining_payload, state} = do_parse_with_scheme(payload, scheme, state, iterators)
-    {state.__local__, state}
+    {State.get_local_state(state), state}
   end
 
   defp do_parse_with_scheme(

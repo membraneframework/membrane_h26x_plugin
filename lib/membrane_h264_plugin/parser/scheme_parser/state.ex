@@ -13,7 +13,7 @@ defmodule Membrane.H264.Parser.SchemeParser.State do
   If some information needs to be available when other binary part is parsed, it needs to be stored in the map under the `:__global__` key of the parser's state, which
   can be done i.e. with the `save_as_global_state` statements of the scheme syntax.
   """
-  @type t :: %__MODULE__{__global__: map(), __local__: map()}
+  @opaque t :: %__MODULE__{__global__: map(), __local__: map()}
 
   @enforce_keys [:__global__, :__local__]
   defstruct @enforce_keys
@@ -25,5 +25,13 @@ defmodule Membrane.H264.Parser.SchemeParser.State do
   @spec new(t()) :: t()
   def new(old_state \\ %__MODULE__{__global__: %{}, __local__: %{}}) do
     %__MODULE__{__global__: old_state.__global__, __local__: %{}}
+  end
+
+  @doc """
+  Returns the local part of the state.
+  """
+  @spec get_local_state(t()) :: map()
+  def get_local_state(state) do
+    state.__local__
   end
 end
