@@ -7,15 +7,15 @@ defmodule Membrane.H264.Parser.NALuSplitter do
 
   @doc """
   A function which takes a binary h264 stream as a input and produces a list of `NALu.t()` structures, with the `payload` and `prefix_length` fields
-  set to the appropriate values, corresponding to the position of the NAL unit in the input binary.
+  set to the appropriate values, corresponding to, respectively, the binary payload of that NALu and the number of bytes of the Annex-B prefix of that NALu.
   """
   @spec extract_nalus(
-          binary(),
-          non_neg_integer() | nil,
-          non_neg_integer() | nil,
-          non_neg_integer() | nil,
-          non_neg_integer() | nil,
-          boolean()
+          payload :: binary(),
+          pts :: non_neg_integer() | nil,
+          dts :: non_neg_integer() | nil,
+          last_pts :: non_neg_integer() | nil,
+          last_dts :: non_neg_integer() | nil,
+          should_skip_last_nalu? :: boolean()
         ) :: [
           NALu.t()
         ]
@@ -38,7 +38,9 @@ defmodule Membrane.H264.Parser.NALuSplitter do
 
     nalus
     |> List.update_at(0, fn nalu ->
-      if last_pts != nil and last_dts != nil, do: %NALu{nalu | pts: last_pts}, else: nalu
+      if last_pts != nil and last_dts != nil,
+        do: %NALu{nalu | pts: last_pts, dts: last_dts},
+        else: nalu
     end)
   end
 end
