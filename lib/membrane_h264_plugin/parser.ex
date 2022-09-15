@@ -265,7 +265,7 @@ defmodule Membrane.H264.Parser do
       |> Enum.map_reduce(state, fn nalu, state ->
         prefix_length = nalu.prefix_length
 
-        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::bitstring>> =
+        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::binary>> =
           nalu.payload
 
         {_rest_of_nalu_payload, state} =
@@ -287,7 +287,7 @@ defmodule Membrane.H264.Parser do
         prefix_length = nalu.prefix_length
 
         <<_prefix::binary-size(prefix_length), _header_bits::binary-size(1),
-          nalu_body_payload::bitstring>> = nalu.payload
+          nalu_body_payload::binary>> = nalu.payload
 
         state = Map.put(state, :__local__, nalu.parsed_fields)
 
