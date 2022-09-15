@@ -86,17 +86,14 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    pts = Map.get(buffer, :pts)
-    dts = Map.get(buffer, :dts)
-
     payload = state.unparsed_payload <> buffer.payload
 
     {nalus, scheme_parser_state} =
       parse(
         payload,
         state.scheme_parser_state,
-        pts,
-        dts,
+        buffer.pts,
+        buffer.dts,
         state.last_pts,
         state.last_dts
       )
@@ -122,8 +119,8 @@ defmodule Membrane.H264.Parser do
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
         unparsed_payload: unparsed_payload,
-        last_pts: pts,
-        last_dts: dts
+        last_pts: buffer.pts,
+        last_dts: buffer.dts
     }
 
     actions = prepare_actions_for_aus(access_units)
