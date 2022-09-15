@@ -91,9 +91,45 @@ defmodule Membrane.H264.Parser do
     pts = Map.get(buffer, :pts)
     dts = Map.get(buffer, :dts)
     state = %{state | pts: pts, dts: dts}
-    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
 
-    state = %{state | last_pts: pts, last_dts: dts}
+    payload = state.unparsed_payload <> buffer.payload
+
+    {nalus, scheme_parser_state} =
+      parse(
+        payload,
+        state.scheme_parser_state,
+        state.pts,
+        state.dts,
+        state.last_pts,
+        state.last_dts
+      )
+
+    unparsed_payload_start =
+      nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
+
+    unparsed_payload =
+      :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
+
+    {[], splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu, access_units} =
+      AccessUnitSplitter.split_nalus_into_access_units(
+        nalus,
+        state.splitter_nalus_buffer,
+        state.splitter_state,
+        state.previous_primary_coded_picture_nalu
+      )
+
+    state = %{
+      state
+      | splitter_nalus_buffer: splitter_nalus_buffer,
+        scheme_parser_state: scheme_parser_state,
+        splitter_state: splitter_state,
+        previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
+        unparsed_payload: unparsed_payload,
+        last_pts: pts,
+        last_dts: dts
+    }
+
+    actions = prepare_actions_for_aus(access_units)
     {{:ok, actions}, state}
   end
 
@@ -133,41 +169,6 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process(payload, state) do
-    {nalus, scheme_parser_state} =
-      parse(
-        payload,
-        state.scheme_parser_state,
-        state.pts,
-        state.dts,
-        state.last_pts,
-        state.last_dts
-      )
-
-    unparsed_payload_start =
-      nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
-
-    unparsed_payload =
-      :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
-
-    {[], splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu, access_units} =
-      AccessUnitSplitter.split_nalus_into_access_units(
-        nalus,
-        state.splitter_nalus_buffer,
-        state.splitter_state,
-        state.previous_primary_coded_picture_nalu
-      )
-
-    state = %{
-      state
-      | splitter_nalus_buffer: splitter_nalus_buffer,
-        scheme_parser_state: scheme_parser_state,
-        splitter_state: splitter_state,
-        previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
-        unparsed_payload: unparsed_payload
-    }
-
-    actions = prepare_actions_for_aus(access_units)
-    {{:ok, actions}, state}
   end
 
   defp prepare_actions_for_aus(aus) do
