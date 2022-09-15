@@ -37,8 +37,8 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
           NALu.t() | nil,
           list(access_unit_t())
         ) ::
-          {list(NALu.t()), list(NALu.t()), :first | :second,
-          NALu.t() | nil, list(access_unit_t())}
+          {list(NALu.t()), list(NALu.t()), :first | :second, NALu.t() | nil,
+           list(access_unit_t())}
   def split_nalus_into_access_units(
         nalus,
         buffer \\ [],

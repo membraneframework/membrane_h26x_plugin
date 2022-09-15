@@ -49,11 +49,11 @@ defmodule Membrane.H264.ProcessAllTest do
     end
 
     test "process all 10 720p frames with no b frames", ctx do
-      perform_test("10-720p-no-b-frames", ctx.tmp_dir, 10)
+      perform_test("10-720p-no-b-frames", ctx.tmp_dir, 1000)
     end
 
     test "process all 100 240p frames with no b frames", ctx do
-      perform_test("100-240p-no-b-frames", ctx.tmp_dir, 100)
+      perform_test("100-240p-no-b-frames", ctx.tmp_dir, 1000)
     end
   end
 end

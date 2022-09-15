@@ -63,15 +63,17 @@ defmodule Membrane.H264.Parser do
     state = %{
       caps: nil,
       metadata: %{},
-      unparsed_payload: <<>>,
       splitter_nalus_buffer: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
       scheme_parser_state: %SchemeParser.State{__global__: %{}, __local__: %{}},
       pps: opts.pps,
       sps: opts.sps,
-      skip: opts.skip_until_parameters?,
-      timestamps_mapping: []
+      should_skip_bufffers?: true,
+      timestamps_mapping: [],
+      unparsed_payload: opts.sps <> opts.pps,
+      last_pts: nil,
+      last_dts: nil
     }
 
     {:ok, state}
@@ -84,56 +86,31 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    pts = Map.get(buffer, :pts)
-    dts = Map.get(buffer, :dts)
+    payload = state.unparsed_payload <> buffer.payload
 
-    state = %{
-      state
-      | timestamps_mapping:
-          state.timestamps_mapping ++ [{bit_size(state.unparsed_payload), {pts, dts}}]
-    }
+    {nalus, scheme_parser_state} =
+      parse(
+        payload,
+        state.scheme_parser_state,
+        buffer.pts,
+        buffer.dts,
+        state.last_pts,
+        state.last_dts
+      )
 
-    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
-    actions_size = bit_size(get_payload_from_actions(actions))
-
-    timestamps_mapping =
-      state.timestamps_mapping
-      |> Enum.map(fn {index, {pts, dts}} -> {index - actions_size, {pts, dts}} end)
-      |> Enum.filter(fn {index, {_pts, _dts}} -> index >= 0 end)
-
-    state = %{state | timestamps_mapping: timestamps_mapping}
-    {{:ok, actions}, state}
-  end
-
-  @impl true
-  def handle_end_of_stream(:input, _ctx, %{unparsed_payload: payload} = state) do
-    {{:ok, actions}, state} = process(payload, state)
-    actions_payload = get_payload_from_actions(actions)
-
-    actions_size = byte_size(actions_payload)
-
-    rest_buffer =
-      payload
-      |> :binary.part(actions_size, byte_size(payload) - actions_size)
-      |> then(fn payload ->
-        metadata = prepare_metadata(state.splitter_nalus_buffer)
-        {pts, dts} = prepare_timestamp(state.timestamps_mapping, actions_size)
-        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
-      end)
-
-    {{:ok, actions ++ [buffer: {:output, rest_buffer}, end_of_stream: :output]}, state}
-  end
-
-  defp process(payload, state) do
-    {nalus, scheme_parser_state} = parse(payload, state.scheme_parser_state)
-
-    {_rest_of_nalus, splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu,
-     access_units} = AccessUnitSplitter.split_nalus_into_access_units(nalus)
+    unparsed_payload_start =
+      nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
 
     unparsed_payload =
-      splitter_nalus_buffer
-      |> then(&parsed_poslen/1)
-      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
+      :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
+
+    {[], splitter_nalus_buffer, splitter_state, previous_primary_coded_picture_nalu, access_units} =
+      AccessUnitSplitter.split_nalus_into_access_units(
+        nalus,
+        state.splitter_nalus_buffer,
+        state.splitter_state,
+        state.previous_primary_coded_picture_nalu
+      )
 
     state = %{
       state
@@ -141,71 +118,63 @@ defmodule Membrane.H264.Parser do
         scheme_parser_state: scheme_parser_state,
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
-        unparsed_payload: unparsed_payload
+        unparsed_payload: unparsed_payload,
+        last_pts: buffer.pts,
+        last_dts: buffer.dts
     }
 
-    {new_actions, state} = prepare_actions_for_aus(access_units, payload, state)
-    {{:ok, new_actions}, state}
+    actions = prepare_actions_for_aus(access_units)
+    {{:ok, actions}, state}
   end
 
-  defp parsed_poslen([]), do: {0, 0}
-
-  defp parsed_poslen(parsed) do
-    {start, _len} =
-      parsed
-      |> hd()
-      |> get_in([:prefixed_poslen])
-
-    len =
-      parsed
-      |> List.last()
-      |> get_in([:unprefixed_poslen])
-      |> then(fn {last_start, last_len} -> last_start + last_len - start end)
-
-    {start, len}
-  end
-
-  defp get_payload_from_actions(actions) do
-    actions
-    |> Enum.filter(fn {action, _rest} -> action == :buffer end)
-    |> Enum.reduce(<<>>, &concatenate_payload_from_buffers_action(&1, &2))
-  end
-
-  defp concatenate_payload_from_buffers_action({:buffer, {_pad, buf}}, acc) do
-    case buf do
-      %Buffer{payload: payload} ->
-        acc <> payload
-
-      list_of_buffers ->
-        acc <>
-          (list_of_buffers |> Enum.map_join(& &1.payload))
-    end
-  end
-
-  defp prepare_actions_for_aus(aus, payload, acc \\ [], state)
-
-  defp prepare_actions_for_aus([], _payload, acc, state) do
-    {acc, state}
-  end
-
-  defp prepare_actions_for_aus(aus, payload, acc, state) do
-    index = Enum.find_index(aus, &au_with_nalu_of_type?(&1, :sps))
-
-    if index == nil do
-      {actions, state} = prepare_actions_without_sps(aus, payload, state)
-      {acc ++ actions, state}
-    else
-      {aus_before_sps, aus_with_sps} = Enum.split(aus, index)
-      {no_sps_actions, state} = prepare_actions_without_sps(aus_before_sps, payload, state)
-      {sps_actions, state} = prepare_actions_with_sps(aus_with_sps, payload, state)
-
-      prepare_actions_for_aus(
-        tl(aus_with_sps),
-        payload,
-        acc ++ no_sps_actions ++ sps_actions,
-        state
+  @impl true
+  def handle_end_of_stream(:input, _ctx, state) do
+    {nalus, _scheme_parser_state} =
+      parse(
+        state.unparsed_payload,
+        state.scheme_parser_state,
+        nil,
+        nil,
+        state.last_pts,
+        state.last_dts,
+        false
       )
-    end
+
+    {[], splitter_nalus_buffer, _splitter_state, _previous_primary_coded_picture_nalu,
+     access_units} =
+      AccessUnitSplitter.split_nalus_into_access_units(
+        nalus,
+        state.splitter_nalus_buffer,
+        state.splitter_state,
+        state.previous_primary_coded_picture_nalu
+      )
+
+    actions = prepare_actions_for_aus(access_units)
+
+    sent_remaining_buffers_actions =
+      if splitter_nalus_buffer != [] do
+        rest_buffer = wrap_into_buffer(splitter_nalus_buffer)
+        [buffer: {:output, rest_buffer}]
+      else
+        []
+      end
+
+    {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
+  end
+
+  defp prepare_actions_for_aus(aus) do
+    Enum.reduce(aus, [], fn au, acc ->
+      sps_actions =
+        if au_with_nalu_of_type?(au, :sps) do
+          sps_nalu = au |> Enum.find(&(&1.type == :sps))
+          caps = Caps.from_caps(sps_nalu)
+          [caps: {:output, caps}]
+        else
+          []
+        end
+
+      acc ++ sps_actions ++ au_into_buffer_action(au)
+    end)
   end
 
   defp au_with_nalu_of_type?(au, type) do
@@ -214,104 +183,43 @@ defmodule Membrane.H264.Parser do
     |> Enum.any?(&(&1 == type))
   end
 
-  defp aus_into_buffer_action(aus, payload, state) do
-    aus
-    |> Enum.map(&wrap_into_buffer(&1, payload, state))
-    |> then(&{:buffer, {:output, &1}})
+  defp au_into_buffer_action(au) do
+    [{:buffer, {:output, wrap_into_buffer(au)}}]
   end
 
-  defp prepare_actions_without_sps([], _payload, state) do
-    {[], state}
-  end
-
-  defp prepare_actions_without_sps(aus, payload, %{caps: caps, skip: skip} = state) do
-    case {caps, skip} do
-      {nil, false} ->
-        {options_caps, state} = get_caps_from_options(state)
-        caps_action = {:caps, {:output, options_caps}}
-        buffers_actions = aus_into_buffer_action(aus, payload, state)
-        {[caps_action, buffers_actions], %{state | caps: options_caps}}
-
-      {nil, true} ->
-        {[], state}
-
-      {_caps, _skip} ->
-        {[aus_into_buffer_action(aus, payload, state)], state}
-    end
-  end
-
-  defp prepare_actions_with_sps(aus_with_sps, payload, state) do
-    sps_nalu = aus_with_sps |> hd() |> Enum.find(&(&1.type == :sps))
-
-    sps_payload =
-      sps_nalu
-      |> then(& &1.prefixed_poslen)
-      |> then(fn {start, len} -> :binary.part(payload, start, len) end)
-
-    caps = Caps.from_caps(sps_nalu)
-    buffer = wrap_into_buffer(hd(aus_with_sps), payload, state)
-
-    actions = [
-      caps: {:output, caps},
-      buffer: {:output, buffer}
-    ]
-
-    new_state = %{state | caps: caps, sps: sps_payload}
-
-    {actions, new_state}
-  end
-
-  defp wrap_into_buffer(access_unit, payload, state) do
+  defp wrap_into_buffer(access_unit) do
     metadata = prepare_metadata(access_unit)
+    pts = access_unit |> Enum.at(0) |> then(& &1.pts)
+    dts = access_unit |> Enum.at(0) |> then(& &1.dts)
 
     buffer =
       access_unit
-      |> then(&parsed_poslen/1)
-      |> then(fn {start, len} ->
-        {pts, dts} = prepare_timestamp(state.timestamps_mapping, start)
-        {:binary.part(payload, start, len), pts, dts}
+      |> Enum.reduce(<<>>, fn nalu, acc ->
+        acc <> nalu.payload
       end)
-      |> then(fn {payload, pts, dts} ->
+      |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
       end)
 
     buffer
   end
 
-  defp prepare_timestamp(timestamps_mapping, start_pos) do
-    result =
-      timestamps_mapping
-      |> Enum.find(fn
-        {index, {_pts, _dts}} -> index >= start_pos
-        _else -> false
-      end)
-
-    case result do
-      {_index, {pts, dts}} -> {pts, dts}
-      _else -> {nil, nil}
-    end
-  end
-
   defp prepare_metadata(nalus) do
     is_keyframe = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
-    nalu_start = 0
 
     nalus =
       nalus
       |> Enum.zip(0..(length(nalus) - 1))
-      |> Enum.map_reduce(nalu_start, fn {nalu, i}, nalu_start ->
-        unprefixed_start_offset =
-          (nalu.unprefixed_poslen |> elem(0)) - (nalu.prefixed_poslen |> elem(0))
-
+      |> Enum.map_reduce(0, fn {nalu, i}, nalu_start ->
         metadata = %{
           metadata: %{
             h264: %{
               type: nalu.type
             }
           },
-          prefixed_poslen: {nalu_start, nalu.prefixed_poslen |> elem(1)},
+          prefixed_poslen: {nalu_start, byte_size(nalu.payload)},
           unprefixed_poslen:
-            {unprefixed_start_offset + nalu_start, nalu.unprefixed_poslen |> elem(1)}
+            {nalu_start + nalu.prefix_length, byte_size(nalu.payload) - nalu.prefix_length}
         }
 
         metadata =
@@ -328,31 +236,28 @@ defmodule Membrane.H264.Parser do
             metadata
           end
 
-        {metadata, nalu_start + (nalu.prefixed_poslen |> elem(1))}
+        {metadata, nalu_start + byte_size(nalu.payload)}
       end)
       |> elem(0)
 
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
 
-  defp get_caps_from_options(%{sps: <<>>} = state) do
-    {Caps.default_caps(), state}
-  end
-
-  defp get_caps_from_options(%{sps: sps, scheme_parser_state: scheme_parser_state} = state) do
-    {[sps | _rest], new_scheme_parser_state} = parse(sps, scheme_parser_state)
-    {Caps.from_caps(sps), %{state | scheme_parser_state: new_scheme_parser_state}}
-  end
-
-  defp parse(payload, state) do
+  defp parse(payload, state, pts, dts, last_pts, last_dts, should_skip_last_nalu? \\ true) do
     {nalus, state} =
       payload
-      |> NALuSplitter.extract_nalus()
+      |> NALuSplitter.extract_nalus(
+        pts,
+        dts,
+        last_pts,
+        last_dts,
+        should_skip_last_nalu?
+      )
       |> Enum.map_reduce(state, fn nalu, state ->
-        {nalu_start_in_bytes, _nalu_size_in_bytes} = nalu.unprefixed_poslen
-        nalu_start = nalu_start_in_bytes * 8
+        prefix_length = nalu.prefix_length
 
-        <<_beggining::size(nalu_start), header_bits::binary-size(1), _rest::bitstring>> = payload
+        <<_prefix::binary-size(prefix_length), header_bits::binary-size(1), _body::binary>> =
+          nalu.payload
 
         {_rest_of_nalu_payload, state} =
           SchemeParser.parse_with_scheme(header_bits, Schemes.NALuHeader.scheme(), state)
@@ -370,13 +275,10 @@ defmodule Membrane.H264.Parser do
     {nalus, state} =
       nalus
       |> Enum.map_reduce(state, fn nalu, state ->
-        {nalu_start_in_bytes, nalu_size_in_bytes} = nalu.unprefixed_poslen
-        nalu_start = nalu_start_in_bytes * 8
-        nalu_without_header_size_in_bytes = nalu_size_in_bytes - 1
+        prefix_length = nalu.prefix_length
 
-        <<_beggining::size(nalu_start), _header_bits::8,
-          nalu_body_payload::binary-size(nalu_without_header_size_in_bytes),
-          _rest::bitstring>> = payload
+        <<_prefix::binary-size(prefix_length), _header_bits::binary-size(1),
+          nalu_body_payload::binary>> = nalu.payload
 
         state = Map.put(state, :__local__, nalu.parsed_fields)
 
