@@ -72,6 +72,8 @@ defmodule Membrane.H264.Parser do
       should_skip_bufffers?: true,
       timestamps_mapping: [],
       unparsed_payload: opts.sps <> opts.pps,
+      pts: nil,
+      dts: nil,
       last_pts: nil,
       last_dts: nil
     }
@@ -88,8 +90,8 @@ defmodule Membrane.H264.Parser do
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     pts = Map.get(buffer, :pts)
     dts = Map.get(buffer, :dts)
-
-    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state, pts, dts)
+    state = %{state | pts: pts, dts: dts}
+    {{:ok, actions}, state} = process(state.unparsed_payload <> buffer.payload, state)
 
     state = %{state | last_pts: pts, last_dts: dts}
     {{:ok, actions}, state}
@@ -130,9 +132,16 @@ defmodule Membrane.H264.Parser do
     {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
   end
 
-  defp process(payload, state, pts, dts) do
+  defp process(payload, state) do
     {nalus, scheme_parser_state} =
-      parse(payload, state.scheme_parser_state, pts, dts, state.last_pts, state.last_dts)
+      parse(
+        payload,
+        state.scheme_parser_state,
+        state.pts,
+        state.dts,
+        state.last_pts,
+        state.last_dts
+      )
 
     unparsed_payload_start =
       nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
