@@ -168,9 +168,6 @@ defmodule Membrane.H264.Parser do
     {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
   end
 
-  defp process(payload, state) do
-  end
-
   defp prepare_actions_for_aus(aus) do
     Enum.reduce(aus, [], fn au, acc ->
       sps_actions =
