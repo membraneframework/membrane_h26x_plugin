@@ -1,14 +1,18 @@
 defmodule Membrane.H264.Parser.SchemeParser do
   @moduledoc """
-  The module providing functions to parse the binary based on the given Scheme
+  The module providing functions to parse the binary,
+  based on the given Scheme.
   """
   alias Membrane.H264.Common
   alias Membrane.H264.Parser.SchemeParser.Scheme
   alias Membrane.H264.Parser.SchemeParser.State
 
   @typedoc """
-  A type describing the field types which can be used in NALu scheme definition.
-  Defined as in: 7.2 Specification of syntax functions, categories, and descriptors of the "ITU-T Rec. H.264 (01/2012)"
+  A type describing the field types which can be used
+  in NALu scheme definition.
+
+  Defined as in: "7.2 Specification of syntax functions, categories, and descriptors"
+  of the "ITU-T Rec. H.264 (01/2012)"
   """
   @type field_t ::
           :u1
@@ -24,7 +28,11 @@ defmodule Membrane.H264.Parser.SchemeParser do
           | :se
 
   @doc """
-  Parses the binary stream representing a NALu, based on the scheme definition. Returns the remaining bitstring and the stated updated with the information fetched from the NALu.
+  Parses the binary stream representing a NALu, based
+   on the scheme definition.
+
+  Returns the remaining bitstring and the stated updated
+  with the information fetched from the NALu.
   """
   @spec parse_with_scheme(binary(), Scheme.t(), State.t(), list(integer())) ::
           {map(), State.t()}

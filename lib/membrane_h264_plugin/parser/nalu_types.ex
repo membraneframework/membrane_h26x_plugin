@@ -1,7 +1,7 @@
 defmodule Membrane.H264.Parser.NALuTypes do
   @moduledoc """
-  The module aggregating the mapping of from `nal_unit_type` fields of the NAL unit to the
-  human-firendly name of a NALu type.
+  The module aggregating the mapping of from `nal_unit_type`
+  fields of the NAL unit to the human-firendly name of a NALu type.
   """
   @nalu_types %{
                 0 => :unspecified,
@@ -33,8 +33,11 @@ defmodule Membrane.H264.Parser.NALuTypes do
               |> Map.new()
 
   @doc """
-  The function which returns the human friendly name of a NALu type for a given `nal_unit_type`.
-  The mapping is based on: "Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes" of the "ITU-T Rec. H.264 (01/2012)"
+  The function which returns the human friendly name of a NALu type
+  for a given `nal_unit_type`.
+
+  The mapping is based on: "Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes"
+  of the "ITU-T Rec. H.264 (01/2012)"
   """
   @spec get_type(non_neg_integer()) :: atom()
   def get_type(nal_unit_type) do

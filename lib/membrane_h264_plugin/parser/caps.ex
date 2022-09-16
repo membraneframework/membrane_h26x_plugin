@@ -1,6 +1,7 @@
 defmodule Membrane.H264.Parser.Caps do
   @moduledoc """
-  Module providing functionalities for parsing H264 caps from the parsed SPS NALus.
+  Module providing functionalities for parsing H264
+  caps from the parsed SPS NALus.
   """
 
   alias Membrane.H264
@@ -34,7 +35,8 @@ defmodule Membrane.H264.Parser.Caps do
 
   @doc """
   Prepares the `Membrane.H264.t()` caps based on the parsed SPS NALu.
-  During the process, the function determines the profile of the h264 stream and the picture resolution.
+  During the process, the function determines the profile of
+  the h264 stream and the picture resolution.
   """
   @spec from_caps(sps_nalu :: map()) :: H264.t()
   def from_caps(sps_nalu) do

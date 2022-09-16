@@ -5,7 +5,8 @@ defmodule Membrane.H264.Parser.NALu do
   use Bunch.Access
 
   @typedoc """
-  A type defining the structure of a single NAL unit produced by the parser.
+  A type defining the structure of a single NAL unit produced
+  by the parser.
   """
   @type t :: %{
           parsed_fields: %{atom() => any()},

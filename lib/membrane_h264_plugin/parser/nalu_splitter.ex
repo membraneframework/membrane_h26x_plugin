@@ -1,13 +1,22 @@
 defmodule Membrane.H264.Parser.NALuSplitter do
   @moduledoc """
-  A module with functions responsible for splitting the h264 stream into the NAL units.
-  The splitting is based on "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
+  A module with functions responsible for splitting
+  the h264 stream into the NAL units.
+
+  The splitting is based on
+  "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
   """
   alias Membrane.H264.Parser.NALu
 
   @doc """
-  A function which takes a binary h264 stream as a input and produces a list of `NALu.t()` structures, with the `payload` and `prefix_length` fields
-  set to the appropriate values, corresponding to, respectively, the binary payload of that NALu and the number of bytes of the Annex-B prefix of that NALu.
+  A function which splits the binary into NALus sequence.
+
+  A function takes a binary h264 stream as a input
+  and produces a list of `NALu.t()` structures, with
+  the `payload` and `prefix_length` fields set to
+  the appropriate values, corresponding to, respectively,
+  the binary payload of that NALu and the number of bytes
+  of the Annex-B prefix of that NALu.
   """
   @spec extract_nalus(
           payload :: binary(),
