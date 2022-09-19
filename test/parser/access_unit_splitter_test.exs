@@ -5,6 +5,7 @@ defmodule AccessUnitSplitterTest do
 
   alias Membrane.H264.FFmpeg.Parser.Native, as: NativeParser
 
+  @test_files_names ["10-720a", "10-720p"]
   defmodule FullBinaryParser do
     @moduledoc false
     alias Membrane.H264.Parser.{
@@ -67,9 +68,9 @@ defmodule AccessUnitSplitterTest do
   end
 
   test "if the access unit lenghts parsed by access unit splitter are the same as access units lengths parsed by FFMPEG" do
-    dir_files = Path.wildcard("test/fixtures/*.h264")
+    file_names = Enum.map(@test_files_names, fn name -> "test/fixtures/input-#{name}.h264" end)
 
-    for file_name <- dir_files do
+    for file_name <- file_names do
       binary = File.read!(file_name)
 
       aus = FullBinaryParser.parse(binary)

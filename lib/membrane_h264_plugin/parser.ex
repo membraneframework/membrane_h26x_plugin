@@ -70,7 +70,8 @@ defmodule Membrane.H264.Parser do
       unparsed_payload: opts.sps <> opts.pps,
       prev_pts: nil,
       prev_dts: nil,
-      has_seen_keyframe?: false
+      has_seen_keyframe?: false,
+      were_caps_sent?: false
     }
 
     {:ok, state}
@@ -110,6 +111,17 @@ defmodule Membrane.H264.Parser do
         state.previous_primary_coded_picture_nalu
       )
 
+    actions = prepare_actions_for_aus(access_units)
+
+    were_caps_sent? =
+      state.were_caps_sent? or
+        Enum.any?(actions, fn action ->
+          case action do
+            {:caps, _} -> true
+            _action -> false
+          end
+        end)
+
     state = %{
       state
       | splitter_nalus_acc: splitter_nalus_acc,
@@ -119,10 +131,10 @@ defmodule Membrane.H264.Parser do
         unparsed_payload: unparsed_payload,
         prev_pts: buffer.pts,
         prev_dts: buffer.dts,
-        has_seen_keyframe?: has_seen_keyframe?
+        has_seen_keyframe?: has_seen_keyframe?,
+        were_caps_sent?: were_caps_sent?
     }
 
-    actions = prepare_actions_for_aus(access_units)
     {{:ok, actions}, state}
   end
 
@@ -150,8 +162,17 @@ defmodule Membrane.H264.Parser do
 
     actions = prepare_actions_for_aus(access_units)
 
+    were_caps_sent? =
+      state.were_caps_sent? or
+        Enum.any?(actions, fn action ->
+          case action do
+            {:caps, _} -> true
+            _action -> false
+          end
+        end)
+
     sent_remaining_buffers_actions =
-      if splitter_nalus_acc != [] do
+      if splitter_nalus_acc != [] and were_caps_sent? do
         rest_buffer = wrap_into_buffer(splitter_nalus_acc)
         [buffer: {:output, rest_buffer}]
       else
