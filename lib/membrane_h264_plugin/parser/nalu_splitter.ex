@@ -41,7 +41,8 @@ defmodule Membrane.H264.Parser.NALuSplitter do
           payload: :binary.part(payload, from, len),
           prefix_length: prefix_len,
           pts: pts,
-          dts: dts
+          dts: dts,
+          status: :valid
         }
       end)
 

@@ -14,9 +14,10 @@ defmodule Membrane.H264.Parser.NALu do
           type: atom(),
           payload: binary(),
           pts: non_neg_integer() | nil,
-          dts: non_neg_integer() | nil
+          dts: non_neg_integer() | nil,
+          status: :valid | :error
         }
 
-  @enforce_keys [:payload, :prefix_length]
+  @enforce_keys [:payload, :prefix_length, :status]
   defstruct @enforce_keys ++ [:type, :parsed_fields, :pts, :dts]
 end
