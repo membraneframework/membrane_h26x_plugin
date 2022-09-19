@@ -103,6 +103,8 @@ defmodule Membrane.H264.Parser do
     unparsed_payload =
       :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
 
+    nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
+
     {[], splitter_nalus_acc, splitter_state, previous_primary_coded_picture_nalu, access_units} =
       AccessUnitSplitter.split_nalus_into_access_units(
         nalus,
@@ -151,6 +153,8 @@ defmodule Membrane.H264.Parser do
         state.prev_dts,
         false
       )
+
+    nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
 
     {[], splitter_nalus_acc, _splitter_state, _previous_primary_coded_picture_nalu, access_units} =
       AccessUnitSplitter.split_nalus_into_access_units(
@@ -236,7 +240,6 @@ defmodule Membrane.H264.Parser do
         end
       end)
 
-    nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
     {nalus, {scheme_parser_state, has_seen_keyframe?}}
   end
 
