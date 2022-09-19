@@ -199,14 +199,20 @@ defmodule Membrane.H264.Parser do
 
         type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
-        {parsed_fields, scheme_parser_state} =
-          parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
+        try do
+          {parsed_fields, scheme_parser_state} =
+            parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
 
-        status = if type != :non_idr or has_seen_keyframe?, do: :valid, else: :error
-        has_seen_keyframe? = has_seen_keyframe? or type == :idr
+          status = if type != :non_idr or has_seen_keyframe?, do: :valid, else: :error
+          has_seen_keyframe? = has_seen_keyframe? or type == :idr
 
-        {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: status},
-         {scheme_parser_state, has_seen_keyframe?}}
+          {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: status},
+           {scheme_parser_state, has_seen_keyframe?}}
+        rescue
+          _error ->
+            {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: :error},
+             {scheme_parser_state, has_seen_keyframe?}}
+        end
       end)
 
     nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
