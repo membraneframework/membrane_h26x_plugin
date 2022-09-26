@@ -233,8 +233,8 @@ defmodule Membrane.H264.Parser do
 
           {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: status},
            {scheme_parser_state, has_seen_keyframe?}}
-        rescue
-          _error ->
+        catch
+          "Cannot load information from SPS" ->
             {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: :error},
              {scheme_parser_state, has_seen_keyframe?}}
         end

@@ -22,26 +22,31 @@ defmodule Membrane.H264.Parser.SchemeParser.Schemes.Slice do
     ]
 
   defp load_data_from_sps(payload, state, _iterators) do
-    pps = Map.get(state.__global__, {:pps, state.__local__.pic_parameter_set_id})
-    sps = Map.get(state.__global__, {:sps, pps.seq_parameter_set_id})
+    with pic_parameter_set_id when pic_parameter_set_id != nil  <- Map.get(state.__local__, :pic_parameter_set_id),
+      pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
+      seq_parameter_set_id when seq_parameter_set_id != nil <- Map.get(pps, :seq_parameter_set_id),
+      sps <- Map.get(state.__global__, {:sps, seq_parameter_set_id})
+    do
+      state =
+        Bunch.Access.put_in(
+          state,
+          [:__local__, :separate_colour_plane_flag],
+          Map.get(sps, :separate_colour_plane_flag, 0)
+        )
 
-    state =
-      Bunch.Access.put_in(
-        state,
-        [:__local__, :separate_colour_plane_flag],
-        Map.get(sps, :separate_colour_plane_flag, 0)
-      )
+      sps_fields =
+        Map.take(sps, [
+          :log2_max_frame_num_minus4,
+          :frame_mbs_only_flag,
+          :pic_order_cnt_type,
+          :log2_max_pic_order_cnt_lsb_minus4
+        ])
 
-    sps_fields =
-      Map.take(sps, [
-        :log2_max_frame_num_minus4,
-        :frame_mbs_only_flag,
-        :pic_order_cnt_type,
-        :log2_max_pic_order_cnt_lsb_minus4
-      ])
+      state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
 
-    state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
-
-    {payload, state}
+      {payload, state}
+    else
+      _error -> throw "Cannot load information from SPS"
+    end
   end
 end
