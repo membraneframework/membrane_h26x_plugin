@@ -22,11 +22,12 @@ defmodule Membrane.H264.Parser.SchemeParser.Schemes.Slice do
     ]
 
   defp load_data_from_sps(payload, state, _iterators) do
-    with pic_parameter_set_id when pic_parameter_set_id != nil  <- Map.get(state.__local__, :pic_parameter_set_id),
-      pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
-      seq_parameter_set_id when seq_parameter_set_id != nil <- Map.get(pps, :seq_parameter_set_id),
-      sps <- Map.get(state.__global__, {:sps, seq_parameter_set_id})
-    do
+    with pic_parameter_set_id when pic_parameter_set_id != nil <-
+           Map.get(state.__local__, :pic_parameter_set_id),
+         pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
+         seq_parameter_set_id when seq_parameter_set_id != nil <-
+           Map.get(pps, :seq_parameter_set_id),
+         sps <- Map.get(state.__global__, {:sps, seq_parameter_set_id}) do
       state =
         Bunch.Access.put_in(
           state,
@@ -46,7 +47,7 @@ defmodule Membrane.H264.Parser.SchemeParser.Schemes.Slice do
 
       {payload, state}
     else
-      _error -> throw "Cannot load information from SPS"
+      _error -> throw("Cannot load information from SPS")
     end
   end
 end
