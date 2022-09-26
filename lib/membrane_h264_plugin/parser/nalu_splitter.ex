@@ -25,9 +25,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
           last_pts :: non_neg_integer() | nil,
           last_dts :: non_neg_integer() | nil,
           should_skip_last_nalu? :: boolean()
-        ) :: [
-          NALu.t()
-        ]
+        ) :: [NALu.t()]
   def extract_nalus(payload, pts, dts, last_pts, last_dts, should_skip_last_nalu?) do
     nalus =
       payload

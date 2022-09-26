@@ -38,8 +38,8 @@ defmodule Membrane.H264.Parser.Caps do
   During the process, the function determines the profile of
   the h264 stream and the picture resolution.
   """
-  @spec from_caps(sps_nalu :: map()) :: H264.t()
-  def from_caps(sps_nalu) do
+  @spec from_sps(sps_nalu :: H264.Parser.NALu.t()) :: H264.t()
+  def from_sps(sps_nalu) do
     sps = sps_nalu.parsed_fields
 
     {width_offset, height_offset} =
@@ -69,10 +69,8 @@ defmodule Membrane.H264.Parser.Caps do
     fields = sps_nalu.parsed_fields
 
     {profile_name, _constraints_list} =
-      @profiles_description
-      |> Enum.find({nil, nil}, fn {_profile_name, constraints_list} ->
-        constraints_list
-        |> Enum.all?(fn {key, value} ->
+      Enum.find(@profiles_description, {nil, nil}, fn {_profile_name, constraints_list} ->
+        Enum.all?(constraints_list, fn {key, value} ->
           Map.has_key?(fields, key) and fields[key] == value
         end)
       end)

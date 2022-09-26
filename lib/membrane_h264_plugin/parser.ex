@@ -265,26 +265,13 @@ defmodule Membrane.H264.Parser do
   defp prepare_actions_for_aus(aus) do
     Enum.reduce(aus, [], fn au, acc ->
       sps_actions =
-        if au_with_nalu_of_type?(au, :sps) do
-          sps_nalu = au |> Enum.find(&(&1.type == :sps))
-          caps = Caps.from_caps(sps_nalu)
-          [caps: {:output, caps}]
-        else
-          []
+        case Enum.find(au, &(&1.type == :sps)) do
+          nil -> []
+          sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu)}]
         end
 
-      acc ++ sps_actions ++ au_into_buffer_action(au)
+      acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au)}}]
     end)
-  end
-
-  defp au_with_nalu_of_type?(au, type) do
-    au
-    |> get_in([Access.all(), :type])
-    |> Enum.any?(&(&1 == type))
-  end
-
-  defp au_into_buffer_action(au) do
-    [{:buffer, {:output, wrap_into_buffer(au)}}]
   end
 
   defp wrap_into_buffer(access_unit) do
@@ -309,7 +296,7 @@ defmodule Membrane.H264.Parser do
 
     nalus =
       nalus
-      |> Enum.zip(0..(length(nalus) - 1))
+      |> Enum.with_index()
       |> Enum.map_reduce(0, fn {nalu, i}, nalu_start ->
         metadata = %{
           metadata: %{
