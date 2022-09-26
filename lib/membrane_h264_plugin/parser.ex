@@ -13,8 +13,7 @@ defmodule Membrane.H264.Parser do
 
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.Parser.AccessUnitSplitter
-  alias Membrane.H264.Parser.{Caps, NALu, NALuSplitter, NALuTypes, SchemeParser}
-  alias Membrane.H264.Parser.SchemeParser.Schemes
+  alias Membrane.H264.Parser.{Caps, NALuParser}
   alias Membrane.RemoteStream
 
   def_input_pad :input,
@@ -62,16 +61,13 @@ defmodule Membrane.H264.Parser do
       splitter_nalus_acc: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      scheme_parser_state: SchemeParser.new(),
       pps: opts.pps,
       sps: opts.sps,
       should_skip_bufffers?: true,
       timestamps_mapping: [],
       unparsed_payload: opts.sps <> opts.pps,
-      prev_pts: nil,
-      prev_dts: nil,
-      has_seen_keyframe?: false,
-      were_caps_sent?: false
+      were_caps_sent?: false,
+      nalu_parser_state: NALuParser.new()
     }
 
     {:ok, state}
@@ -85,23 +81,13 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     payload = state.unparsed_payload <> buffer.payload
+    buffer = %Membrane.Buffer{buffer | payload: payload}
 
-    {nalus, {scheme_parser_state, has_seen_keyframe?}} =
-      parse(
-        payload,
-        state.scheme_parser_state,
-        state.has_seen_keyframe?,
-        buffer.pts,
-        buffer.dts,
-        state.prev_pts,
-        state.prev_dts
+    {nalus, unparsed_payload, nalu_parser_state} =
+      NALuParser.parse(
+        buffer,
+        state.nalu_parser_state
       )
-
-    unparsed_payload_start =
-      nalus |> Enum.reduce(0, fn nalu, acc -> acc + byte_size(nalu.payload) end)
-
-    unparsed_payload =
-      :binary.part(payload, unparsed_payload_start, byte_size(payload) - unparsed_payload_start)
 
     nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
 
@@ -127,14 +113,11 @@ defmodule Membrane.H264.Parser do
     state = %{
       state
       | splitter_nalus_acc: splitter_nalus_acc,
-        scheme_parser_state: scheme_parser_state,
         splitter_state: splitter_state,
         previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
         unparsed_payload: unparsed_payload,
-        prev_pts: buffer.pts,
-        prev_dts: buffer.dts,
-        has_seen_keyframe?: has_seen_keyframe?,
-        were_caps_sent?: were_caps_sent?
+        were_caps_sent?: were_caps_sent?,
+        nalu_parser_state: nalu_parser_state
     }
 
     {{:ok, actions}, state}
@@ -142,15 +125,10 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, _ctx, state) do
-    {nalus, {_scheme_parser_state, _has_seen_keyframe?}} =
-      parse(
-        state.unparsed_payload,
-        state.scheme_parser_state,
-        state.has_seen_keyframe?,
-        nil,
-        nil,
-        state.prev_pts,
-        state.prev_dts,
+    {nalus, _unparsed_payload, _state} =
+      NALuParser.parse(
+        %Membrane.Buffer{payload: state.unparsed_payload},
+        state.nalu_parser_state,
         false
       )
 
@@ -184,82 +162,6 @@ defmodule Membrane.H264.Parser do
       end
 
     {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
-  end
-
-  defp parse(
-         payload,
-         scheme_parser_state,
-         has_seen_keyframe?,
-         pts,
-         dts,
-         prev_pts,
-         prev_dts,
-         should_skip_last_nalu? \\ true
-       ) do
-    {nalus, {scheme_parser_state, has_seen_keyframe?}} =
-      payload
-      |> NALuSplitter.extract_nalus(
-        pts,
-        dts,
-        prev_pts,
-        prev_dts,
-        should_skip_last_nalu?
-      )
-      |> Enum.map_reduce({scheme_parser_state, has_seen_keyframe?}, fn nalu,
-                                                                       {scheme_parser_state,
-                                                                        has_seen_keyframe?} ->
-        prefix_length = nalu.prefix_length
-
-        <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
-          nalu.payload
-
-        new_scheme_parser_state = SchemeParser.new(scheme_parser_state)
-
-        {parsed_fields, scheme_parser_state} =
-          SchemeParser.parse_with_scheme(
-            nalu_header,
-            Schemes.NALuHeader.scheme(),
-            new_scheme_parser_state
-          )
-
-        type = NALuTypes.get_type(parsed_fields.nal_unit_type)
-
-        try do
-          {parsed_fields, scheme_parser_state} =
-            parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
-
-          status = if type != :non_idr or has_seen_keyframe?, do: :valid, else: :error
-          has_seen_keyframe? = has_seen_keyframe? or type == :idr
-
-          {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: status},
-           {scheme_parser_state, has_seen_keyframe?}}
-        catch
-          "Cannot load information from SPS" ->
-            {%NALu{nalu | parsed_fields: parsed_fields, type: type, status: :error},
-             {scheme_parser_state, has_seen_keyframe?}}
-        end
-      end)
-
-    {nalus, {scheme_parser_state, has_seen_keyframe?}}
-  end
-
-  defp parse_proper_nalu_type(payload, state, type) do
-    case type do
-      :sps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
-
-      :pps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.PPS.scheme(), state)
-
-      :idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
-
-      :non_idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
-
-      _unknown_nalu_type ->
-        {%{}, state}
-    end
   end
 
   defp prepare_actions_for_aus(aus) do
