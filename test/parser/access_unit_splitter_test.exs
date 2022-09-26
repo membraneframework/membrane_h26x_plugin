@@ -41,8 +41,8 @@ defmodule AccessUnitSplitterTest do
           {%NALu{nalu | parsed_fields: full_nalu_parsed_fields, type: type}, state}
         end)
 
-      {_nalus, _buffer, _state, _previous_primary_coded_picture_nalu, aus} =
-        AccessUnitSplitter.split_nalus_into_access_units(nalus)
+      {aus, _state} =
+        AccessUnitSplitter.split_nalus_into_access_units(nalus, AccessUnitSplitter.new())
 
       aus
     end
