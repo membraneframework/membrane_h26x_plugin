@@ -25,7 +25,6 @@ defmodule Membrane.H264.Parser.SchemeParser.Scheme do
     from the saved state can be used while parsing the following NALus.
   """
   alias Membrane.H264.Parser.SchemeParser
-  alias Membrane.H264.Parser.SchemeParser.State
 
   @type field_t :: {any(), SchemeParser.field_t()}
   @type if_t :: {value_provider_t(boolean()), t()}
@@ -33,7 +32,7 @@ defmodule Membrane.H264.Parser.SchemeParser.Scheme do
           {[iterator: any(), from: value_provider_t(integer()), to: value_provider_t(integer())],
            t()}
   @type calculate_t :: {any(), value_provider_t(any())}
-  @type execute_t :: (binary(), State.t(), list(integer()) -> {binary(), State.t()})
+  @type execute_t :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
   @type save_as_global_state_t :: value_provider_t(any())
 
   @typedoc """

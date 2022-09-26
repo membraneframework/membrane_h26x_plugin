@@ -16,10 +16,10 @@ defmodule AccessUnitSplitterTest do
       SchemeParser
     }
 
-    alias Membrane.H264.Parser.SchemeParser.{Schemes, State}
+    alias Membrane.H264.Parser.SchemeParser.Schemes
 
-    @spec parse(binary(), State.t()) :: AccessUnitSplitter.access_unit_t()
-    def parse(payload, state \\ %State{__local__: %{}, __global__: %{}}) do
+    @spec parse(binary(), SchemeParser.t()) :: AccessUnitSplitter.access_unit_t()
+    def parse(payload, state \\ %SchemeParser{__local__: %{}, __global__: %{}}) do
       {nalus, _state} =
         payload
         |> NALuSplitter.extract_nalus(nil, nil, nil, nil, false)
@@ -29,7 +29,7 @@ defmodule AccessUnitSplitterTest do
           <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
             nalu.payload
 
-          new_state = SchemeParser.State.new(state)
+          new_state = SchemeParser.new(state)
 
           {header_parsed_fields, state} =
             SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader.scheme(), new_state)

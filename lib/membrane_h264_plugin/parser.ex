@@ -62,7 +62,7 @@ defmodule Membrane.H264.Parser do
       splitter_nalus_acc: [],
       splitter_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      scheme_parser_state: %SchemeParser.State{__global__: %{}, __local__: %{}},
+      scheme_parser_state: SchemeParser.new(),
       pps: opts.pps,
       sps: opts.sps,
       should_skip_bufffers?: true,
@@ -213,7 +213,7 @@ defmodule Membrane.H264.Parser do
         <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
           nalu.payload
 
-        new_scheme_parser_state = SchemeParser.State.new(scheme_parser_state)
+        new_scheme_parser_state = SchemeParser.new(scheme_parser_state)
 
         {parsed_fields, scheme_parser_state} =
           SchemeParser.parse_with_scheme(
