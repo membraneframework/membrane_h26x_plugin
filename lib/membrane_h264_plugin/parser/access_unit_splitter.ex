@@ -16,6 +16,37 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   """
   alias Membrane.H264.Parser.NALu
 
+  @typedoc """
+  A structure holding a state of the access unit splitter.
+  """
+  @opaque t :: %__MODULE__{
+            nalus_acc: [NALu.t()],
+            fsm_state: :first | :second,
+            previous_primary_coded_picture_nalu: NALu.t() | nil,
+            access_units_to_output: access_unit_t()
+          }
+  @enforce_keys [
+    :nalus_acc,
+    :fsm_state,
+    :previous_primary_coded_picture_nalu,
+    :access_units_to_output
+  ]
+  defstruct @enforce_keys
+
+  @doc """
+  A function that returns a structure holding a clear state of the
+  access unit splitter.
+  """
+  @spec new() :: t()
+  def new() do
+    %__MODULE__{
+      nalus_acc: [],
+      fsm_state: :first,
+      previous_primary_coded_picture_nalu: nil,
+      access_units_to_output: []
+    }
+  end
+
   @non_vcl_nalus [:sps, :pps, :aud, :sei]
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
@@ -42,45 +73,35 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   """
   @spec split_nalus_into_access_units(
           list(NALu.t()),
-          list(NALu.t()),
-          :first | :second,
-          NALu.t() | nil,
-          list(access_unit_t())
+          t()
         ) ::
-          {list(NALu.t()), list(NALu.t()), :first | :second, NALu.t() | nil,
-           list(access_unit_t())}
+          {list(access_unit_t()), t()}
   def split_nalus_into_access_units(
         nalus,
-        nalus_acc \\ [],
-        state \\ :first,
-        previous_primary_coded_picture_nalu \\ nil,
-        access_units \\ []
+        state
       )
 
   def split_nalus_into_access_units(
         [first_nalu | rest_nalus],
-        nalus_acc,
-        :first,
-        previous_primary_coded_picture_nalu,
-        access_units
-      ) do
+        state
+      )
+      when state.fsm_state == :first do
     cond do
-      is_new_primary_coded_vcl_nalu(first_nalu, previous_primary_coded_picture_nalu) ->
+      is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
         split_nalus_into_access_units(
           rest_nalus,
-          nalus_acc ++ [first_nalu],
-          :second,
-          first_nalu,
-          access_units
+          %__MODULE__{
+            state
+            | nalus_acc: state.nalus_acc ++ [first_nalu],
+              fsm_state: :second,
+              previous_primary_coded_picture_nalu: first_nalu
+          }
         )
 
       first_nalu.type in @non_vcl_nalus ->
         split_nalus_into_access_units(
           rest_nalus,
-          nalus_acc ++ [first_nalu],
-          :first,
-          previous_primary_coded_picture_nalu,
-          access_units
+          %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
@@ -90,37 +111,36 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
 
   def split_nalus_into_access_units(
         [first_nalu | rest_nalus],
-        nalus_acc,
-        :second,
-        previous_primary_coded_picture_nalu,
-        access_units
-      ) do
+        state
+      )
+      when state.fsm_state == :second do
     cond do
       first_nalu.type in @non_vcl_nalus ->
         split_nalus_into_access_units(
           rest_nalus,
-          [first_nalu],
-          :first,
-          previous_primary_coded_picture_nalu,
-          access_units ++ [nalus_acc]
+          %__MODULE__{
+            state
+            | nalus_acc: [first_nalu],
+              fsm_state: :first,
+              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+          }
         )
 
-      is_new_primary_coded_vcl_nalu(first_nalu, previous_primary_coded_picture_nalu) ->
+      is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
         split_nalus_into_access_units(
           rest_nalus,
-          [first_nalu],
-          :second,
-          first_nalu,
-          access_units ++ [nalus_acc]
+          %__MODULE__{
+            state
+            | nalus_acc: [first_nalu],
+              previous_primary_coded_picture_nalu: first_nalu,
+              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+          }
         )
 
       first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
         split_nalus_into_access_units(
           rest_nalus,
-          nalus_acc ++ [first_nalu],
-          :second,
-          previous_primary_coded_picture_nalu,
-          access_units
+          %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
@@ -128,14 +148,19 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
     end
   end
 
-  def split_nalus_into_access_units(
-        [] = nalus,
-        nalus_acc,
-        state,
-        previous_primary_coded_picture_nalu,
-        access_units
-      ) do
-    {nalus, nalus_acc, state, previous_primary_coded_picture_nalu, access_units}
+  def split_nalus_into_access_units([], state) do
+    {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
+  end
+
+  @doc """
+  Returns a list of NAL units which are hold in access unit splitter's state accumulator.
+
+  These NAL units aren't proved to form a new access units and that is why they haven't yet been
+  output by `split_nalus_into_access_units`.
+  """
+  @spec get_remaining_nalus(t()) :: list(NALu.t())
+  def get_remaining_nalus(state) do
+    state.nalus_acc
   end
 
   # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply

@@ -58,16 +58,13 @@ defmodule Membrane.H264.Parser do
     state = %{
       caps: nil,
       metadata: %{},
-      splitter_nalus_acc: [],
-      splitter_state: :first,
-      previous_primary_coded_picture_nalu: nil,
       pps: opts.pps,
       sps: opts.sps,
       should_skip_bufffers?: true,
-      timestamps_mapping: [],
       unparsed_payload: opts.sps <> opts.pps,
       were_caps_sent?: false,
-      nalu_parser_state: NALuParser.new()
+      nalu_parser_state: NALuParser.new(),
+      access_unit_splitter_state: AccessUnitSplitter.new()
     }
 
     {:ok, state}
@@ -91,12 +88,10 @@ defmodule Membrane.H264.Parser do
 
     nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
 
-    {[], splitter_nalus_acc, splitter_state, previous_primary_coded_picture_nalu, access_units} =
+    {access_units, access_unit_splitter_state} =
       AccessUnitSplitter.split_nalus_into_access_units(
         nalus,
-        state.splitter_nalus_acc,
-        state.splitter_state,
-        state.previous_primary_coded_picture_nalu
+        state.access_unit_splitter_state
       )
 
     actions = prepare_actions_for_aus(access_units)
@@ -112,9 +107,7 @@ defmodule Membrane.H264.Parser do
 
     state = %{
       state
-      | splitter_nalus_acc: splitter_nalus_acc,
-        splitter_state: splitter_state,
-        previous_primary_coded_picture_nalu: previous_primary_coded_picture_nalu,
+      | access_unit_splitter_state: access_unit_splitter_state,
         unparsed_payload: unparsed_payload,
         were_caps_sent?: were_caps_sent?,
         nalu_parser_state: nalu_parser_state
@@ -134,12 +127,10 @@ defmodule Membrane.H264.Parser do
 
     nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
 
-    {[], splitter_nalus_acc, _splitter_state, _previous_primary_coded_picture_nalu, access_units} =
+    {access_units, access_unit_splitter_state} =
       AccessUnitSplitter.split_nalus_into_access_units(
         nalus,
-        state.splitter_nalus_acc,
-        state.splitter_state,
-        state.previous_primary_coded_picture_nalu
+        state.access_unit_splitter_state
       )
 
     actions = prepare_actions_for_aus(access_units)
@@ -153,9 +144,11 @@ defmodule Membrane.H264.Parser do
           end
         end)
 
+    remaining_nalus = AccessUnitSplitter.get_remaining_nalus(access_unit_splitter_state)
+
     sent_remaining_buffers_actions =
-      if splitter_nalus_acc != [] and were_caps_sent? do
-        rest_buffer = wrap_into_buffer(splitter_nalus_acc)
+      if remaining_nalus != [] and were_caps_sent? do
+        rest_buffer = wrap_into_buffer(remaining_nalus)
         [buffer: {:output, rest_buffer}]
       else
         []
