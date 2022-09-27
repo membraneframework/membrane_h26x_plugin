@@ -14,12 +14,11 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264}
   alias Membrane.H264.Parser.AccessUnitSplitter
   alias Membrane.H264.Parser.{Caps, NALuParser}
-  alias Membrane.H264.RemoteStream
 
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    caps: RemoteStream
+    caps: :any
 
   def_output_pad :output,
     demand_mode: :auto,
