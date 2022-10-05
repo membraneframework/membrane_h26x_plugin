@@ -12,7 +12,7 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{Buffer, H264}
-  alias Membrane.H264.Parser.AccessUnitSplitter
+  alias Membrane.H264.Parser.AUSplitter
   alias Membrane.H264.Parser.{Caps, NALuParser}
 
   def_input_pad :input,
@@ -55,15 +55,9 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(opts) do
     state = %{
-      caps: nil,
-      metadata: %{},
-      pps: opts.pps,
-      sps: opts.sps,
-      should_skip_bufffers?: true,
       unparsed_payload: opts.sps <> opts.pps,
-      were_caps_sent?: false,
-      nalu_parser_state: NALuParser.new(),
-      access_unit_splitter_state: AccessUnitSplitter.new()
+      nalu_parser: NALuParser.new(),
+      au_splitter: AUSplitter.new()
     }
 
     {:ok, state}
@@ -79,74 +73,45 @@ defmodule Membrane.H264.Parser do
     payload = state.unparsed_payload <> buffer.payload
     buffer = %Membrane.Buffer{buffer | payload: payload}
 
-    {nalus, unparsed_payload, nalu_parser_state} =
-      NALuParser.parse(
-        buffer,
-        state.nalu_parser_state
-      )
+    {nalus, unparsed_payload, nalu_parser} = NALuParser.parse(buffer, state.nalu_parser)
 
-    nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
-
-    {access_units, access_unit_splitter_state} =
-      AccessUnitSplitter.split_nalus_into_access_units(
-        nalus,
-        state.access_unit_splitter_state
-      )
+    {access_units, au_splitter} =
+      nalus
+      |> Enum.filter(fn nalu -> nalu.status == :valid end)
+      |> AUSplitter.split_nalus(state.au_splitter)
 
     actions = prepare_actions_for_aus(access_units)
 
-    were_caps_sent? =
-      state.were_caps_sent? or
-        Enum.any?(actions, fn action ->
-          case action do
-            {:caps, _} -> true
-            _action -> false
-          end
-        end)
-
     state = %{
       state
-      | access_unit_splitter_state: access_unit_splitter_state,
+      | au_splitter: au_splitter,
         unparsed_payload: unparsed_payload,
-        were_caps_sent?: were_caps_sent?,
-        nalu_parser_state: nalu_parser_state
+        nalu_parser: nalu_parser
     }
 
     {{:ok, actions}, state}
   end
 
   @impl true
-  def handle_end_of_stream(:input, _ctx, state) do
+  def handle_end_of_stream(:input, ctx, state) do
     {nalus, _unparsed_payload, _state} =
       NALuParser.parse(
         %Membrane.Buffer{payload: state.unparsed_payload},
-        state.nalu_parser_state,
+        state.nalu_parser,
         false
       )
 
-    nalus = Enum.filter(nalus, fn nalu -> nalu.status == :valid end)
-
-    {access_units, access_unit_splitter_state} =
-      AccessUnitSplitter.split_nalus_into_access_units(
-        nalus,
-        state.access_unit_splitter_state
-      )
+    {access_units, au_splitter} =
+      nalus
+      |> Enum.filter(fn nalu -> nalu.status == :valid end)
+      |> AUSplitter.split_nalus(state.au_splitter)
 
     actions = prepare_actions_for_aus(access_units)
 
-    were_caps_sent? =
-      state.were_caps_sent? or
-        Enum.any?(actions, fn action ->
-          case action do
-            {:caps, _} -> true
-            _action -> false
-          end
-        end)
-
-    remaining_nalus = AccessUnitSplitter.get_remaining_nalus(access_unit_splitter_state)
+    remaining_nalus = AUSplitter.flush(au_splitter)
 
     sent_remaining_buffers_actions =
-      if remaining_nalus != [] and were_caps_sent? do
+      if remaining_nalus != [] and caps_sent?(actions, ctx) do
         rest_buffer = wrap_into_buffer(remaining_nalus)
         [buffer: {:output, rest_buffer}]
       else
@@ -223,4 +188,9 @@ defmodule Membrane.H264.Parser do
 
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
+
+  defp caps_sent?(actions, %{pads: %{output: %{caps: nil}}}),
+    do: Enum.any?(actions, &match?({:caps, _caps}, &1))
+
+  defp caps_sent?(_actions, _ctx), do: true
 end

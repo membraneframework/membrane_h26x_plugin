@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Parser.AccessUnitSplitter do
+defmodule Membrane.H264.Parser.AUSplitter do
   @moduledoc """
   Module providing functionalities to divide the binary
   h264 stream into access units.
@@ -52,7 +52,7 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
 
   @type access_unit_t() :: list(NALu.t())
 
-  # split_nalus_into_access_units/5 defines a finite state machine with two states: :first and :second.
+  # split_nalus/5 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
@@ -65,30 +65,19 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   to be used in next invocation.
   When the whole stream is available at the invocation time, the use can use
   `split_binary_into_access_units/1`.
-  Under the hood, `split_nalus_into_access_units/5` defines a finite state machine
+  Under the hood, `split_nalus/5` defines a finite state machine
   with two states: :first and :second. The state :first describes the state before
   reaching the primary coded picture NALu of a given access unit. The state :second
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
-  @spec split_nalus_into_access_units(
-          list(NALu.t()),
-          t()
-        ) ::
-          {list(access_unit_t()), t()}
-  def split_nalus_into_access_units(
-        nalus,
-        state
-      )
+  @spec split_nalus(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
+  def split_nalus(nalus, state)
 
-  def split_nalus_into_access_units(
-        [first_nalu | rest_nalus],
-        state
-      )
-      when state.fsm_state == :first do
+  def split_nalus([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
     cond do
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split_nalus_into_access_units(
+        split_nalus(
           rest_nalus,
           %__MODULE__{
             state
@@ -99,24 +88,20 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
         )
 
       first_nalu.type in @non_vcl_nalus ->
-        split_nalus_into_access_units(
+        split_nalus(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
-        raise "AccessUnitSplitter: Improper transition"
+        raise "AUSplitter: Improper transition"
     end
   end
 
-  def split_nalus_into_access_units(
-        [first_nalu | rest_nalus],
-        state
-      )
-      when state.fsm_state == :second do
+  def split_nalus([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
       first_nalu.type in @non_vcl_nalus ->
-        split_nalus_into_access_units(
+        split_nalus(
           rest_nalus,
           %__MODULE__{
             state
@@ -127,7 +112,7 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
         )
 
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split_nalus_into_access_units(
+        split_nalus(
           rest_nalus,
           %__MODULE__{
             state
@@ -138,17 +123,17 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
         )
 
       first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
-        split_nalus_into_access_units(
+        split_nalus(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
-        raise "AccessUnitSplitter: Improper transition"
+        raise "AUSplitter: Improper transition"
     end
   end
 
-  def split_nalus_into_access_units([], state) do
+  def split_nalus([], state) do
     {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
   end
 
@@ -156,10 +141,10 @@ defmodule Membrane.H264.Parser.AccessUnitSplitter do
   Returns a list of NAL units which are hold in access unit splitter's state accumulator.
 
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
-  output by `split_nalus_into_access_units`.
+  output by `split_nalus`.
   """
-  @spec get_remaining_nalus(t()) :: list(NALu.t())
-  def get_remaining_nalus(state) do
+  @spec flush(t()) :: list(NALu.t())
+  def flush(state) do
     state.nalus_acc
   end
 

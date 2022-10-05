@@ -1,4 +1,4 @@
-defmodule AccessUnitSplitterTest do
+defmodule AUSplitterTest do
   @moduledoc false
 
   use ExUnit.Case
@@ -9,7 +9,7 @@ defmodule AccessUnitSplitterTest do
   defmodule FullBinaryParser do
     @moduledoc false
     alias Membrane.H264.Parser.{
-      AccessUnitSplitter,
+      AUSplitter,
       NALu,
       NALuSplitter,
       NALuTypes,
@@ -18,7 +18,7 @@ defmodule AccessUnitSplitterTest do
 
     alias Membrane.H264.Parser.SchemeParser.Schemes
 
-    @spec parse(binary(), SchemeParser.t()) :: AccessUnitSplitter.access_unit_t()
+    @spec parse(binary(), SchemeParser.t()) :: AUSplitter.access_unit_t()
     def parse(payload, state \\ %SchemeParser{__local__: %{}, __global__: %{}}) do
       {nalus, _state} =
         payload
@@ -41,8 +41,7 @@ defmodule AccessUnitSplitterTest do
           {%NALu{nalu | parsed_fields: full_nalu_parsed_fields, type: type}, state}
         end)
 
-      {aus, _state} =
-        AccessUnitSplitter.split_nalus_into_access_units(nalus, AccessUnitSplitter.new())
+      {aus, _state} = AUSplitter.split_nalus(nalus, AUSplitter.new())
 
       aus
     end
