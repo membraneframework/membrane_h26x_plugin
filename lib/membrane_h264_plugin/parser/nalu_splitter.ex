@@ -6,7 +6,16 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   The splitting is based on
   "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
   """
-  alias Membrane.H264.Parser.NALu
+
+  @type t :: %__MODULE__{unparsed_payload: binary()}
+
+  @enforce_keys [:unparsed_payload]
+  defstruct @enforce_keys
+
+  @spec new() :: t()
+  def new() do
+    %__MODULE__{unparsed_payload: ""}
+  end
 
   @doc """
   A function which splits the binary into NALus sequence.
@@ -18,37 +27,40 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   the binary payload of that NALu and the number of bytes
   of the Annex-B prefix of that NALu.
   """
-  @spec extract_nalus(
+  @spec split(
           payload :: binary(),
-          pts :: non_neg_integer() | nil,
-          dts :: non_neg_integer() | nil,
-          last_pts :: non_neg_integer() | nil,
-          last_dts :: non_neg_integer() | nil,
-          should_skip_last_nalu? :: boolean()
-        ) :: [NALu.t()]
-  def extract_nalus(payload, pts, dts, last_pts, last_dts, should_skip_last_nalu?) do
-    nalus =
-      payload
+          state :: t()
+        ) :: {[binary()], t()}
+  def split(payload, state) do
+    total_payload = state.unparsed_payload <> payload
+
+    nalus_payloads_list =
+      total_payload
       |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
       |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
-      |> then(&if should_skip_last_nalu?, do: Enum.drop(&1, -1), else: &1)
-      |> Enum.map(fn [{from, prefix_len}, {to, _}] ->
+      |> then(&Enum.drop(&1, -1))
+      |> Enum.map(fn [{from, _prefix_len}, {to, _}] ->
         len = to - from
-
-        %NALu{
-          payload: :binary.part(payload, from, len),
-          prefix_length: prefix_len,
-          pts: pts,
-          dts: dts,
-          status: :valid
-        }
+        :binary.part(total_payload, from, len)
       end)
 
-    nalus
-    |> List.update_at(0, fn nalu ->
-      if last_pts != nil and last_dts != nil,
-        do: %NALu{nalu | pts: last_pts, dts: last_dts},
-        else: nalu
-    end)
+    total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
+
+    state = %{
+      state
+      | unparsed_payload:
+          :binary.part(
+            total_payload,
+            total_nalus_payloads_size,
+            byte_size(total_payload) - total_nalus_payloads_size
+          )
+    }
+
+    {nalus_payloads_list, state}
+  end
+
+  @spec flush(t()) :: {binary(), t()}
+  def flush(state) do
+    {state.unparsed_payload, %{state | unparsed_payload: <<>>}}
   end
 end

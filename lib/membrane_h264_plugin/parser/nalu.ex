@@ -13,8 +13,6 @@ defmodule Membrane.H264.Parser.NALu do
           prefix_length: pos_integer(),
           type: atom(),
           payload: binary(),
-          pts: non_neg_integer() | nil,
-          dts: non_neg_integer() | nil,
           status: :valid | :error
         }
 

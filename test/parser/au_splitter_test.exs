@@ -10,59 +10,25 @@ defmodule AUSplitterTest do
     @moduledoc false
     alias Membrane.H264.Parser.{
       AUSplitter,
-      NALu,
-      NALuSplitter,
-      NALuTypes,
-      SchemeParser
+      NALuParser,
+      NALuSplitter
     }
 
-    alias Membrane.H264.Parser.SchemeParser.Schemes
+    @spec parse(binary()) :: AUSplitter.access_unit_t()
+    def parse(payload) do
+      nalu_splitter = NALuSplitter.new()
+      {nalus_payloads, nalu_splitter} = NALuSplitter.split(payload, nalu_splitter)
+      {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
+      nalus_payloads = nalus_payloads ++ [last_nalu_payload]
 
-    @spec parse(binary(), SchemeParser.t()) :: AUSplitter.access_unit_t()
-    def parse(payload, state \\ %SchemeParser{__local__: %{}, __global__: %{}}) do
-      {nalus, _state} =
-        payload
-        |> NALuSplitter.extract_nalus(nil, nil, nil, nil, false)
-        |> Enum.map_reduce(state, fn nalu, state ->
-          prefix_length = nalu.prefix_length
+      nalu_parser = NALuParser.new()
 
-          <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
-            nalu.payload
+      {nalus, _nalu_parser} =
+        Enum.map_reduce(nalus_payloads, nalu_parser, &NALuParser.parse(&1, &2))
 
-          new_state = SchemeParser.new(state)
-
-          {header_parsed_fields, state} =
-            SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader.scheme(), new_state)
-
-          type = NALuTypes.get_type(header_parsed_fields.nal_unit_type)
-
-          {full_nalu_parsed_fields, state} = parse_proper_nalu_type(nalu_body, state, type)
-
-          {%NALu{nalu | parsed_fields: full_nalu_parsed_fields, type: type}, state}
-        end)
-
-      {aus, _state} = AUSplitter.split_nalus(nalus, AUSplitter.new())
+      {aus, _au_splitter} = AUSplitter.split_nalus(nalus, AUSplitter.new())
 
       aus
-    end
-
-    defp parse_proper_nalu_type(payload, state, type) do
-      case type do
-        :sps ->
-          SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
-
-        :pps ->
-          SchemeParser.parse_with_scheme(payload, Schemes.PPS.scheme(), state)
-
-        :idr ->
-          SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
-
-        :non_idr ->
-          SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
-
-        _unknown_nalu_type ->
-          {%{}, state}
-      end
     end
   end
 

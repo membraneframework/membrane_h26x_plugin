@@ -12,8 +12,7 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{Buffer, H264}
-  alias Membrane.H264.Parser.AUSplitter
-  alias Membrane.H264.Parser.{Caps, NALuParser}
+  alias Membrane.H264.Parser.{AUSplitter, Caps, NALuParser, NALuSplitter}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -55,7 +54,8 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(opts) do
     state = %{
-      unparsed_payload: opts.sps <> opts.pps,
+      params: opts.sps <> opts.pps,
+      nalu_splitter: NALuSplitter.new(),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new()
     }
@@ -70,10 +70,13 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    payload = state.unparsed_payload <> buffer.payload
-    buffer = %Membrane.Buffer{buffer | payload: payload}
+    payload = state.params <> buffer.payload
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
 
-    {nalus, unparsed_payload, nalu_parser} = NALuParser.parse(buffer, state.nalu_parser)
+    {nalus, nalu_parser} =
+      Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
+        NALuParser.parse(nalu_payload, nalu_parser)
+      end)
 
     {access_units, au_splitter} =
       nalus
@@ -84,9 +87,10 @@ defmodule Membrane.H264.Parser do
 
     state = %{
       state
-      | au_splitter: au_splitter,
-        unparsed_payload: unparsed_payload,
-        nalu_parser: nalu_parser
+      | nalu_splitter: nalu_splitter,
+        nalu_parser: nalu_parser,
+        au_splitter: au_splitter,
+        params: <<>>
     }
 
     {{:ok, actions}, state}
@@ -94,31 +98,25 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state) do
-    {nalus, _unparsed_payload, _state} =
-      NALuParser.parse(
-        %Membrane.Buffer{payload: state.unparsed_payload},
-        state.nalu_parser,
-        false
-      )
+    {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
+    {last_nalu, _nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
 
     {access_units, au_splitter} =
-      nalus
-      |> Enum.filter(fn nalu -> nalu.status == :valid end)
-      |> AUSplitter.split_nalus(state.au_splitter)
-
-    actions = prepare_actions_for_aus(access_units)
-
-    remaining_nalus = AUSplitter.flush(au_splitter)
-
-    sent_remaining_buffers_actions =
-      if remaining_nalus != [] and caps_sent?(actions, ctx) do
-        rest_buffer = wrap_into_buffer(remaining_nalus)
-        [buffer: {:output, rest_buffer}]
+      if last_nalu.status == :valid do
+        AUSplitter.split_nalus([last_nalu], state.au_splitter)
       else
-        []
+        {[], state.au_splitter}
       end
 
-    {{:ok, actions ++ sent_remaining_buffers_actions ++ [end_of_stream: :output]}, state}
+    {remaining_nalus, _au_splitter} = AUSplitter.flush(au_splitter)
+    maybe_improper_aus = access_units ++ [remaining_nalus]
+    actions = prepare_actions_for_aus(maybe_improper_aus)
+
+    if caps_sent?(actions, ctx) do
+      {{:ok, actions ++ [end_of_stream: :output]}, state}
+    else
+      {{:ok, [end_of_stream: :output]}, state}
+    end
   end
 
   defp prepare_actions_for_aus(aus) do

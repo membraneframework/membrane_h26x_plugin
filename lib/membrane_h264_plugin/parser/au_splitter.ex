@@ -143,9 +143,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
   output by `split_nalus`.
   """
-  @spec flush(t()) :: list(NALu.t())
+  @spec flush(t()) :: {list(NALu.t()), t()}
   def flush(state) do
-    state.nalus_acc
+    {state.nalus_acc, %{state | nalus_acc: []}}
   end
 
   # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply
