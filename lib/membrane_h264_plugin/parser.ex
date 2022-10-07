@@ -133,8 +133,6 @@ defmodule Membrane.H264.Parser do
 
   defp wrap_into_buffer(access_unit) do
     metadata = prepare_metadata(access_unit)
-    pts = access_unit |> Enum.at(0) |> then(& &1.pts)
-    dts = access_unit |> Enum.at(0) |> then(& &1.dts)
 
     buffer =
       access_unit
@@ -142,7 +140,7 @@ defmodule Membrane.H264.Parser do
         acc <> nalu.payload
       end)
       |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
+        %Buffer{payload: payload, metadata: metadata, pts: nil, dts: nil}
       end)
 
     buffer

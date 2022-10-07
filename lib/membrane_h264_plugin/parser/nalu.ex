@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.NALu do
   A type defining the structure of a single NAL unit produced
   by the parser.
   """
-  @type t :: %{
+  @type t :: %__MODULE__{
           parsed_fields: %{atom() => any()},
           prefix_length: pos_integer(),
           type: atom(),
@@ -16,6 +16,6 @@ defmodule Membrane.H264.Parser.NALu do
           status: :valid | :error
         }
 
-  @enforce_keys [:payload, :prefix_length, :status]
-  defstruct @enforce_keys ++ [:type, :parsed_fields, :pts, :dts]
+  @enforce_keys [:parsed_fields, :prefix_length, :type, :payload, :status]
+  defstruct @enforce_keys
 end
