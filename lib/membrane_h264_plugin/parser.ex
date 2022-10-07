@@ -98,8 +98,8 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state) do
-    {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
-    {last_nalu, _nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
+    {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
+    {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
 
     {access_units, au_splitter} =
       if last_nalu.status == :valid do
@@ -108,9 +108,16 @@ defmodule Membrane.H264.Parser do
         {[], state.au_splitter}
       end
 
-    {remaining_nalus, _au_splitter} = AUSplitter.flush(au_splitter)
+    {remaining_nalus, au_splitter} = AUSplitter.flush(au_splitter)
     maybe_improper_aus = access_units ++ [remaining_nalus]
     actions = prepare_actions_for_aus(maybe_improper_aus)
+
+    state = %{
+      state
+      | nalu_splitter: nalu_splitter,
+        nalu_parser: nalu_parser,
+        au_splitter: au_splitter
+    }
 
     if caps_sent?(actions, ctx) do
       {{:ok, actions ++ [end_of_stream: :output]}, state}
