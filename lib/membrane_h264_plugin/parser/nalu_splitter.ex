@@ -12,9 +12,9 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @enforce_keys [:unparsed_payload]
   defstruct @enforce_keys
 
-  @spec new() :: t()
-  def new() do
-    %__MODULE__{unparsed_payload: ""}
+  @spec new(binary()) :: t()
+  def new(intial_binary \\ <<>>) do
+    %__MODULE__{unparsed_payload: intial_binary}
   end
 
   @doc """

@@ -54,8 +54,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(opts) do
     state = %{
-      params: opts.sps <> opts.pps,
-      nalu_splitter: NALuSplitter.new(),
+      nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new()
     }
@@ -70,8 +69,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    payload = state.params <> buffer.payload
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
 
     {nalus, nalu_parser} =
       Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
@@ -89,8 +87,7 @@ defmodule Membrane.H264.Parser do
       state
       | nalu_splitter: nalu_splitter,
         nalu_parser: nalu_parser,
-        au_splitter: au_splitter,
-        params: <<>>
+        au_splitter: au_splitter
     }
 
     {{:ok, actions}, state}
