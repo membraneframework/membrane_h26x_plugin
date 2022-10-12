@@ -61,7 +61,8 @@ defmodule Membrane.H264.Parser do
       nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new(),
-      mode: nil
+      mode: nil,
+      previous_timestamps: {nil, nil}
     }
 
     {:ok, state}
@@ -84,6 +85,14 @@ defmodule Membrane.H264.Parser do
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
     {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
 
+    {nalus_payloads_list, nalu_splitter} =
+      if state.mode != :bytestream do
+        {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(nalu_splitter)
+        {nalus_payloads_list ++ [last_nalu_payload], nalu_splitter}
+      else
+        {nalus_payloads_list, nalu_splitter}
+      end
+
     {nalus, nalu_parser} =
       Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
         NALuParser.parse(nalu_payload, nalu_parser)
@@ -94,7 +103,29 @@ defmodule Membrane.H264.Parser do
       |> Enum.filter(fn nalu -> nalu.status == :valid end)
       |> AUSplitter.split_nalus(state.au_splitter)
 
-    actions = prepare_actions_for_aus(access_units)
+    {access_units, au_splitter} =
+      if state.mode == :au_aligned do
+        {last_au, au_splitter} = AUSplitter.flush(au_splitter)
+        {access_units ++ [last_au], au_splitter}
+      else
+        {access_units, au_splitter}
+      end
+
+    {pts, dts} =
+      case state.mode do
+        :bytestream -> {nil, nil}
+        :nalu_aligned -> state.previous_timestamps
+        :au_aligned -> {buffer.pts, buffer.dts}
+      end
+
+    state =
+      if state.mode == :nalu_aligned and state.previous_timestamps != {buffer.pts, buffer.dts} do
+        %{state | previous_timestamps: {buffer.pts, buffer.dts}}
+      else
+        state
+      end
+
+    actions = prepare_actions_for_aus(access_units, pts, dts)
 
     state = %{
       state
@@ -136,7 +167,7 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp prepare_actions_for_aus(aus) do
+  defp prepare_actions_for_aus(aus, pts \\ nil, dts \\ nil) do
     Enum.reduce(aus, [], fn au, acc ->
       sps_actions =
         case Enum.find(au, &(&1.type == :sps)) do
@@ -144,11 +175,11 @@ defmodule Membrane.H264.Parser do
           sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu)}]
         end
 
-      acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au)}}]
+      acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}]
     end)
   end
 
-  defp wrap_into_buffer(access_unit) do
+  defp wrap_into_buffer(access_unit, pts, dts) do
     metadata = prepare_metadata(access_unit)
 
     buffer =
@@ -157,7 +188,7 @@ defmodule Membrane.H264.Parser do
         acc <> nalu.payload
       end)
       |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata, pts: nil, dts: nil}
+        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
       end)
 
     buffer
