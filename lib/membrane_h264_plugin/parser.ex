@@ -11,13 +11,17 @@ defmodule Membrane.H264.Parser do
 
   require Membrane.Logger
 
-  alias Membrane.{Buffer, H264}
+  alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.H264.Parser.{AUSplitter, Caps, NALuParser, NALuSplitter}
 
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    caps: :any
+    caps: [
+      {RemoteStream, type: :bytestream},
+      {RemoteStream,
+       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+    ]
 
   def_output_pad :output,
     demand_mode: :auto,
@@ -56,14 +60,23 @@ defmodule Membrane.H264.Parser do
     state = %{
       nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
-      au_splitter: AUSplitter.new()
+      au_splitter: AUSplitter.new(),
+      mode: nil
     }
 
     {:ok, state}
   end
 
   @impl true
-  def handle_caps(:input, _caps, _ctx, state) do
+  def handle_caps(:input, caps, _ctx, state) do
+    mode =
+      case caps do
+        %RemoteStream{type: :bytestream} -> :bytestream
+        %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
+        %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
+      end
+
+    state = %{state | mode: mode}
     {:ok, state}
   end
 
