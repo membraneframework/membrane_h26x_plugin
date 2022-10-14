@@ -5,13 +5,15 @@ defmodule Membrane.H264.ModesTest do
   import Membrane.ParentSpec
 
   alias Membrane.Buffer
-  alias Membrane.Testing.{Pipeline, Sink}
   alias Membrane.H264.Parser
   alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
+  alias Membrane.Testing.{Pipeline, Sink}
 
   @h264_input_file "test/fixtures/input-10-720p.h264"
   defp prepare_buffers(binary, mode) when mode == :bytestream do
-    buffers = for <<chunk::size(400) <- binary>>, do: <<chunk::size(400)>>
+    buffers =
+      :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
+
     Enum.map(buffers, &%Membrane.Buffer{payload: &1})
   end
 
@@ -106,7 +108,7 @@ defmodule Membrane.H264.ModesTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(binary, :au_aligned) |> Enum.drop(-1)
+    output_buffers = prepare_buffers(binary, :au_aligned)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -137,7 +139,7 @@ defmodule Membrane.H264.ModesTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(binary, :au_aligned) |> Enum.drop(-1)
+    output_buffers = prepare_buffers(binary, :au_aligned)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
