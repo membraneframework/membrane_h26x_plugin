@@ -186,7 +186,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
-    {:ok, state}
+    {{:ok, end_of_stream: :output}, state}
   end
 
   defp prepare_actions_for_aus(aus, pts, dts) do
