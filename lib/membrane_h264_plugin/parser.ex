@@ -88,7 +88,12 @@ defmodule Membrane.H264.Parser do
     {nalus_payloads_list, nalu_splitter} =
       if state.mode != :bytestream do
         {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(nalu_splitter)
-        {nalus_payloads_list ++ [last_nalu_payload], nalu_splitter}
+
+        if last_nalu_payload != <<>> do
+          {nalus_payloads_list ++ [last_nalu_payload], nalu_splitter}
+        else
+          {nalus_payloads_list, nalu_splitter}
+        end
       else
         {nalus_payloads_list, nalu_splitter}
       end
@@ -138,7 +143,7 @@ defmodule Membrane.H264.Parser do
   end
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state) do
+  def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
     {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
 
     {{access_units, au_splitter}, nalu_parser} =
@@ -161,7 +166,6 @@ defmodule Membrane.H264.Parser do
       case state.mode do
         :bytestream -> {nil, nil}
         :nalu_aligned -> state.previous_timestamps
-        :au_aligned -> {nil, nil}
       end
 
     actions = prepare_actions_for_aus(maybe_improper_aus, pts, dts)
@@ -178,6 +182,11 @@ defmodule Membrane.H264.Parser do
     else
       {{:ok, [end_of_stream: :output]}, state}
     end
+  end
+
+  @impl true
+  def handle_end_of_stream(_pad, _ctx, state) do
+    {:ok, state}
   end
 
   defp prepare_actions_for_aus(aus, pts, dts) do

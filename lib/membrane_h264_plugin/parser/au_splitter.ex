@@ -134,7 +134,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
   end
 
   def split_nalus([], state) do
-    {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
+    {state.access_units_to_output |> Enum.filter(&(&1 != [])),
+     %__MODULE__{state | access_units_to_output: []}}
   end
 
   @doc """
