@@ -1,12 +1,11 @@
 defmodule Membrane.H264.Parser.NALuParser do
   @moduledoc """
-  A module providing functionality of parsing a stream of packets, out of which each
-  holds a payload of a single NAL unit.
-
-  As a result the parser outputs a stream of parsed NAL units.
+  A module providing functionality of parsing a stream of binaries, out of which each
+  is a payload of a single NAL unit.
   """
-  alias Membrane.H264.Parser.{NALu, NALuTypes, SchemeParser}
-  alias Membrane.H264.Parser.SchemeParser.Schemes
+  alias Membrane.H264.Parser.{NALu, NALuTypes}
+  alias Membrane.H264.Parser.NALuParser.SchemeParser
+  alias Membrane.H264.Parser.NALuParser.Schemes
 
   @typedoc """
   A structure holding the state of the NALu parser.
@@ -15,34 +14,32 @@ defmodule Membrane.H264.Parser.NALuParser do
             scheme_parser_state: SchemeParser.t(),
             has_seen_keyframe?: boolean()
           }
-  @enforce_keys [:scheme_parser_state, :has_seen_keyframe?]
-  defstruct @enforce_keys
+
+  defstruct scheme_parser_state: SchemeParser.new(), has_seen_keyframe?: false
 
   @doc """
   Returns an structure holding a NALu parser state.
   """
   @spec new() :: t()
-  def new(),
-    do: %__MODULE__{
-      scheme_parser_state: SchemeParser.new(),
-      has_seen_keyframe?: false
-    }
+  def new(), do: %__MODULE__{}
 
   @doc """
-  Parses a `Membrane.Buffer.t()` with a payload being a part of H264 stream.
+  Parses a binary representing a single NALu.
 
-  As a result it returns a list of NAL units, along with a part of a payload
-  that wasn't completly parsed and the updated state of the NALu parser.
+  Returns a structure of type `Membrane.H264.Parser.NALu` that
+  contains parsed fields fetched from that NALu.
+  The input binary is expected to contain the prefix, defined as in
+  the "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
   """
   @spec parse(binary(), t()) :: {NALu.t(), t()}
-  def parse(
-        nalu_payload,
-        state
-      ) do
-    prefix_length = (nalu_payload |> :binary.bin_to_list() |> Enum.find_index(&(&1 == 1))) + 1
+  def parse(nalu_payload, state) do
+    {prefix_length, nalu_payload_without_prefix} =
+      case nalu_payload do
+        <<0, 0, 1, rest::binary>> -> {3, rest}
+        <<0, 0, 0, 1, rest::binary>> -> {4, rest}
+      end
 
-    <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
-      nalu_payload
+    <<nalu_header::binary-size(1), nalu_body::binary>> = nalu_payload_without_prefix
 
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 

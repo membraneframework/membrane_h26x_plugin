@@ -21,7 +21,7 @@ defmodule Membrane.H264.TODO.Mixfile do
       # docs
       name: "Membrane H264 plugin",
       source_url: @github_url,
-      homepage_url: "https://membraneframework.org",
+      homepage_url: "https://membrane.stream",
       docs: docs()
     ]
   end
@@ -78,7 +78,7 @@ defmodule Membrane.H264.TODO.Mixfile do
       formatters: ["html"],
       source_ref: "v#{@version}",
       nest_modules_by_prefix: [Membrane.H264],
-      filter_modules: "Membrane\.H264\.Parser$"
+      filter_modules: "Membrane\.H264\.Parser"
     ]
   end
 end

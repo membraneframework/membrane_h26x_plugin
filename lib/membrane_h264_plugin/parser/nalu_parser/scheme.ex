@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Parser.SchemeParser.Scheme do
+defmodule Membrane.H264.Parser.NALuParser.Scheme do
   @moduledoc """
   A module defining the behaviour which should be implemented
   by each NALu scheme.
@@ -24,7 +24,7 @@ defmodule Membrane.H264.Parser.SchemeParser.Scheme do
     currently processed, in the map under the `:__global__` key in the state. Information
     from the saved state can be used while parsing the following NALus.
   """
-  alias Membrane.H264.Parser.SchemeParser
+  alias Membrane.H264.Parser.NALuParser.SchemeParser
 
   @type field_t :: {any(), SchemeParser.field_t()}
   @type if_t :: {value_provider_t(boolean()), t()}

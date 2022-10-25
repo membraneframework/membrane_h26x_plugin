@@ -9,28 +9,18 @@ defmodule Membrane.H264.Parser.NALuSplitter do
 
   @type t :: %__MODULE__{unparsed_payload: binary()}
 
-  @enforce_keys [:unparsed_payload]
-  defstruct @enforce_keys
-
+  defstruct unparsed_payload: <<>>
   @spec new() :: t()
-  def new() do
-    %__MODULE__{unparsed_payload: ""}
-  end
+  def new(), do: %__MODULE__{}
 
   @doc """
-  A function which splits the binary into NALus sequence.
+  Splits the binary into NALus sequence.
 
   A function takes a binary h264 stream as a input
-  and produces a list of `NALu.t()` structures, with
-  the `payload` and `prefix_length` fields set to
-  the appropriate values, corresponding to, respectively,
-  the binary payload of that NALu and the number of bytes
-  of the Annex-B prefix of that NALu.
+  and produces a list of binaries, where each binary is
+  a complete NALu that needs to be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
   """
-  @spec split(
-          payload :: binary(),
-          state :: t()
-        ) :: {[binary()], t()}
+  @spec split(payload :: binary(), state :: t()) :: {[binary()], t()}
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
 
@@ -59,6 +49,13 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     {nalus_payloads_list, state}
   end
 
+  @doc """
+  Flushes the payload out of the splitter state.
+
+  That function gets the payload from the inner state
+  of the splitter and sets the payload in the inner state
+  clean.
+  """
   @spec flush(t()) :: {binary(), t()}
   def flush(state) do
     {state.unparsed_payload, %{state | unparsed_payload: <<>>}}

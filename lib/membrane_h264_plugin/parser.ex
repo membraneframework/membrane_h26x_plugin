@@ -111,6 +111,7 @@ defmodule Membrane.H264.Parser do
     {remaining_nalus, au_splitter} = AUSplitter.flush(au_splitter)
     maybe_improper_aus = access_units ++ [remaining_nalus]
     actions = prepare_actions_for_aus(maybe_improper_aus)
+    actions = if caps_sent?(actions, ctx), do: actions, else: []
 
     state = %{
       state
@@ -119,11 +120,7 @@ defmodule Membrane.H264.Parser do
         au_splitter: au_splitter
     }
 
-    if caps_sent?(actions, ctx) do
-      {{:ok, actions ++ [end_of_stream: :output]}, state}
-    else
-      {{:ok, [end_of_stream: :output]}, state}
-    end
+    {{:ok, actions ++ [end_of_stream: :output]}, state}
   end
 
   defp prepare_actions_for_aus(aus) do
@@ -147,7 +144,7 @@ defmodule Membrane.H264.Parser do
         acc <> nalu.payload
       end)
       |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata, pts: nil, dts: nil}
+        %Buffer{payload: payload, metadata: metadata}
       end)
 
     buffer
