@@ -39,13 +39,10 @@ defmodule Membrane.H264.Parser.NALuParser do
         nalu_payload,
         state
       ) do
-    {prefix_length, nalu_payload} = 
-      case nalu_payload do
-        <<0, 0, 1, rest::binary>> -> {3, rest}
-        <<0, 0, 0, 1, rest::binary>> -> {4, rest}
-      end
-      
-    <<nalu_header, nalu_body::binary>> = nalu_payload  
+    prefix_length = (nalu_payload |> :binary.bin_to_list() |> Enum.find_index(&(&1 == 1))) + 1
+
+    <<_prefix::binary-size(prefix_length), nalu_header::binary-size(1), nalu_body::binary>> =
+      nalu_payload
 
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 
