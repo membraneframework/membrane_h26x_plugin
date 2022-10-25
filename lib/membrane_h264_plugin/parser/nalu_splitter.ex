@@ -9,13 +9,10 @@ defmodule Membrane.H264.Parser.NALuSplitter do
 
   @type t :: %__MODULE__{unparsed_payload: binary()}
 
-  @enforce_keys [:unparsed_payload]
-  defstruct @enforce_keys
+  defstruct unparsed_payload: <<>>
 
   @spec new() :: t()
-  def new() do
-    %__MODULE__{unparsed_payload: ""}
-  end
+  def new(), do: %__MODULE__{}
 
   @doc """
   A function which splits the binary into NALus sequence.
