@@ -106,7 +106,7 @@ defmodule Membrane.H264.Parser do
     {access_units, au_splitter} =
       nalus
       |> Enum.filter(fn nalu -> nalu.status == :valid end)
-      |> AUSplitter.split_nalus(state.au_splitter)
+      |> AUSplitter.split(state.au_splitter)
 
     {access_units, au_splitter} =
       if state.mode == :au_aligned do
@@ -151,7 +151,7 @@ defmodule Membrane.H264.Parser do
         {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
 
         if last_nalu.status == :valid do
-          {AUSplitter.split_nalus([last_nalu], state.au_splitter), nalu_parser}
+          {AUSplitter.split([last_nalu], state.au_splitter), nalu_parser}
         else
           {{[], state.au_splitter}, nalu_parser}
         end

@@ -10,14 +10,14 @@ defmodule Membrane.H264.ModesTest do
   alias Membrane.Testing.{Pipeline, Sink}
 
   @h264_input_file "test/fixtures/input-10-720p.h264"
-  defp prepare_buffers(binary, mode) when mode == :bytestream do
+  defp prepare_buffers(binary, :bytestream) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
 
     Enum.map(buffers, &%Membrane.Buffer{payload: &1})
   end
 
-  defp prepare_buffers(binary, mode) when mode == :nalu_aligned do
+  defp prepare_buffers(binary, :nalu_aligned) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new())
     {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
     nalus_payloads = nalus_payloads ++ [last_nalu_payload]
@@ -25,7 +25,7 @@ defmodule Membrane.H264.ModesTest do
     {nalus, _nalu_parser} =
       Enum.map_reduce(nalus_payloads, NALuParser.new(), &NALuParser.parse(&1, &2))
 
-    {aus, au_splitter} = nalus |> AUSplitter.split_nalus(AUSplitter.new())
+    {aus, au_splitter} = nalus |> AUSplitter.split(AUSplitter.new())
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
@@ -36,15 +36,15 @@ defmodule Membrane.H264.ModesTest do
     |> Enum.flat_map(& &1)
   end
 
-  defp prepare_buffers(binary, mode) when mode == :au_aligned do
-    {nalus_payloads, nalu_splitter} = binary |> NALuSplitter.split(NALuSplitter.new())
+  defp prepare_buffers(binary, :au_aligned) do
+    {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new())
     {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
     nalus_payloads = nalus_payloads ++ [last_nalu_payload]
 
     {nalus, _nalu_parser} =
       Enum.map_reduce(nalus_payloads, NALuParser.new(), &NALuParser.parse(&1, &2))
 
-    {aus, au_splitter} = nalus |> AUSplitter.split_nalus(AUSplitter.new())
+    {aus, au_splitter} = nalus |> AUSplitter.split(AUSplitter.new())
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
