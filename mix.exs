@@ -39,6 +39,7 @@ defmodule Membrane.H264.TODO.Mixfile do
     [
       {:membrane_core, "~> 0.10.0"},
       {:membrane_h264_format, "~> 0.3.0"},
+      {:bunch, "~> 1.4", override: true},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false},

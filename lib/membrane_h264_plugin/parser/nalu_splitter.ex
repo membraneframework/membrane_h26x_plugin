@@ -7,7 +7,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
   """
 
-  @type t :: %__MODULE__{unparsed_payload: binary()}
+  @opaque t :: %__MODULE__{unparsed_payload: binary()}
 
   defstruct unparsed_payload: <<>>
   @spec new() :: t()

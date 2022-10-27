@@ -52,7 +52,7 @@ defmodule Membrane.H264.Parser.NALuParser do
 
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
-    {nalu, {scheme_parser_state, has_seen_keyframe?}} =
+    {nalu, scheme_parser_state, has_seen_keyframe?} =
       try do
         {parsed_fields, scheme_parser_state} =
           parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
@@ -66,7 +66,7 @@ defmodule Membrane.H264.Parser.NALuParser do
            status: status,
            prefix_length: prefix_length,
            payload: nalu_payload
-         }, {scheme_parser_state, has_seen_keyframe?}}
+         }, scheme_parser_state, has_seen_keyframe?}
       catch
         "Cannot load information from SPS" ->
           {%NALu{
@@ -75,7 +75,7 @@ defmodule Membrane.H264.Parser.NALuParser do
              status: :error,
              prefix_length: prefix_length,
              payload: nalu_payload
-           }, {scheme_parser_state, state.has_seen_keyframe?}}
+           }, scheme_parser_state, state.has_seen_keyframe?}
       end
 
     state = %__MODULE__{

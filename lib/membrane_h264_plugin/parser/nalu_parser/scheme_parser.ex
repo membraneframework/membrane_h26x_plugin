@@ -1,8 +1,8 @@
 defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
-  @moduledoc """
-  The module providing functions to parse the binary,
-  based on the given Scheme.
-  """
+  @moduledoc false
+  # The module providing functions to parse the binary,
+  # based on the given Scheme.
+
   use Bunch.Access
 
   alias Membrane.H264.Common
