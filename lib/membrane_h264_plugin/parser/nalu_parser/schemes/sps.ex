@@ -1,9 +1,9 @@
-defmodule Membrane.H264.Parser.SchemeParser.Schemes.SPS do
+defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
   @moduledoc false
-  @behaviour Membrane.H264.Parser.SchemeParser.Scheme
+  @behaviour Membrane.H264.Parser.NALuParser.Scheme
 
   alias Membrane.H264.Common.ExpGolombConverter
-  alias Membrane.H264.Parser.SchemeParser.Scheme
+  alias Membrane.H264.Parser.NALuParser.Scheme
 
   @impl true
   def scheme(),

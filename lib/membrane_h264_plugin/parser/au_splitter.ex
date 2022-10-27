@@ -139,10 +139,11 @@ defmodule Membrane.H264.Parser.AUSplitter do
   end
 
   @doc """
-  Returns a list of NAL units which are hold in access unit splitter's state accumulator.
+  Returns a list of NAL units which are hold in access unit splitter's state accumulator
+  and sets that accumulator empty.
 
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
-  output by `split_nalus`.
+  output by `Membrane.H264.Parser.AUSplitter.split_nalus/2`.
   """
   @spec flush(t()) :: {list(NALu.t()), t()}
   def flush(state) do

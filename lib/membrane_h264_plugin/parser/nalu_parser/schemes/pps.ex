@@ -1,6 +1,6 @@
-defmodule Membrane.H264.Parser.SchemeParser.Schemes.PPS do
+defmodule Membrane.H264.Parser.NALuParser.Schemes.PPS do
   @moduledoc false
-  @behaviour Membrane.H264.Parser.SchemeParser.Scheme
+  @behaviour Membrane.H264.Parser.NALuParser.Scheme
 
   @impl true
   def scheme(),
