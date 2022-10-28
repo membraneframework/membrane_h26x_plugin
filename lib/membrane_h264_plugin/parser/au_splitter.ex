@@ -34,7 +34,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   defstruct @enforce_keys
 
   @doc """
-  A function that returns a structure holding a clear state of the
+  Returns a structure holding a clear state of the
   access unit splitter.
   """
   @spec new() :: t()
@@ -52,7 +52,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   @type access_unit_t() :: list(NALu.t())
 
-  # split_nalus/5 defines a finite state machine with two states: :first and :second.
+  # split/2 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
@@ -65,19 +65,19 @@ defmodule Membrane.H264.Parser.AUSplitter do
   to be used in next invocation.
   When the whole stream is available at the invocation time, the use can use
   `split_binary_into_access_units/1`.
-  Under the hood, `split_nalus/5` defines a finite state machine
+  Under the hood, `split/2` defines a finite state machine
   with two states: :first and :second. The state :first describes the state before
   reaching the primary coded picture NALu of a given access unit. The state :second
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
-  @spec split_nalus(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
-  def split_nalus(nalus, state)
+  @spec split(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
+  def split(nalus, state)
 
-  def split_nalus([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
+  def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
     cond do
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split_nalus(
+        split(
           rest_nalus,
           %__MODULE__{
             state
@@ -88,7 +88,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       first_nalu.type in @non_vcl_nalus ->
-        split_nalus(
+        split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
@@ -98,10 +98,10 @@ defmodule Membrane.H264.Parser.AUSplitter do
     end
   end
 
-  def split_nalus([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
+  def split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
       first_nalu.type in @non_vcl_nalus ->
-        split_nalus(
+        split(
           rest_nalus,
           %__MODULE__{
             state
@@ -112,7 +112,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split_nalus(
+        split(
           rest_nalus,
           %__MODULE__{
             state
@@ -123,7 +123,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
-        split_nalus(
+        split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
@@ -133,19 +133,21 @@ defmodule Membrane.H264.Parser.AUSplitter do
     end
   end
 
-  def split_nalus([], state) do
-    {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
+  def split([], state) do
+    {state.access_units_to_output |> Enum.filter(&(&1 != [])),
+     %__MODULE__{state | access_units_to_output: []}}
   end
 
   @doc """
-  Returns a list of NAL units which are hold in access unit splitter's state accumulator.
+  Returns a list of NAL units which are hold in access unit splitter's state accumulator
+  and sets that accumulator empty.
 
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
-  output by `split_nalus`.
+  output by `Membrane.H264.Parser.AUSplitter.split/2`.
   """
-  @spec flush(t()) :: list(NALu.t())
+  @spec flush(t()) :: {list(NALu.t()), t()}
   def flush(state) do
-    state.nalus_acc
+    {state.nalus_acc, %{state | nalus_acc: []}}
   end
 
   # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply

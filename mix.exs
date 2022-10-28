@@ -21,7 +21,7 @@ defmodule Membrane.H264.TODO.Mixfile do
       # docs
       name: "Membrane H264 plugin",
       source_url: @github_url,
-      homepage_url: "https://membraneframework.org",
+      homepage_url: "https://membrane.stream",
       docs: docs()
     ]
   end
@@ -39,6 +39,7 @@ defmodule Membrane.H264.TODO.Mixfile do
     [
       {:membrane_core, "~> 0.10.0"},
       {:membrane_h264_format, "~> 0.3.0"},
+      {:bunch, "~> 1.4", override: true},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, ">= 0.0.0", only: :dev, runtime: false},
@@ -78,7 +79,7 @@ defmodule Membrane.H264.TODO.Mixfile do
       formatters: ["html"],
       source_ref: "v#{@version}",
       nest_modules_by_prefix: [Membrane.H264],
-      filter_modules: "Membrane\.H264\.Parser$"
+      filter_modules: "Membrane\.H264\.Parser"
     ]
   end
 end

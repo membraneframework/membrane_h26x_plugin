@@ -3,6 +3,7 @@ defmodule Membrane.H264.Parser.NALuTypes do
   The module aggregating the mapping of from `nal_unit_type`
   fields of the NAL unit to the human-firendly name of a NALu type.
   """
+
   @nalu_types %{
                 0 => :unspecified,
                 1 => :non_idr,
@@ -31,6 +32,8 @@ defmodule Membrane.H264.Parser.NALuTypes do
                 {k, v} -> Enum.map(k, &{&1, v})
               end)
               |> Map.new()
+
+  @type nalu_type :: unquote(Bunch.Typespec.enum_to_alternative(Map.values(@nalu_types)))
 
   @doc """
   The function which returns the human friendly name of a NALu type
