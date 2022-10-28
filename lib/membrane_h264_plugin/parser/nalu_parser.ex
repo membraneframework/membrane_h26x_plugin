@@ -26,7 +26,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   @doc """
   Parses a binary representing a single NALu.
 
-  Returns a structure of type `Membrane.H264.Parser.NALu` that
+  Returns a structure that
   contains parsed fields fetched from that NALu.
   The input binary is expected to contain the prefix, defined as in
   the "Annex B" of the "ITU-T Rec. H.264 (01/2012)".

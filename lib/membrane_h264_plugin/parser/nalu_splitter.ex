@@ -16,7 +16,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @doc """
   Splits the binary into NALus sequence.
 
-  A function takes a binary h264 stream as a input
+  Takes a binary h264 stream as a input
   and produces a list of binaries, where each binary is
   a complete NALu that needs to be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
   """

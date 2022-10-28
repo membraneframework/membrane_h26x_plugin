@@ -34,7 +34,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   defstruct @enforce_keys
 
   @doc """
-  A function that returns a structure holding a clear state of the
+  Returns a structure holding a clear state of the
   access unit splitter.
   """
   @spec new() :: t()
@@ -52,7 +52,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   @type access_unit_t() :: list(NALu.t())
 
-  # split_nalus/5 defines a finite state machine with two states: :first and :second.
+  # split_nalus/2 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
@@ -65,7 +65,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   to be used in next invocation.
   When the whole stream is available at the invocation time, the use can use
   `split_binary_into_access_units/1`.
-  Under the hood, `split_nalus/5` defines a finite state machine
+  Under the hood, `split_nalus/2` defines a finite state machine
   with two states: :first and :second. The state :first describes the state before
   reaching the primary coded picture NALu of a given access unit. The state :second
   describes the state after processing the primary coded picture NALu of a given
@@ -142,7 +142,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   and sets that accumulator empty.
 
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
-  output by `Membrane.H264.Parser.AUSplitter.split_nalus/2`.
+  output by `split_nalus/2`.
   """
   @spec flush(t()) :: {list(NALu.t()), t()}
   def flush(state) do
