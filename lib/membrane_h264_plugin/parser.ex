@@ -11,13 +11,17 @@ defmodule Membrane.H264.Parser do
 
   require Membrane.Logger
 
-  alias Membrane.{Buffer, H264}
+  alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.H264.Parser.{AUSplitter, Caps, NALuParser, NALuSplitter}
 
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    caps: :any
+    caps: [
+      {RemoteStream, type: :bytestream},
+      {RemoteStream,
+       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+    ]
 
   def_output_pad :output,
     demand_mode: :auto,
@@ -54,24 +58,45 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(opts) do
     state = %{
-      params: opts.sps <> opts.pps,
-      nalu_splitter: NALuSplitter.new(),
+      nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
-      au_splitter: AUSplitter.new()
+      au_splitter: AUSplitter.new(),
+      mode: nil,
+      previous_timestamps: {nil, nil}
     }
 
     {:ok, state}
   end
 
   @impl true
-  def handle_caps(:input, _caps, _ctx, state) do
+  def handle_caps(:input, caps, _ctx, state) do
+    mode =
+      case caps do
+        %RemoteStream{type: :bytestream} -> :bytestream
+        %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
+        %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
+      end
+
+    state = %{state | mode: mode}
     {:ok, state}
   end
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    payload = state.params <> buffer.payload
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
+
+    {nalus_payloads_list, nalu_splitter} =
+      if state.mode != :bytestream do
+        {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(nalu_splitter)
+
+        if last_nalu_payload != <<>> do
+          {nalus_payloads_list ++ [last_nalu_payload], nalu_splitter}
+        else
+          {nalus_payloads_list, nalu_splitter}
+        end
+      else
+        {nalus_payloads_list, nalu_splitter}
+      end
 
     {nalus, nalu_parser} =
       Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
@@ -81,36 +106,69 @@ defmodule Membrane.H264.Parser do
     {access_units, au_splitter} =
       nalus
       |> Enum.filter(fn nalu -> nalu.status == :valid end)
-      |> AUSplitter.split_nalus(state.au_splitter)
+      |> AUSplitter.split(state.au_splitter)
 
-    actions = prepare_actions_for_aus(access_units)
+    {access_units, au_splitter} =
+      if state.mode == :au_aligned do
+        {last_au, au_splitter} = AUSplitter.flush(au_splitter)
+        {access_units ++ [last_au], au_splitter}
+      else
+        {access_units, au_splitter}
+      end
+
+    {pts, dts} =
+      case state.mode do
+        :bytestream -> {nil, nil}
+        :nalu_aligned -> state.previous_timestamps
+        :au_aligned -> {buffer.pts, buffer.dts}
+      end
+
+    state =
+      if state.mode == :nalu_aligned and state.previous_timestamps != {buffer.pts, buffer.dts} do
+        %{state | previous_timestamps: {buffer.pts, buffer.dts}}
+      else
+        state
+      end
+
+    actions = prepare_actions_for_aus(access_units, pts, dts)
 
     state = %{
       state
       | nalu_splitter: nalu_splitter,
         nalu_parser: nalu_parser,
-        au_splitter: au_splitter,
-        params: <<>>
+        au_splitter: au_splitter
     }
 
     {{:ok, actions}, state}
   end
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state) do
+  def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
     {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
-    {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
 
-    {access_units, au_splitter} =
-      if last_nalu.status == :valid do
-        AUSplitter.split_nalus([last_nalu], state.au_splitter)
+    {{access_units, au_splitter}, nalu_parser} =
+      if last_nalu_payload != <<>> do
+        {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
+
+        if last_nalu.status == :valid do
+          {AUSplitter.split([last_nalu], state.au_splitter), nalu_parser}
+        else
+          {{[], state.au_splitter}, nalu_parser}
+        end
       else
-        {[], state.au_splitter}
+        {{[], state.au_splitter}, state.nalu_parser}
       end
 
     {remaining_nalus, au_splitter} = AUSplitter.flush(au_splitter)
     maybe_improper_aus = access_units ++ [remaining_nalus]
-    actions = prepare_actions_for_aus(maybe_improper_aus)
+
+    {pts, dts} =
+      case state.mode do
+        :bytestream -> {nil, nil}
+        :nalu_aligned -> state.previous_timestamps
+      end
+
+    actions = prepare_actions_for_aus(maybe_improper_aus, pts, dts)
     actions = if caps_sent?(actions, ctx), do: actions, else: []
 
     state = %{
@@ -123,7 +181,12 @@ defmodule Membrane.H264.Parser do
     {{:ok, actions ++ [end_of_stream: :output]}, state}
   end
 
-  defp prepare_actions_for_aus(aus) do
+  @impl true
+  def handle_end_of_stream(_pad, _ctx, state) do
+    {{:ok, end_of_stream: :output}, state}
+  end
+
+  defp prepare_actions_for_aus(aus, pts, dts) do
     Enum.reduce(aus, [], fn au, acc ->
       sps_actions =
         case Enum.find(au, &(&1.type == :sps)) do
@@ -131,11 +194,11 @@ defmodule Membrane.H264.Parser do
           sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu)}]
         end
 
-      acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au)}}]
+      acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}]
     end)
   end
 
-  defp wrap_into_buffer(access_unit) do
+  defp wrap_into_buffer(access_unit, pts, dts) do
     metadata = prepare_metadata(access_unit)
 
     buffer =
@@ -144,7 +207,7 @@ defmodule Membrane.H264.Parser do
         acc <> nalu.payload
       end)
       |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata}
+        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
       end)
 
     buffer

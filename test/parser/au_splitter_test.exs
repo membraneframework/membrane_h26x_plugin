@@ -26,7 +26,7 @@ defmodule AUSplitterTest do
       {nalus, _nalu_parser} =
         Enum.map_reduce(nalus_payloads, nalu_parser, &NALuParser.parse(&1, &2))
 
-      {aus, _au_splitter} = AUSplitter.split_nalus(nalus, AUSplitter.new())
+      {aus, _au_splitter} = AUSplitter.split(nalus, AUSplitter.new())
 
       aus
     end
