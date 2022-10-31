@@ -3,13 +3,14 @@ defmodule Membrane.H264.Parser.AUSplitter do
   Module providing functionalities to divide the binary
   h264 stream into access units.
 
-  The access unit splitter's behaviour is based on 7.4.1.2.3
-  "Order of NAL units and coded pictures and association to access units"
-  of the "ITU-T Rec. H.264 (01/2012)" specification. The most crucial part
+  The access unit splitter's behaviour is based on *"7.4.1.2.3
+  Order of NAL units and coded pictures and association to access units"*
+  of the *"ITU-T Rec. H.264 (01/2012)"* specification. The most crucial part
   of the access unit splitter is the mechanism to detect new primary coded video picture.
+
   WARNING: Our implementation of that mechanism is based on:
-  7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
-  of the "ITU-T Rec. H.264 (01/2012)", however it adds one more
+  *"7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture"*
+  of the *"ITU-T Rec. H.264 (01/2012)"*, however it adds one more
   additional condition which, when satisfied, says that the given
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
@@ -50,6 +51,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   @non_vcl_nalus [:sps, :pps, :aud, :sei]
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
+  @typedoc """
+  A type representing an access unit - a list of logically associated NAL units.
+  """
   @type access_unit_t() :: list(NALu.t())
 
   # split/2 defines a finite state machine with two states: :first and :second.
@@ -57,17 +61,14 @@ defmodule Membrane.H264.Parser.AUSplitter do
   # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
 
   @doc """
-  This function splits the given list of NAL units into the access units.
+  Splits the given list of NAL units into the access units.
 
-  It can be used when the access unit splitter is used for the stream
-  which is not completly available at the time of function invoction,
-  because apart from the list of access units the functions returns it's state,
-  to be used in next invocation.
-  When the whole stream is available at the invocation time, the use can use
-  `split_binary_into_access_units/1`.
+  It can be used for a stream which is not completly available at the time of function invoction,
+  as the function updates the state of the access unit splitter - the function can
+  be invoked once more, with new NAL units and the updated state.
   Under the hood, `split/2` defines a finite state machine
-  with two states: :first and :second. The state :first describes the state before
-  reaching the primary coded picture NALu of a given access unit. The state :second
+  with two states: `:first` and `:second`. The state `:first` describes the state before
+  reaching the primary coded picture NALu of a given access unit. The state `:second`
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
