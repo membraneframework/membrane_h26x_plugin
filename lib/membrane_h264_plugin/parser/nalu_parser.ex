@@ -18,7 +18,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   defstruct scheme_parser_state: SchemeParser.new(), has_seen_keyframe?: false
 
   @doc """
-  Returns an structure holding a NALu parser state.
+  Returns a structure holding a clear NALu parser state.
   """
   @spec new() :: t()
   def new(), do: %__MODULE__{}
@@ -29,7 +29,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   Returns a structure that
   contains parsed fields fetched from that NALu.
   The input binary is expected to contain the prefix, defined as in
-  the "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
+  the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
   @spec parse(binary(), t()) :: {NALu.t(), t()}
   def parse(nalu_payload, state) do

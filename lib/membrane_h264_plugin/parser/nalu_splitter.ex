@@ -4,13 +4,23 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   the h264 stream into the NAL units.
 
   The splitting is based on
-  "Annex B" of the "ITU-T Rec. H.264 (01/2012)".
+  *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
 
+  @typedoc """
+  A structure holding the state of the NALu splitter.
+  """
   @opaque t :: %__MODULE__{unparsed_payload: binary()}
 
   defstruct unparsed_payload: <<>>
 
+  @doc """
+  Returns a structure holding a NALu splitter state.
+
+  By default, the inner `unparsed_payload` of the state is clean.
+  However, there is a possibility to set that `unparsed_payload`
+  to a given binary, provided as an argument of the `new/1` function.
+  """
   @spec new(binary()) :: t()
   def new(intial_binary \\ <<>>) do
     %__MODULE__{unparsed_payload: intial_binary}
@@ -19,9 +29,9 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @doc """
   Splits the binary into NALus sequence.
 
-  Takes a binary h264 stream as a input
+  Takes a binary h264 stream as an input
   and produces a list of binaries, where each binary is
-  a complete NALu that needs to be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
+  a complete NALu that can be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
   """
   @spec split(payload :: binary(), state :: t()) :: {[binary()], t()}
   def split(payload, state) do

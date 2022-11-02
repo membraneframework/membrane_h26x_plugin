@@ -34,8 +34,8 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
   A type describing the field types which can be used
   in NALu scheme definition.
 
-  Defined as in: "7.2 Specification of syntax functions, categories, and descriptors"
-  of the "ITU-T Rec. H.264 (01/2012)"
+  Defined as in: *"7.2 Specification of syntax functions, categories, and descriptors"*
+  of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
   @type field_t ::
           :u1

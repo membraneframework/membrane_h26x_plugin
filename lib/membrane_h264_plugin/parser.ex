@@ -2,9 +2,32 @@ defmodule Membrane.H264.Parser do
   @moduledoc """
   Membrane element providing parser for H264 encoded video stream.
 
-  The parser parses caps from the SPS. Because caps must be sent before
-  the first buffers, parser drops the stream until the first SPS is received
-  by default. See `skip_until_parameters?` option.
+  The parser:
+  * prepares and sends the appropriate caps, based on information provided in the stream and via the element's options
+  * splits the incoming stream into h264 access units - each buffer being output is a `Membrane.Buffer` struct with a
+  binary payload of a single access unit
+  * enriches the output buffers with the metadata describing the way the access unit is split into NAL units, type of each NAL unit
+  making up the access unit and the information if the access unit hold a keyframe.
+
+  The parser works in one of three possible modes, depending on the structure of the input buffers:
+  * `:bytestream` - each input buffer contains some part of h264 stream's payload, but not necessary a logical
+  h264 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
+  * `:nalu_aligned` - each input buffer contains a single NAL unit's payload
+  * `:au_aligned` - each input buffer contains a single access unit's payload
+
+  The parser's mode is set automatically, based on the input caps received by that element:
+  * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
+  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :nalu}` results in the parser mode being set to `:nalu_aligned`
+  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :au}` results in the parser mode being set to `:au_aligned`
+
+  The distinguishment between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
+  for timestamps rewritting:
+  * in the `:bytestream` mode, the output buffers have their `:pts` and `:dts` set to nil
+  * in the `:nalu_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the
+   input buffer that was holding the first NAL unit making up given access unit (that is being sent inside that output buffer).
+  * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
+  (holding the whole access unit being output)
+
   """
 
   use Membrane.Filter
@@ -28,30 +51,19 @@ defmodule Membrane.H264.Parser do
     caps: {H264, stream_format: :byte_stream}
 
   def_options sps: [
-                type: :binary,
+                spec: binary(),
                 default: <<>>,
                 description: """
-                Sequence Parameter Set NAL unit - if absent in the stream, should
+                Sequence Parameter Set NAL unit binary payload - if absent in the stream, should
                 be provided via this option.
                 """
               ],
               pps: [
-                type: :binary,
+                spec: binary(),
                 default: <<>>,
                 description: """
-                Picture Parameter Set NAL unit - if absent in the stream, should
+                Picture Parameter Set NAL unit binary payload - if absent in the stream, should
                 be provided via this option.
-                """
-              ],
-              skip_until_parameters?: [
-                type: :boolean,
-                default: true,
-                description: """
-                Determines whether to drop the stream until the first set of SPS and PPS is received.
-
-                If this option is set to `false` and no SPS is provided by the
-                `sps` option, the parser will send default 30fps, 720p caps
-                as first caps.
                 """
               ]
 

@@ -1,7 +1,7 @@
 defmodule Membrane.H264.Parser.Caps do
   @moduledoc """
-  Module providing functionalities for parsing H264
-  caps from the parsed SPS NALus.
+  Module providing functionalities for preparing H264
+  caps based on the parsed SPS NAL units.
   """
 
   alias Membrane.H264
@@ -61,9 +61,6 @@ defmodule Membrane.H264.Parser.Caps do
 
     %H264{@default_caps | width: width, height: height, profile: profile}
   end
-
-  @spec default_caps() :: H264.t()
-  def default_caps(), do: @default_caps
 
   defp parse_profile(sps_nalu) do
     fields = sps_nalu.parsed_fields
