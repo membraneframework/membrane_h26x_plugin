@@ -34,21 +34,25 @@ defmodule Membrane.H264.Parser do
 
   require Membrane.Logger
 
+  alias __MODULE__.{AUSplitter, NALuParser, NALuSplitter, StreamFormat}
   alias Membrane.{Buffer, H264, RemoteStream}
-  alias Membrane.H264.Parser.{AUSplitter, Caps, NALuParser, NALuSplitter}
 
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    caps: [
-      {RemoteStream, type: :bytestream},
-      {RemoteStream,
-       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
-    ]
+    accepted_format:
+      any_of(
+        %RemoteStream{type: :bytestream},
+        %RemoteStream{
+          type: :packetized,
+          content_format: content_format
+        }
+        when content_format in [:nalu, :au]
+      )
 
   def_output_pad :output,
     demand_mode: :auto,
-    caps: {H264, stream_format: :byte_stream}
+    accepted_format: %H264{stream_format: :byte_stream}
 
   def_options sps: [
                 spec: binary(),
@@ -68,7 +72,7 @@ defmodule Membrane.H264.Parser do
               ]
 
   @impl true
-  def handle_init(opts) do
+  def handle_init(_ctx, opts) do
     state = %{
       nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
@@ -77,20 +81,20 @@ defmodule Membrane.H264.Parser do
       previous_timestamps: {nil, nil}
     }
 
-    {:ok, state}
+    {[], state}
   end
 
   @impl true
-  def handle_caps(:input, caps, _ctx, state) do
+  def handle_stream_format(:input, format, _ctx, state) do
     mode =
-      case caps do
+      case format do
         %RemoteStream{type: :bytestream} -> :bytestream
         %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
         %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
       end
 
     state = %{state | mode: mode}
-    {:ok, state}
+    {[], state}
   end
 
   @impl true
@@ -151,7 +155,7 @@ defmodule Membrane.H264.Parser do
         au_splitter: au_splitter
     }
 
-    {{:ok, actions}, state}
+    {actions, state}
   end
 
   @impl true
@@ -181,7 +185,7 @@ defmodule Membrane.H264.Parser do
       end
 
     actions = prepare_actions_for_aus(maybe_improper_aus, pts, dts)
-    actions = if caps_sent?(actions, ctx), do: actions, else: []
+    actions = if format_sent?(actions, ctx), do: actions, else: []
 
     state = %{
       state
@@ -190,12 +194,12 @@ defmodule Membrane.H264.Parser do
         au_splitter: au_splitter
     }
 
-    {{:ok, actions ++ [end_of_stream: :output]}, state}
+    {actions ++ [end_of_stream: :output], state}
   end
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
-    {{:ok, end_of_stream: :output}, state}
+    {[end_of_stream: :output], state}
   end
 
   defp prepare_actions_for_aus(aus, pts, dts) do
@@ -203,7 +207,7 @@ defmodule Membrane.H264.Parser do
       sps_actions =
         case Enum.find(au, &(&1.type == :sps)) do
           nil -> []
-          sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu)}]
+          sps_nalu -> [stream_format: {:output, StreamFormat.from_sps(sps_nalu)}]
         end
 
       acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}]
@@ -264,8 +268,8 @@ defmodule Membrane.H264.Parser do
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
   end
 
-  defp caps_sent?(actions, %{pads: %{output: %{caps: nil}}}),
-    do: Enum.any?(actions, &match?({:caps, _caps}, &1))
+  defp format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
+    do: Enum.any?(actions, &match?({:stream_format, _format}, &1))
 
-  defp caps_sent?(_actions, _ctx), do: true
+  defp format_sent?(_actions, _ctx), do: true
 end
