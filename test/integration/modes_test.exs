@@ -1,8 +1,8 @@
 defmodule Membrane.H264.ModesTest do
   use ExUnit.Case
 
+  import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
-  import Membrane.ParentSpec
 
   alias Membrane.Buffer
   alias Membrane.H264.Parser
@@ -62,28 +62,28 @@ defmodule Membrane.H264.ModesTest do
     def_output_pad :output,
       demand_mode: :auto,
       mode: :push,
-      caps: Membrane.RemoteStream
+      accepted_format: Membrane.RemoteStream
 
     @impl true
-    def handle_init(opts) do
-      {:ok, %{mode: opts.mode}}
+    def handle_init(_ctx, opts) do
+      {[], %{mode: opts.mode}}
     end
 
     @impl true
-    def handle_other(actions, _ctx, state) do
-      {{:ok, actions}, state}
+    def handle_parent_notification(actions, _ctx, state) do
+      {actions, state}
     end
 
     @impl true
-    def handle_prepared_to_playing(_ctx, state) do
-      caps =
+    def handle_playing(_ctx, state) do
+      stream_format =
         case state.mode do
           :bytestream -> %Membrane.RemoteStream{type: :bytestream}
           :nalu_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :nalu}
           :au_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :au}
         end
 
-      {{:ok, caps: {:output, caps}}, state}
+      {[stream_format: {:output, stream_format}], state}
     end
   end
 
@@ -92,19 +92,16 @@ defmodule Membrane.H264.ModesTest do
     mode = :bytestream
     input_buffers = prepare_buffers(binary, mode)
 
-    {:ok, pid} =
-      Pipeline.start(
-        links: [
-          link(
-            :source,
-            %ModeTestSource{mode: mode}
-          )
-          |> to(:parser, Parser)
-          |> to(:sink, Sink)
+    {:ok, _supervisor_pid, pid} =
+      Pipeline.start_supervised(
+        structure: [
+          child(:source, %ModeTestSource{mode: mode})
+          |> child(:parser, Parser)
+          |> child(:sink, Sink)
         ]
       )
 
-    assert_pipeline_playback_changed(pid, :prepared, :playing)
+    assert_pipeline_play(pid)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
@@ -123,19 +120,16 @@ defmodule Membrane.H264.ModesTest do
     mode = :nalu_aligned
     input_buffers = prepare_buffers(binary, mode)
 
-    {:ok, pid} =
-      Pipeline.start(
-        links: [
-          link(
-            :source,
-            %ModeTestSource{mode: mode}
-          )
-          |> to(:parser, Parser)
-          |> to(:sink, Sink)
+    {:ok, _supervisor_pid, pid} =
+      Pipeline.start_supervised(
+        structure: [
+          child(:source, %ModeTestSource{mode: mode})
+          |> child(:parser, Parser)
+          |> child(:sink, Sink)
         ]
       )
 
-    assert_pipeline_playback_changed(pid, :prepared, :playing)
+    assert_pipeline_play(pid)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
@@ -156,19 +150,16 @@ defmodule Membrane.H264.ModesTest do
     mode = :au_aligned
     input_buffers = prepare_buffers(binary, mode)
 
-    {:ok, pid} =
-      Pipeline.start(
-        links: [
-          link(
-            :source,
-            %ModeTestSource{mode: mode}
-          )
-          |> to(:parser, Parser)
-          |> to(:sink, Sink)
+    {:ok, _supervisor_pid, pid} =
+      Pipeline.start_supervised(
+        structure: [
+          child(:source, %ModeTestSource{mode: mode})
+          |> child(:parser, Parser)
+          |> child(:sink, Sink)
         ]
       )
 
-    assert_pipeline_playback_changed(pid, :prepared, :playing)
+    assert_pipeline_play(pid)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 

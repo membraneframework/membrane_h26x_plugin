@@ -35,18 +35,18 @@ The following pipeline takes H264 file, parses it, and then decodes it to the ra
 defmodule Decoding.Pipeline do
   use Membrane.Pipeline
 
-  alias Membrane.{File, H264, ParentSpec}
+  alias Membrane.{File, H264}
 
   @impl true
-  def handle_init(_ptions) do
-    children = [
-      source: %File.Source{location: "test/fixtures/input-10-720p-main.h264"},
-      parser: H264.Parser,
-      decoder: H264.FFmpeg.Decoder,
-      sink: %File.Sink{location: "output.raw"}
+  def handle_init(_ctx, _opts) do
+    structure = [
+      child(:source, %File.Source{location: "test/fixtures/input-10-720p-main.h264"})
+      |> child(:parser, H264.Parser)
+      |> child(:decoder, H264.FFmpeg.Decoder)
+      |> child(:sink, %File.Sink{location: "output.raw"})
     ]
 
-    {{:ok, [spec: %ParentSpec{links: ParentSpec.link_linear(children)}, playback: :playing]}, nil}
+    {[spec: structure, playback: :playing]}, nil}
   end
 
   @impl true

@@ -2,18 +2,19 @@ defmodule Membrane.H264.SkipUntilTest do
   @moduledoc false
 
   use ExUnit.Case
+  import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
-  alias Membrane.{H264, ParentSpec}
+  alias Membrane.H264
   alias Membrane.Testing.Pipeline
 
   defp make_pipeline(in_path, out_path) do
-    children = [
-      file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
-      parser: H264.Parser,
-      sink: %Membrane.File.Sink{location: out_path}
+    structure = [
+      child(:file_src, %Membrane.File.Source{chunk_size: 40_960, location: in_path})
+      |> child(:parser, H264.Parser)
+      |> child(:sink, %Membrane.File.Sink{location: out_path})
     ]
 
-    Pipeline.start_link(links: ParentSpec.link_linear(children))
+    Pipeline.start_link_supervised(structure: structure)
   end
 
   describe "The parser should" do
@@ -24,8 +25,8 @@ defmodule Membrane.H264.SkipUntilTest do
       in_path = "../fixtures/input-#{filename}.h264" |> Path.expand(__DIR__)
       out_path = Path.join(ctx.tmp_dir, "output-all-#{filename}.h264")
 
-      assert {:ok, pid} = make_pipeline(in_path, out_path)
-      assert_pipeline_playback_changed(pid, :prepared, :playing)
+      assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path)
+      assert_pipeline_play(pid)
       refute_sink_buffer(pid, :sink, _)
 
       Pipeline.terminate(pid, blocking?: true)
@@ -36,8 +37,8 @@ defmodule Membrane.H264.SkipUntilTest do
       in_path = "../fixtures/input-#{filename}.h264" |> Path.expand(__DIR__)
       out_path = Path.join(ctx.tmp_dir, "output-#{filename}.h264")
       ref_path = "test/fixtures/reference-#{filename}.h264"
-      assert {:ok, pid} = make_pipeline(in_path, out_path)
-      assert_pipeline_playback_changed(pid, :prepared, :playing)
+      assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path)
+      assert_pipeline_play(pid)
       assert_end_of_stream(pid, :sink)
       assert File.read(out_path) == File.read(ref_path)
       Pipeline.terminate(pid, blocking?: true)
