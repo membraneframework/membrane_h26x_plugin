@@ -51,7 +51,7 @@ defmodule Decoding.Pipeline do
 
   @impl true
   def handle_element_end_of_stream(:sink, _ctx_, _state) do
-    {{:ok, playback: :stopped}, nil}
+    {[playback: :stopped], nil}
   end
 end
 ```
