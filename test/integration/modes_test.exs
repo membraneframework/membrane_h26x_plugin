@@ -62,7 +62,11 @@ defmodule Membrane.H264.ModesTest do
     def_output_pad :output,
       demand_mode: :auto,
       mode: :push,
-      accepted_format: Membrane.RemoteStream
+      accepted_format:
+        any_of(
+          %Membrane.RemoteStream{type: :bytestream},
+          %Membrane.H264.RemoteStream{alignment: alignment} when alignment in [:au, :nalu]
+        )
 
     @impl true
     def handle_init(_ctx, opts) do
@@ -79,8 +83,8 @@ defmodule Membrane.H264.ModesTest do
       stream_format =
         case state.mode do
           :bytestream -> %Membrane.RemoteStream{type: :bytestream}
-          :nalu_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :nalu}
-          :au_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :au}
+          :nalu_aligned -> %Membrane.H264.RemoteStream{alignment: :nalu}
+          :au_aligned -> %Membrane.H264.RemoteStream{alignment: :au}
         end
 
       {[stream_format: {:output, stream_format}], state}

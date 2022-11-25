@@ -12,7 +12,6 @@ defmodule Membrane.H264.Parser.Format do
     height: 720,
     nalu_in_metadata?: true,
     profile: :high,
-    stream_format: :byte_stream,
     width: 1280
   }
 

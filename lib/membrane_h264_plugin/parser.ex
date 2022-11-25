@@ -17,8 +17,8 @@ defmodule Membrane.H264.Parser do
 
   The parser's mode is set automatically, based on the input stream format received by that element:
   * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :nalu}` results in the parser mode being set to `:nalu_aligned`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :au}` results in the parser mode being set to `:au_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :au}` results in the parser mode being set to `:au_aligned`
 
   The distinguishment between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
   for timestamps rewritting:
@@ -43,12 +43,12 @@ defmodule Membrane.H264.Parser do
     accepted_format:
       any_of(
         %RemoteStream{type: :bytestream},
-        %RemoteStream{type: :packetized, content_format: cf} when cf in [:nalu, :au]
+        %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au]
       )
 
   def_output_pad :output,
     demand_mode: :auto,
-    accepted_format: %H264{stream_format: :byte_stream}
+    accepted_format: %H264{alignment: :au, nalu_in_metadata?: true}
 
   def_options sps: [
                 spec: binary(),
@@ -85,8 +85,8 @@ defmodule Membrane.H264.Parser do
     mode =
       case stream_format do
         %RemoteStream{type: :bytestream} -> :bytestream
-        %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
-        %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
+        %H264.RemoteStream{alignment: :nalu} -> :nalu_aligned
+        %H264.RemoteStream{alignment: :au} -> :au_aligned
       end
 
     state = %{state | mode: mode}
