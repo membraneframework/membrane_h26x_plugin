@@ -9,7 +9,7 @@ defmodule Membrane.H264.CapsTest do
   defp make_pipeline(in_path) do
     children = [
       file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
-      parser: H264.Parser,
+      parser: %H264.Parser{mode: :bytestream},
       sink: Membrane.Testing.Sink
     ]
 

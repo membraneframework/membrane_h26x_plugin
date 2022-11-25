@@ -12,8 +12,8 @@ defmodule Membrane.H264.Parser.Caps do
     height: 720,
     nalu_in_metadata?: true,
     profile: :high,
-    stream_format: :byte_stream,
-    width: 1280
+    width: 1280,
+    stream_format: :byte_stream
   }
 
   @profiles_description [

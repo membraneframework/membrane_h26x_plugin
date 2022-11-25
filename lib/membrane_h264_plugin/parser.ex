@@ -17,8 +17,8 @@ defmodule Membrane.H264.Parser do
 
   The parser's mode is set automatically, based on the input caps received by that element:
   * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :nalu}` results in the parser mode being set to `:nalu_aligned`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :au}` results in the parser mode being set to `:au_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :au}` results in the parser mode being set to `:au_aligned`
 
   The distinguishment between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
   for timestamps rewritting:
@@ -42,13 +42,12 @@ defmodule Membrane.H264.Parser do
     demand_mode: :auto,
     caps: [
       {RemoteStream, type: :bytestream},
-      {RemoteStream,
-       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+      {RemoteStream, content_format: Membrane.H264, type: :packetized}
     ]
 
   def_output_pad :output,
     demand_mode: :auto,
-    caps: {H264, stream_format: :byte_stream}
+    caps: {H264, alignment: :au, nalu_in_metadata?: true}
 
   def_options sps: [
                 spec: binary(),
@@ -65,6 +64,12 @@ defmodule Membrane.H264.Parser do
                 Picture Parameter Set NAL unit binary payload - if absent in the stream, should
                 be provided via this option.
                 """
+              ],
+              mode: [
+                spec: :bytestream | :nalu_aligned | :au_aligned,
+                description: """
+                The mode of the parser.
+                """
               ]
 
   @impl true
@@ -73,7 +78,7 @@ defmodule Membrane.H264.Parser do
       nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new(),
-      mode: nil,
+      mode: opts.mode,
       previous_timestamps: {nil, nil}
     }
 
@@ -82,14 +87,6 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_caps(:input, caps, _ctx, state) do
-    mode =
-      case caps do
-        %RemoteStream{type: :bytestream} -> :bytestream
-        %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
-        %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
-      end
-
-    state = %{state | mode: mode}
     {:ok, state}
   end
 

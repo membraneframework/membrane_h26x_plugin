@@ -9,7 +9,7 @@ defmodule Membrane.H264.TranscodingTest do
   defp make_pipeline(in_path, out_path) do
     children = [
       file_src: %Membrane.File.Source{chunk_size: 40_960, location: in_path},
-      parser: H264.Parser,
+      parser: %H264.Parser{mode: :bytestream},
       decoder: H264.FFmpeg.Decoder,
       encoder: %H264.FFmpeg.Encoder{preset: :fast, crf: 30},
       sink: %Membrane.File.Sink{location: out_path}
