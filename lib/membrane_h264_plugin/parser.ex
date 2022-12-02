@@ -43,7 +43,8 @@ defmodule Membrane.H264.Parser do
     caps: [
       {RemoteStream, type: :bytestream},
       {RemoteStream,
-       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])},
+      %RemoteStream{ content_format: H264, type: :packetized }
     ]
 
   def_output_pad :output,
