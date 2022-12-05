@@ -17,8 +17,8 @@ defmodule Membrane.H264.Parser do
 
   The parser's mode is set automatically, based on the input caps received by that element:
   * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :nalu}` results in the parser mode being set to `:nalu_aligned`
-  * Receiving `%Membrane.RemoteStream{type: :packetized, content_format: :au}` results in the parser mode being set to `:au_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
+  * Receiving `%Membrane.H264.RemoteStream{alignment: :au}` results in the parser mode being set to `:au_aligned`
 
   The distinguishment between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
   for timestamps rewritting:
@@ -42,13 +42,12 @@ defmodule Membrane.H264.Parser do
     demand_mode: :auto,
     caps: [
       {RemoteStream, type: :bytestream},
-      {RemoteStream,
-       type: :packetized, content_format: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+      {H264.RemoteStream, alignment: Membrane.Caps.Matcher.one_of([:nalu, :au])}
     ]
 
   def_output_pad :output,
     demand_mode: :auto,
-    caps: {H264, stream_format: :byte_stream}
+    caps: {H264, alignment: :au, nalu_in_metadata?: true}
 
   def_options sps: [
                 spec: binary(),
@@ -85,8 +84,8 @@ defmodule Membrane.H264.Parser do
     mode =
       case caps do
         %RemoteStream{type: :bytestream} -> :bytestream
-        %RemoteStream{type: :packetized, content_format: :nalu} -> :nalu_aligned
-        %RemoteStream{type: :packetized, content_format: :au} -> :au_aligned
+        %H264.RemoteStream{alignment: :nalu} -> :nalu_aligned
+        %H264.RemoteStream{alignment: :au} -> :au_aligned
       end
 
     state = %{state | mode: mode}

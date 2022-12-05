@@ -62,7 +62,10 @@ defmodule Membrane.H264.ModesTest do
     def_output_pad :output,
       demand_mode: :auto,
       mode: :push,
-      caps: Membrane.RemoteStream
+      caps: [
+        {Membrane.RemoteStream, type: :bytestream},
+        {Membrane.H264.RemoteStream, alignment: Membrane.Caps.Matcher.one_of([:nalu, :au])}
+      ]
 
     @impl true
     def handle_init(opts) do
@@ -79,8 +82,8 @@ defmodule Membrane.H264.ModesTest do
       caps =
         case state.mode do
           :bytestream -> %Membrane.RemoteStream{type: :bytestream}
-          :nalu_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :nalu}
-          :au_aligned -> %Membrane.RemoteStream{type: :packetized, content_format: :au}
+          :nalu_aligned -> %Membrane.H264.RemoteStream{alignment: :nalu}
+          :au_aligned -> %Membrane.H264.RemoteStream{alignment: :au}
         end
 
       {{:ok, caps: {:output, caps}}, state}
