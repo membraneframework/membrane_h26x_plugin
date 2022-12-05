@@ -4,10 +4,14 @@ defmodule AUSplitterTest do
   use ExUnit.Case
 
   @test_files_names ["10-720a", "10-720p"]
+
+  # These values were obtained with the use of H264.FFmpeg.Parser, available
+  # in the membrane_h264_ffmpeg_plugin repository.
   @au_lengths_ffmpeg %{
     "10-720a" => [777, 146, 93],
     "10-720p" => [25_699, 19_043, 14_379, 14_281, 14_761, 18_702, 14_735, 13_602, 12_094]
   }
+
   defmodule FullBinaryParser do
     @moduledoc false
     alias Membrane.H264.Parser.{
