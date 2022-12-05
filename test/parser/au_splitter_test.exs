@@ -6,7 +6,7 @@ defmodule AUSplitterTest do
   @test_files_names ["10-720a", "10-720p"]
   @au_lengths_ffmpeg %{
     "10-720a" => [777, 146, 93],
-    "10-720p" => [25699, 19043, 14379, 14281, 14761, 18702, 14735, 13602, 12094]
+    "10-720p" => [25_699, 19_043, 14_379, 14_281, 14_761, 18_702, 14_735, 13_602, 12_094]
   }
   defmodule FullBinaryParser do
     @moduledoc false
