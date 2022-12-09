@@ -41,16 +41,26 @@ defmodule Membrane.H264.Parser.Caps do
   def from_sps(sps_nalu) do
     sps = sps_nalu.parsed_fields
 
+    chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
+    sub_height_c = case sps.chroma_format_idc do
+      1 -> 2
+      2 -> 1
+      3 -> 1
+      _ -> nil
+    end
+
+    crop_unit_y = if chroma_array_type == 0, do: (2 - sps.frame_mbs_only_flag), else: sub_height_c * (2 - sps.frame_mbs_only_flag)
     {width_offset, height_offset} =
       if sps.frame_cropping_flag == 1,
         do:
           {sps.frame_crop_right_offset + sps.frame_crop_left_offset,
-           sps.frame_crop_top_offset * (2 - sps.frame_mbs_only_flag) +
-             sps.frame_crop_bottom_offset * (2 - sps.frame_mbs_only_flag)},
+           (sps.frame_crop_top_offset +
+             sps.frame_crop_bottom_offset) * crop_unit_y},
         else: {0, 0}
 
     width_in_mbs = sps.pic_width_in_mbs_minus1 + 1
     width = width_in_mbs * 16 - width_offset
+
 
     height_in_map_units = sps.pic_height_in_map_units_minus1 + 1
     height_in_mbs = (2 - sps.frame_mbs_only_flag) * height_in_map_units
