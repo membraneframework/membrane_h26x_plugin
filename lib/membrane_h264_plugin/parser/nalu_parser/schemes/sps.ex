@@ -6,6 +6,9 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
   alias Membrane.H264.Parser.NALuParser.Scheme
 
   @impl true
+  def defaults(), do: [chroma_format_idc: 1, separate_colour_plane_flag: 0]
+
+  @impl true
   def scheme(),
     do: [
       field: {:profile_idc, :u8},
