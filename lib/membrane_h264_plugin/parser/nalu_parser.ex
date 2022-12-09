@@ -46,7 +46,7 @@ defmodule Membrane.H264.Parser.NALuParser do
     {parsed_fields, scheme_parser_state} =
       SchemeParser.parse_with_scheme(
         nalu_header,
-        Schemes.NALuHeader.scheme(),
+        Schemes.NALuHeader,
         new_scheme_parser_state
       )
 
@@ -89,16 +89,16 @@ defmodule Membrane.H264.Parser.NALuParser do
   defp parse_proper_nalu_type(payload, state, type) do
     case type do
       :sps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.SPS.scheme(), state)
+        SchemeParser.parse_with_scheme(payload, Schemes.SPS, state)
 
       :pps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.PPS.scheme(), state)
+        SchemeParser.parse_with_scheme(payload, Schemes.PPS, state)
 
       :idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
+        SchemeParser.parse_with_scheme(payload, Schemes.Slice, state)
 
       :non_idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice.scheme(), state)
+        SchemeParser.parse_with_scheme(payload, Schemes.Slice, state)
 
       _unknown_nalu_type ->
         {%{}, state}
