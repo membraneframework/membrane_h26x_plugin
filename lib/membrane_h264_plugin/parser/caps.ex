@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.Caps do
 
   @default_caps %H264{
     alignment: :au,
-    framerate: {30, 1},
+    framerate: {0, 1},
     height: 720,
     nalu_in_metadata?: true,
     profile: :high,
@@ -37,8 +37,11 @@ defmodule Membrane.H264.Parser.Caps do
   During the process, the function determines the profile of
   the h264 stream and the picture resolution.
   """
-  @spec from_sps(sps_nalu :: H264.Parser.NALu.t()) :: H264.t()
-  def from_sps(sps_nalu) do
+  @spec from_sps(
+          sps_nalu :: H264.Parser.NALu.t(),
+          options_fields :: [framerate: {pos_integer(), pos_integer()}]
+        ) :: H264.t()
+  def from_sps(sps_nalu, options_fields) do
     sps = sps_nalu.parsed_fields
 
     chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
@@ -73,7 +76,13 @@ defmodule Membrane.H264.Parser.Caps do
 
     profile = parse_profile(sps_nalu)
 
-    %H264{@default_caps | width: width, height: height, profile: profile}
+    %H264{
+      @default_caps
+      | width: width,
+        height: height,
+        profile: profile,
+        framerate: Keyword.get(options_fields, :framerate)
+    }
   end
 
   defp parse_profile(sps_nalu) do

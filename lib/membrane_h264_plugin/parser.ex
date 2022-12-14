@@ -64,6 +64,15 @@ defmodule Membrane.H264.Parser do
                 Picture Parameter Set NAL unit binary payload - if absent in the stream, should
                 be provided via this option.
                 """
+              ],
+              framerate: [
+                spec: {pos_integer(), pos_integer()},
+                default: {30, 1},
+                description: """
+                Framerate of the video, represented as a tuple consisting of a numerator and the
+                denominator.
+                It's value will be sent inside the output Membrane.H264 caps.
+                """
               ]
 
   @impl true
@@ -73,7 +82,8 @@ defmodule Membrane.H264.Parser do
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new(),
       mode: nil,
-      previous_timestamps: {nil, nil}
+      previous_timestamps: {nil, nil},
+      framerate: opts.framerate
     }
 
     {:ok, state}
@@ -141,7 +151,7 @@ defmodule Membrane.H264.Parser do
         state
       end
 
-    actions = prepare_actions_for_aus(access_units, pts, dts)
+    actions = prepare_actions_for_aus(access_units, pts, dts, state)
 
     state = %{
       state
@@ -179,7 +189,7 @@ defmodule Membrane.H264.Parser do
         :nalu_aligned -> state.previous_timestamps
       end
 
-    actions = prepare_actions_for_aus(maybe_improper_aus, pts, dts)
+    actions = prepare_actions_for_aus(maybe_improper_aus, pts, dts, state)
     actions = if caps_sent?(actions, ctx), do: actions, else: []
 
     state = %{
@@ -197,12 +207,12 @@ defmodule Membrane.H264.Parser do
     {{:ok, end_of_stream: :output}, state}
   end
 
-  defp prepare_actions_for_aus(aus, pts, dts) do
+  defp prepare_actions_for_aus(aus, pts, dts, state) do
     Enum.reduce(aus, [], fn au, acc ->
       sps_actions =
         case Enum.find(au, &(&1.type == :sps)) do
           nil -> []
-          sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu)}]
+          sps_nalu -> [caps: {:output, Caps.from_sps(sps_nalu, framerate: state.framerate)}]
         end
 
       acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}]
