@@ -77,14 +77,18 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
   Returns the remaining bitstring and the stated updated
   with the information fetched from the NALu.
   """
-  @spec parse_with_scheme(binary(), Scheme.t(), t(), list(integer())) ::
+  @spec parse_with_scheme(binary(), module(), t(), list(integer())) ::
           {map(), t()}
   def parse_with_scheme(
         payload,
-        scheme,
+        scheme_module,
         state \\ new(),
         iterators \\ []
       ) do
+    scheme = scheme_module.scheme()
+    defaults_map = Map.new(scheme_module.defaults())
+    state = Map.update!(state, :__local__, &Map.merge(defaults_map, &1))
+
     {_remaining_payload, state} = do_parse_with_scheme(payload, scheme, state, iterators)
     {get_local_state(state), state}
   end
