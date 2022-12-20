@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.Caps do
 
   @default_caps %H264{
     alignment: :au,
-    framerate: {0, 1},
+    framerate: nil,
     height: 720,
     nalu_in_metadata?: true,
     profile: :high,
