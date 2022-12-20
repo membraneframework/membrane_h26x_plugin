@@ -68,7 +68,7 @@ defmodule Membrane.H264.CapsTest do
       perform_test("100-240p-no-b-frames", 100)
     end
 
-    test "read the proper caps for: 10 320x180 frames (where the cropping is used to descripe the resolution)" do
+    test "read the proper caps for: 10 320x180 frames (where the cropping is used to describe the resolution)" do
       perform_test("10-320x180", 100)
     end
   end
