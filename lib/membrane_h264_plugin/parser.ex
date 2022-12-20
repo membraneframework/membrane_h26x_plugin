@@ -66,8 +66,8 @@ defmodule Membrane.H264.Parser do
                 """
               ],
               framerate: [
-                spec: {pos_integer(), pos_integer()},
-                default: {30, 1},
+                spec: {pos_integer(), pos_integer()} | nil,
+                default: nil,
                 description: """
                 Framerate of the video, represented as a tuple consisting of a numerator and the
                 denominator.

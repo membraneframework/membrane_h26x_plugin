@@ -17,24 +17,23 @@ defmodule Membrane.H264.CapsTest do
   end
 
   @video_parameters %{
-    "10-720p" => {:high, 1280, 720, {30, 1}},
-    "100-240p" => {:high, 320, 240, {30, 1}},
-    "20-360p-I422" => {:high_4_2_2, 480, 360, {30, 1}},
-    "10-720p-main" => {:main, 1280, 720, {30, 1}},
-    "10-720p-no-b-frames" => {:high, 1280, 720, {30, 1}},
-    "100-240p-no-b-frames" => {:high, 320, 240, {30, 1}}
+    "10-720p" => {:high, 1280, 720},
+    "100-240p" => {:high, 320, 240},
+    "20-360p-I422" => {:high_4_2_2, 480, 360},
+    "10-720p-main" => {:main, 1280, 720},
+    "10-720p-no-b-frames" => {:high, 1280, 720},
+    "100-240p-no-b-frames" => {:high, 320, 240}
   }
 
   defp perform_test(filename, timeout) do
     in_path = Path.expand("../fixtures/input-#{filename}.h264", __DIR__)
     assert {:ok, pid} = make_pipeline(in_path)
-    {profile, width, height, framerate} = @video_parameters[filename]
+    {profile, width, height} = @video_parameters[filename]
 
     assert_sink_caps(pid, :sink, %H264{
       profile: ^profile,
       width: ^width,
-      height: ^height,
-      framerate: ^framerate
+      height: ^height
     })
 
     assert_pipeline_playback_changed(pid, :prepared, :playing)
