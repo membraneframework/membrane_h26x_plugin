@@ -1,12 +1,12 @@
-defmodule Membrane.H264.Parser.Caps do
+defmodule Membrane.H264.Parser.Format do
   @moduledoc """
   Module providing functionalities for preparing H264
-  caps based on the parsed SPS NAL units.
+  format based on the parsed SPS NAL units.
   """
 
   alias Membrane.H264
 
-  @default_caps %H264{
+  @default_format %H264{
     alignment: :au,
     framerate: nil,
     height: 720,
@@ -33,7 +33,7 @@ defmodule Membrane.H264.Parser.Caps do
   ]
 
   @doc """
-  Prepares the `Membrane.H264.t()` caps based on the parsed SPS NALu.
+  Prepares the `Membrane.H264.t()` format based on the parsed SPS NALu.
   During the process, the function determines the profile of
   the h264 stream and the picture resolution.
   """
@@ -77,7 +77,7 @@ defmodule Membrane.H264.Parser.Caps do
     profile = parse_profile(sps_nalu)
 
     %H264{
-      @default_caps
+      @default_format
       | width: width,
         height: height,
         profile: profile,
