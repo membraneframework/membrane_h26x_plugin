@@ -39,7 +39,7 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
                   {fn chroma_format_idc -> if chroma_format_idc != 3, do: 8, else: 12 end,
                    [:chroma_format_idc]}
               ],
-              field: {:seq_scaling_list_present, :u1},
+              field: {:seq_scaling_list_present_flag, :u1},
               if:
                 {{&(&1 == 1), [:seq_scaling_list_present_flag]},
                  if:

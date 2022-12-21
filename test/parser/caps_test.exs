@@ -22,14 +22,21 @@ defmodule Membrane.H264.CapsTest do
     "20-360p-I422" => {:high_4_2_2, 480, 360},
     "10-720p-main" => {:main, 1280, 720},
     "10-720p-no-b-frames" => {:high, 1280, 720},
-    "100-240p-no-b-frames" => {:high, 320, 240}
+    "100-240p-no-b-frames" => {:high, 320, 240},
+    "10-320x180" => {:high, 320, 180}
   }
 
   defp perform_test(filename, timeout) do
     in_path = Path.expand("../fixtures/input-#{filename}.h264", __DIR__)
     assert {:ok, pid} = make_pipeline(in_path)
     {profile, width, height} = @video_parameters[filename]
-    assert_sink_caps(pid, :sink, %H264{profile: ^profile, width: ^width, height: ^height})
+
+    assert_sink_caps(pid, :sink, %H264{
+      profile: ^profile,
+      width: ^width,
+      height: ^height
+    })
+
     assert_pipeline_playback_changed(pid, :prepared, :playing)
     assert_end_of_stream(pid, :sink, :input, timeout)
 
@@ -59,6 +66,10 @@ defmodule Membrane.H264.CapsTest do
 
     test "read the proper caps for: 100 240p frames with no b frames" do
       perform_test("100-240p-no-b-frames", 100)
+    end
+
+    test "read the proper caps for: 10 320x180 frames (where the cropping is used to describe the resolution)" do
+      perform_test("10-320x180", 100)
     end
   end
 end
