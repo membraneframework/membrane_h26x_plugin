@@ -6,6 +6,9 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
   alias Membrane.H264.Parser.NALuParser.Scheme
 
   @impl true
+  def defaults(), do: [chroma_format_idc: 1, separate_colour_plane_flag: 0]
+
+  @impl true
   def scheme(),
     do: [
       field: {:profile_idc, :u8},
@@ -36,7 +39,7 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
                   {fn chroma_format_idc -> if chroma_format_idc != 3, do: 8, else: 12 end,
                    [:chroma_format_idc]}
               ],
-              field: {:seq_scaling_list_present, :u1},
+              field: {:seq_scaling_list_present_flag, :u1},
               if:
                 {{&(&1 == 1), [:seq_scaling_list_present_flag]},
                  if:

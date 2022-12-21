@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.Format do
 
   @default_format %H264{
     alignment: :au,
-    framerate: {30, 1},
+    framerate: nil,
     height: 720,
     nalu_in_metadata?: true,
     profile: :high,
@@ -37,16 +37,34 @@ defmodule Membrane.H264.Parser.Format do
   During the process, the function determines the profile of
   the h264 stream and the picture resolution.
   """
-  @spec from_sps(sps_nalu :: H264.Parser.NALu.t()) :: H264.t()
-  def from_sps(sps_nalu) do
+  @spec from_sps(
+          sps_nalu :: H264.Parser.NALu.t(),
+          options_fields :: [framerate: {pos_integer(), pos_integer()}]
+        ) :: H264.t()
+  def from_sps(sps_nalu, options_fields) do
     sps = sps_nalu.parsed_fields
+
+    chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
+
+    {sub_width_c, sub_height_c} =
+      case sps.chroma_format_idc do
+        1 -> {2, 2}
+        2 -> {2, 1}
+        3 -> {1, 1}
+        _other -> {nil, nil}
+      end
+
+    {crop_unit_x, crop_unit_y} =
+      if chroma_array_type == 0,
+        do: {1, 2 - sps.frame_mbs_only_flag},
+        else: {sub_width_c, sub_height_c * (2 - sps.frame_mbs_only_flag)}
 
     {width_offset, height_offset} =
       if sps.frame_cropping_flag == 1,
         do:
-          {sps.frame_crop_right_offset + sps.frame_crop_left_offset,
-           sps.frame_crop_top_offset * (2 - sps.frame_mbs_only_flag) +
-             sps.frame_crop_bottom_offset * (2 - sps.frame_mbs_only_flag)},
+          {(sps.frame_crop_right_offset + sps.frame_crop_left_offset) * crop_unit_x,
+           (sps.frame_crop_top_offset +
+              sps.frame_crop_bottom_offset) * crop_unit_y},
         else: {0, 0}
 
     width_in_mbs = sps.pic_width_in_mbs_minus1 + 1
@@ -58,7 +76,13 @@ defmodule Membrane.H264.Parser.Format do
 
     profile = parse_profile(sps_nalu)
 
-    %H264{@default_format | width: width, height: height, profile: profile}
+    %H264{
+      @default_format
+      | width: width,
+        height: height,
+        profile: profile,
+        framerate: Keyword.get(options_fields, :framerate)
+    }
   end
 
   defp parse_profile(sps_nalu) do

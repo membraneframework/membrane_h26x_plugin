@@ -3,9 +3,15 @@ defmodule AUSplitterTest do
 
   use ExUnit.Case
 
-  alias Membrane.H264.FFmpeg.Parser.Native, as: NativeParser
-
   @test_files_names ["10-720a", "10-720p"]
+
+  # These values were obtained with the use of H264.FFmpeg.Parser, available
+  # in the membrane_h264_ffmpeg_plugin repository.
+  @au_lengths_ffmpeg %{
+    "10-720a" => [777, 146, 93],
+    "10-720p" => [25_699, 19_043, 14_379, 14_281, 14_761, 18_702, 14_735, 13_602, 12_094]
+  }
+
   defmodule FullBinaryParser do
     @moduledoc false
     alias Membrane.H264.Parser.{
@@ -33,10 +39,9 @@ defmodule AUSplitterTest do
   end
 
   test "if the access unit lenghts parsed by access unit splitter are the same as access units lengths parsed by FFMPEG" do
-    file_names = Enum.map(@test_files_names, fn name -> "test/fixtures/input-#{name}.h264" end)
-
-    for file_name <- file_names do
-      binary = File.read!(file_name)
+    for name <- @test_files_names do
+      full_name = "test/fixtures/input-#{name}.h264"
+      binary = File.read!(full_name)
 
       aus = FullBinaryParser.parse(binary)
 
@@ -47,12 +52,7 @@ defmodule AUSplitterTest do
                 byte_size(payload) + acc
               end)
 
-      {:ok, decoder_ref} = NativeParser.create()
-
-      {:ok, au_lengths_ffmpeg, _decoding_order_numbers, _presentation_order_numbers, _changes} =
-        NativeParser.parse(binary, decoder_ref)
-
-      assert au_lengths == au_lengths_ffmpeg
+      assert au_lengths == @au_lengths_ffmpeg[name]
     end
   end
 end
