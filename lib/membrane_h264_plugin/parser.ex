@@ -96,7 +96,7 @@ defmodule Membrane.H264.Parser do
   end
 
   @impl true
-  def handle_caps(:input, caps, _ctx, state) do
+  def handle_caps(:input, _caps, _ctx, state) do
     {:ok, state}
   end
 
