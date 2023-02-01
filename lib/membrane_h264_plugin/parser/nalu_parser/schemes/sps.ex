@@ -41,14 +41,16 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
               ],
               field: {:seq_scaling_list_present_flag, :u1},
               if:
-                {{&(&1 == 1), [:seq_scaling_list_present_flag]},
+                {{fn seq_scaling_list_present_flag, i ->
+                    seq_scaling_list_present_flag[i] == 1
+                  end, [:seq_scaling_list_present_flag, :i]},
                  if:
-                   {{&(&1 < 6), [:i]},
+                   {{&(&1 <= 6), [:i]},
                     execute: fn payload, state, iterators ->
                       scaling_list(payload, state, iterators, 16)
                     end},
                  if:
-                   {{&(&1 >= 6), [:i]},
+                   {{&(&1 > 6), [:i]},
                     execute: fn payload, state, iterators ->
                       scaling_list(payload, state, iterators, 64)
                     end}}
@@ -167,15 +169,14 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
     last_scale = 8
     next_scale = 8
 
-    {payload, state, _last_scale} =
+    {payload, state, _last_scale, _next_scale} =
       1..size_of_scaling_list
       |> Enum.reduce({payload, state, last_scale, next_scale}, fn _j,
-                                                                  {payload, state, _last_scale,
+                                                                  {payload, state, last_scale,
                                                                    next_scale} ->
         {payload, next_scale} =
           if next_scale != 0 do
             {delta_scale, payload} = ExpGolombConverter.to_integer(payload, negatives: true)
-
             next_scale = rem(last_scale + delta_scale + 256, 256)
             {payload, next_scale}
           else
