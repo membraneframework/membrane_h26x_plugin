@@ -204,7 +204,14 @@ defmodule Membrane.H264.Parser do
          cnt + 1, profile}
       end)
 
-    state = maybe_update_state(buffer_pts, buffer_dts, au_counter, profile, state)
+    state = %{state | profile: profile, au_counter: au_counter}
+
+    state =
+      if state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} do
+        %{state | previous_timestamps: {buffer_pts, buffer_dts}}
+      else
+        state
+      end
 
     {actions, state}
   end
@@ -220,38 +227,36 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, profile, order_number)
+  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, profile, frame_order_number)
        when state.mode == :bytestream do
     cond do
       state.framerate == nil or profile == nil ->
         {nil, nil}
 
       h264_profile_tsgen_supported?(profile) ->
-        calculate_timestamps(state.framerate, order_number, order_number)
+        generate_ts_with_constant_framerate(
+          state.framerate,
+          frame_order_number,
+          frame_order_number
+        )
 
       true ->
         raise("Timestamp generation for H264 profile `#{inspect(profile)}` is unsupported")
     end
   end
 
-  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, _profile, _order_number)
+  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _frame_order_number)
        when state.mode == :nalu_aligned do
-    state.previous_timestamps
+    if state.previous_timestamps == {nil, nil} do
+      {buffer_pts, buffer_dts}
+    else
+      state.previous_timestamps
+    end
   end
 
-  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _order_number)
+  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _frame_order_number)
        when state.mode == :au_aligned do
     {buffer_pts, buffer_dts}
-  end
-
-  defp maybe_update_state(buffer_pts, buffer_dts, au_counter, profile, state) do
-    state = %{state | profile: profile, au_counter: au_counter}
-
-    if state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} do
-      %{state | previous_timestamps: {buffer_pts, buffer_dts}}
-    else
-      state
-    end
   end
 
   defp wrap_into_buffer(access_unit, pts, dts) do
@@ -316,7 +321,7 @@ defmodule Membrane.H264.Parser do
   defp h264_profile_tsgen_supported?(profile),
     do: profile in [:baseline, :constrained_baseline]
 
-  defp calculate_timestamps(
+  defp generate_ts_with_constant_framerate(
          {frames, seconds} = _framerate,
          presentation_order_number,
          decoding_order_number
