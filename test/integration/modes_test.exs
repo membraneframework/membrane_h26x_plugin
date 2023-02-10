@@ -7,7 +7,7 @@ defmodule Membrane.H264.ModesTest do
   alias Membrane.Buffer
   alias Membrane.H264.Parser
   alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
-  alias Membrane.H264.TestSource
+  alias Membrane.H264.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
   @h264_input_file "test/fixtures/input-10-720p.h264"

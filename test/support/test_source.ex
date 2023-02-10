@@ -1,4 +1,4 @@
-defmodule Membrane.H264.TestSource do
+defmodule Membrane.H264.Support.TestSource do
   @moduledoc false
 
   use Membrane.Source

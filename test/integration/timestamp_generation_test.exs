@@ -9,7 +9,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
   alias Membrane.Buffer
   alias Membrane.H264.Parser
   alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
-  alias Membrane.H264.TestSource
+  alias Membrane.H264.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
   defmodule EnhancedPipeline do

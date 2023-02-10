@@ -24,8 +24,8 @@ defmodule Membrane.H264.Parser do
   for rewriting of timestamps:
   * in the `:bytestream` mode:
     * if option `:framerate` is set to nil, the output buffers have their `:pts` and `:dts` set to nil
-    * if framerate is specified, `:pts` and `:dts` will be generated automatically
-     This may only be used with h264 profiles `:baseline` and `:constrained_baseline`.
+    * if framerate is specified, `:pts` and `:dts` will be generated automatically, based on that framerate, starting from 0
+     This may only be used with h264 profiles `:baseline` and `:constrained_baseline`, where `PTS==DTS`.
   * in the `:nalu_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the
    input buffer that was holding the first NAL unit making up given access unit (that is being sent inside that output buffer).
   * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
@@ -88,7 +88,8 @@ defmodule Membrane.H264.Parser do
       mode: nil,
       profile: nil,
       previous_timestamps: {nil, nil},
-      framerate: opts.framerate
+      framerate: opts.framerate,
+      au_counter: 0
     }
 
     {[], state}
@@ -142,7 +143,7 @@ defmodule Membrane.H264.Parser do
         {access_units, au_splitter}
       end
 
-    {actions, state} = prepare_actions_for_aus(access_units, buffer.pts, buffer.dts, state)
+    {actions, state} = prepare_actions_for_aus(access_units, state, buffer.pts, buffer.dts)
 
     state = %{
       state
@@ -192,36 +193,18 @@ defmodule Membrane.H264.Parser do
     {[end_of_stream: :output], state}
   end
 
-  defp prepare_actions_for_aus(aus, state) do
-    prepare_actions_for_aus(aus, nil, nil, state)
-  end
-
-  defp prepare_actions_for_aus(aus, buffer_pts, buffer_dts, state) do
-    {pts, dts} =
-      case state.mode do
-        :bytestream ->
-          if state.previous_timestamps == {nil, nil},
-            do: {-1, -1},
-            else: state.previous_timestamps
-
-        :nalu_aligned ->
-          state.previous_timestamps
-
-        :au_aligned ->
-          {buffer_pts, buffer_dts}
-      end
-
-    {actions, au_count, profile} =
-      Enum.reduce(aus, {[], 0, state.profile}, fn au, {acc, cnt, profile} ->
+  defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
+    {actions, au_counter, profile} =
+      Enum.reduce(aus, {[], state.au_counter, state.profile}, fn au,
+                                                                 {actions_acc, cnt, profile} ->
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
-        {pts, dts} = maybe_generate_timestamps(pts, dts, state, profile, cnt)
+        {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
-        {acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}], cnt + 1,
-         profile}
+        {actions_acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}],
+         cnt + 1, profile}
       end)
 
-    state =
-      maybe_update_state(buffer_pts, buffer_dts, pts, dts, au_count, %{state | profile: profile})
+    state = maybe_update_state(buffer_pts, buffer_dts, au_counter, profile, state)
 
     {actions, state}
   end
@@ -237,45 +220,37 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp maybe_generate_timestamps(pts, dts, state, _profile, _order_number)
-       when state.mode != :bytestream do
-    {pts, dts}
-  end
-
-  defp maybe_generate_timestamps(
-         presentation_order_number,
-         decoding_order_number,
-         state,
-         profile,
-         offset
-       ) do
+  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, profile, order_number)
+       when state.mode == :bytestream do
     cond do
       state.framerate == nil or profile == nil ->
         {nil, nil}
 
       h264_profile_tsgen_supported?(profile) ->
-        generate_timestamps(
-          state.framerate,
-          presentation_order_number + offset + 1,
-          decoding_order_number + offset + 1
-        )
+        calculate_timestamps(state.framerate, order_number, order_number)
 
       true ->
         raise("Timestamp generation for H264 profile `#{inspect(profile)}` is unsupported")
     end
   end
 
-  defp maybe_update_state(buffer_pts, buffer_dts, pts, dts, au_count, state) do
-    cond do
-      state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} ->
-        %{state | previous_timestamps: {buffer_pts, buffer_dts}}
+  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, _profile, _order_number)
+       when state.mode == :nalu_aligned do
+    state.previous_timestamps
+  end
 
-      state.mode == :bytestream and state.framerate != nil and state.profile != nil and
-          au_count > 0 ->
-        %{state | previous_timestamps: {pts + au_count, dts + au_count}}
+  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _order_number)
+       when state.mode == :au_aligned do
+    {buffer_pts, buffer_dts}
+  end
 
-      true ->
-        state
+  defp maybe_update_state(buffer_pts, buffer_dts, au_counter, profile, state) do
+    state = %{state | profile: profile, au_counter: au_counter}
+
+    if state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} do
+      %{state | previous_timestamps: {buffer_pts, buffer_dts}}
+    else
+      state
     end
   end
 
@@ -341,7 +316,7 @@ defmodule Membrane.H264.Parser do
   defp h264_profile_tsgen_supported?(profile),
     do: profile in [:baseline, :constrained_baseline]
 
-  defp generate_timestamps(
+  defp calculate_timestamps(
          {frames, seconds} = _framerate,
          presentation_order_number,
          decoding_order_number
