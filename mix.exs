@@ -66,7 +66,7 @@ defmodule Membrane.H264.TODO.Mixfile do
       licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @github_url,
-        "Membrane Framework Homepage" => "https://membraneframework.org"
+        "Membrane Framework Homepage" => "https://membrane.stream"
       }
     ]
   end
