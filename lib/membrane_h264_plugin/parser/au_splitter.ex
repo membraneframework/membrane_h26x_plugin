@@ -26,13 +26,17 @@ defmodule Membrane.H264.Parser.AUSplitter do
             nalus_acc: [NALu.t()],
             fsm_state: :first | :second,
             previous_primary_coded_picture_nalu: NALu.t() | nil,
-            access_units_to_output: access_unit_t()
+            access_units_to_output: access_unit_t(),
+            prevPicOrderCntMsb: integer(),
+            pocs: list(integer())
           }
   @enforce_keys [
     :nalus_acc,
     :fsm_state,
     :previous_primary_coded_picture_nalu,
-    :access_units_to_output
+    :access_units_to_output,
+    :prevPicOrderCntMsb,
+    :pocs
   ]
   defstruct @enforce_keys
 
@@ -46,7 +50,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
       nalus_acc: [],
       fsm_state: :first,
       previous_primary_coded_picture_nalu: nil,
-      access_units_to_output: []
+      access_units_to_output: [],
+      prevPicOrderCntMsb: 0,
+      pocs: []
     }
   end
 
@@ -81,13 +87,16 @@ defmodule Membrane.H264.Parser.AUSplitter do
   def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
     cond do
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
+        {poc, state} = calculate_poc(first_nalu, state.previous_primary_coded_picture_nalu, state)
+
         split(
           rest_nalus,
           %__MODULE__{
             state
             | nalus_acc: state.nalus_acc ++ [first_nalu],
               fsm_state: :second,
-              previous_primary_coded_picture_nalu: first_nalu
+              previous_primary_coded_picture_nalu: first_nalu,
+              pocs: state.pocs ++ [poc]
           }
         )
 
@@ -126,6 +135,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
+        {poc, state} = calculate_poc(first_nalu, state.previous_primary_coded_picture_nalu, state)
+
         split(
           rest_nalus,
           %__MODULE__{
@@ -224,4 +235,82 @@ defmodule Membrane.H264.Parser.AUSplitter do
   end
 
   defp is_new_primary_coded_vcl_nalu(_nalu, _last_nalu), do: false
+
+  defp calculate_poc(vcl_nalu, previous_vcl_nalu, state) do
+    case vcl_nalu.parsed_fields.pic_order_cnt_type do
+      0 ->
+        maxPicOrderCntLsb =
+          :math.pow(2, vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4) |> round()
+
+        slice_type = get_slice_type(vcl_nalu)
+
+        {prevPicOrderCntMsb, prevPicOrderCntLsb} =
+          if vcl_nalu.type == :idr do
+            {0, 0}
+          else
+            {state.prevPicOrderCntMsb, previous_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
+          end
+
+        pic_order_cnt_lsb = vcl_nalu.parsed_fields.pic_order_cnt_lsb
+
+        picOrderCntMsb =
+          cond do
+            pic_order_cnt_lsb < prevPicOrderCntLsb and
+                prevPicOrderCntLsb - pic_order_cnt_lsb >= maxPicOrderCntLsb / 2 ->
+              prevPicOrderCntMsb + maxPicOrderCntLsb
+
+            pic_order_cnt_lsb > prevPicOrderCntLsb &&
+                pic_order_cnt_lsb - prevPicOrderCntLsb > maxPicOrderCntLsb / 2 ->
+              prevPicOrderCntMsb - maxPicOrderCntLsb
+
+            true ->
+              prevPicOrderCntMsb
+          end
+
+        topFieldOrderCnt =
+          if slice_type != :bottom_field do
+            picOrderCntMsb + pic_order_cnt_lsb
+          end
+
+        bottomFieldOrderCnt =
+          if slice_type == :bottom_field do
+            topFieldOrderCnt + vcl_nalu.parsed_fields.delta_pic_order_cnt_bottom
+          else
+            if slice_type == :frame do
+              picOrderCntMsb + pic_order_cnt_lsb
+            end
+          end
+
+        picOrderCnt =
+          case slice_type do
+            :frame -> min(topFieldOrderCnt, bottomFieldOrderCnt)
+            :top_field -> topFieldOrderCnt
+            :bottom_field -> bottomFieldOrderCnt
+          end
+
+        {picOrderCnt, %{state | prevPicOrderCntMsb: picOrderCntMsb}}
+
+      1 ->
+        raise "not yet supported"
+
+      2 ->
+        {vcl_nalu.parsed_fields.frame_num, state}
+    end
+  end
+
+  defp get_slice_type(vcl_nalu) do
+    if vcl_nalu.parsed_fields.frame_mbs_only_flag do
+      :frame
+    else
+      if vcl_nalu.parsed_fields.field_pic_flag do
+        if vcl_nalu.parsed_fields.bottom_field_flag do
+          :bottom_field
+        else
+          :top_field
+        end
+      else
+        :frame
+      end
+    end
+  end
 end
