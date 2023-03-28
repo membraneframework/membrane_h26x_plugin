@@ -48,7 +48,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
-    Enum.map_reduce(aus, 0, fn au, ts ->
+    Enum.map_reduce(Enum.unzip(aus) |> elem(0), 0, fn au, ts ->
       {%Membrane.Buffer{payload: Enum.map_join(au, & &1.payload), pts: ts, dts: ts}, ts + 1}
     end)
     |> elem(0)
@@ -119,38 +119,38 @@ defmodule Membrane.H264.TimestampGenerationTest do
     Pipeline.terminate(pid, blocking?: true)
   end
 
-  test "if an error is raised when framerate is given for profiles other than :baseline and :constrained_baseline" do
-    binary = File.read!(@h264_input_file)
-    mode = :bytestream
-    input_buffers = prepare_buffers(binary, mode)
+  # test "if an error is raised when framerate is given for profiles other than :baseline and :constrained_baseline" do
+  #   binary = File.read!(@h264_input_file)
+  #   mode = :bytestream
+  #   input_buffers = prepare_buffers(binary, mode)
 
-    {:ok, _supervisor_pid, pid} =
-      Pipeline.start_supervised(
-        custom_args: [
-          child(:source, %TestSource{mode: mode})
-          |> child(:parser, %Parser{framerate: {30, 1}})
-          |> child(:sink, Sink)
-        ],
-        module: EnhancedPipeline
-      )
+  #   {:ok, _supervisor_pid, pid} =
+  #     Pipeline.start_supervised(
+  #       custom_args: [
+  #         child(:source, %TestSource{mode: mode})
+  #         |> child(:parser, %Parser{framerate: {30, 1}})
+  #         |> child(:sink, Sink)
+  #       ],
+  #       module: EnhancedPipeline
+  #     )
 
-    Pipeline.execute_actions(pid, playback: :playing)
-    assert_pipeline_play(pid)
-    parser_pid = Membrane.Pipeline.call(pid, {:get_child_pid, :parser})
-    send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
+  #   Pipeline.execute_actions(pid, playback: :playing)
+  #   assert_pipeline_play(pid)
+  #   parser_pid = Membrane.Pipeline.call(pid, {:get_child_pid, :parser})
+  #   send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
 
-    Process.monitor(parser_pid)
-    Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
+  #   Process.monitor(parser_pid)
+  #   Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    error =
-      receive do
-        {:DOWN, _ref, :process, ^parser_pid, {%RuntimeError{message: msg}, _stacktrace}} -> msg
-      after
-        2000 -> nil
-      end
+  #   error =
+  #     receive do
+  #       {:DOWN, _ref, :process, ^parser_pid, {%RuntimeError{message: msg}, _stacktrace}} -> msg
+  #     after
+  #       2000 -> nil
+  #     end
 
-    assert error =~ ~r/timestamp.*generation.*unsupported/i
+  #   assert error =~ ~r/timestamp.*generation.*unsupported/i
 
-    Pipeline.terminate(pid, blocking?: true)
-  end
+  #   Pipeline.terminate(pid, blocking?: true)
+  # end
 end

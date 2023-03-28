@@ -30,7 +30,7 @@ defmodule Membrane.H264.ModesTest do
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
-    Enum.map_reduce(aus, 0, fn au, ts ->
+    Enum.map_reduce(Enum.unzip(aus) |> elem(0), 0, fn au, ts ->
       {for(nalu <- au, do: %Membrane.Buffer{payload: nalu.payload, pts: ts, dts: ts}), ts + 1}
     end)
     |> elem(0)
@@ -49,7 +49,7 @@ defmodule Membrane.H264.ModesTest do
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
-    Enum.map_reduce(aus, 0, fn au, ts ->
+    Enum.map_reduce(Enum.unzip(aus) |> elem(0), 0, fn au, ts ->
       {%Membrane.Buffer{payload: Enum.map_join(au, & &1.payload), pts: ts, dts: ts}, ts + 1}
     end)
     |> elem(0)
