@@ -81,7 +81,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
-  @spec split(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
+  @spec split(list(NALu.t()), t()) :: {list({access_unit_t(), integer()}), t()}
   def split(nalus, state)
 
   def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
@@ -143,7 +143,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
             state
             | nalus_acc: [first_nalu],
               previous_primary_coded_picture_nalu: first_nalu,
-              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc],
+              pocs: state.pocs ++ [poc]
           }
         )
 
@@ -164,8 +165,13 @@ defmodule Membrane.H264.Parser.AUSplitter do
   end
 
   defp return(state) do
-    {state.access_units_to_output |> Enum.filter(&(&1 != [])),
-     %__MODULE__{state | access_units_to_output: []}}
+    new_pocs =
+      if length(state.access_units_to_output) == length(state.pocs),
+        do: [],
+        else: [Enum.at(state.pocs, -1)]
+
+    {Enum.zip(state.access_units_to_output, state.pocs) |> Enum.filter(&(&1 |> elem(0) != [])),
+     %__MODULE__{state | access_units_to_output: [], pocs: new_pocs}}
   end
 
   @doc """
@@ -175,9 +181,13 @@ defmodule Membrane.H264.Parser.AUSplitter do
   These NAL units aren't proved to form a new access units and that is why they haven't yet been
   output by `Membrane.H264.Parser.AUSplitter.split/2`.
   """
-  @spec flush(t()) :: {list(NALu.t()), t()}
+  @spec flush(t()) :: {{list(NALu.t()), integer()}, t()}
   def flush(state) do
-    {state.nalus_acc, %{state | nalus_acc: []}}
+    if length(state.pocs) != 1,
+      do: raise("Improper pocs length #{length(state.pocs)} #{inspect(state.nalus_acc)}")
+
+    poc = state.pocs |> Enum.at(0)
+    {{state.nalus_acc, poc}, %{state | nalus_acc: [], pocs: []}}
   end
 
   defguardp frame_num_differs(a, b) when a.frame_num != b.frame_num
