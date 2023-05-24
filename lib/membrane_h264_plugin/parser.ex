@@ -89,7 +89,8 @@ defmodule Membrane.H264.Parser do
       profile: nil,
       previous_timestamps: {nil, nil},
       framerate: opts.framerate,
-      au_counter: 0
+      au_counter: 0,
+      frame_prefix: <<>>
     }
 
     {[], state}
@@ -97,20 +98,42 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_stream_format(:input, stream_format, _ctx, state) do
-    mode =
+    state =
       case stream_format do
-        %RemoteStream{type: :bytestream} -> :bytestream
-        %H264.RemoteStream{alignment: :nalu} -> :nalu_aligned
-        %H264.RemoteStream{alignment: :au} -> :au_aligned
+        %RemoteStream{type: :bytestream} ->
+          %{state | mode: :bytestream}
+
+        %H264.RemoteStream{alignment: alignment, decoder_configuration_record: dcr} ->
+          mode =
+            case alignment do
+              :nalu -> :nalu_aligned
+              :au -> :au_aligned
+            end
+
+          frame_prefix =
+            if dcr do
+              {:ok, %{sps: sps, pps: pps}} = __MODULE__.DecoderConfigurationRecord.parse(dcr)
+
+              Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
+            else
+              <<>>
+            end
+
+          %{state | mode: mode, frame_prefix: frame_prefix}
       end
 
-    state = %{state | mode: mode}
     {[], state}
   end
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
+    {payload, state} =
+      case state.frame_prefix do
+        <<>> -> {buffer.payload, state}
+        prefix -> {prefix <> buffer.payload, %{state | frame_prefix: <<>>}}
+      end
+
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
 
     {nalus_payloads_list, nalu_splitter} =
       if state.mode != :bytestream do
