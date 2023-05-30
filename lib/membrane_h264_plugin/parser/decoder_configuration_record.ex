@@ -1,6 +1,8 @@
 defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   @moduledoc """
-  Utility functions for parsing AVC Configuration Record
+  Utility functions for parsing AVC Configuration Record.
+
+  The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
   """
   @enforce_keys [
     :sps,
@@ -8,23 +10,27 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
     :avc_profile_indication,
     :avc_level,
     :profile_compatibility,
-    :length_size
+    :length_size_minus_one
   ]
   defstruct @enforce_keys
 
+  @typedoc "Structure representing the Decoder Configuartion Record"
   @type t() :: %__MODULE__{
           sps: [binary()],
           pps: [binary()],
           avc_profile_indication: non_neg_integer(),
           profile_compatibility: non_neg_integer(),
           avc_level: non_neg_integer(),
-          length_size: non_neg_integer()
+          length_size_minus_one: non_neg_integer()
         }
 
+  @doc """
+  Parses the DCR.
+  """
   @spec parse(binary()) :: {:ok, t()} | {:error, any()}
   def parse(
         <<1::8, avc_profile_indication::8, profile_compatibility::8, avc_level::8, 0b111111::6,
-          length_size::2, 0b111::3, rest::bitstring>>
+          length_size_minus_one::2, 0b111::3, rest::bitstring>>
       ) do
     {sps, rest} = parse_sps(rest)
     {pps, _rest} = parse_pps(rest)
@@ -35,7 +41,7 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
       avc_profile_indication: avc_profile_indication,
       profile_compatibility: profile_compatibility,
       avc_level: avc_level,
-      length_size: length_size
+      length_size_minus_one: length_size_minus_one
     }
     |> then(&{:ok, &1})
   end

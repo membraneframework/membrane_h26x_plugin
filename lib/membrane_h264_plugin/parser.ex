@@ -40,6 +40,8 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.H264.Parser.{AUSplitter, Format, NALuParser, NALuSplitter}
 
+  alias __MODULE__.DecoderConfigurationRecord
+
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -90,7 +92,8 @@ defmodule Membrane.H264.Parser do
       previous_timestamps: {nil, nil},
       framerate: opts.framerate,
       au_counter: 0,
-      frame_prefix: <<>>
+      frame_prefix: <<>>,
+      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0
     }
 
     {[], state}
@@ -112,7 +115,11 @@ defmodule Membrane.H264.Parser do
 
           frame_prefix =
             if dcr do
-              {:ok, %{sps: sps, pps: pps}} = __MODULE__.DecoderConfigurationRecord.parse(dcr)
+              if state.parameter_sets_present? do
+                raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
+              end
+
+              {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
 
               Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
             else
