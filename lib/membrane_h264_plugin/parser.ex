@@ -40,6 +40,8 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.H264.Parser.{AUSplitter, Format, NALuParser, NALuSplitter}
 
+  alias __MODULE__.DecoderConfigurationRecord
+
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -89,7 +91,9 @@ defmodule Membrane.H264.Parser do
       profile: nil,
       previous_timestamps: {nil, nil},
       framerate: opts.framerate,
-      au_counter: 0
+      au_counter: 0,
+      frame_prefix: <<>>,
+      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0
     }
 
     {[], state}
@@ -97,20 +101,46 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_stream_format(:input, stream_format, _ctx, state) do
-    mode =
+    state =
       case stream_format do
-        %RemoteStream{type: :bytestream} -> :bytestream
-        %H264.RemoteStream{alignment: :nalu} -> :nalu_aligned
-        %H264.RemoteStream{alignment: :au} -> :au_aligned
+        %RemoteStream{type: :bytestream} ->
+          %{state | mode: :bytestream}
+
+        %H264.RemoteStream{alignment: alignment, decoder_configuration_record: dcr} ->
+          mode =
+            case alignment do
+              :nalu -> :nalu_aligned
+              :au -> :au_aligned
+            end
+
+          frame_prefix =
+            if dcr do
+              if state.parameter_sets_present? do
+                raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
+              end
+
+              {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
+
+              Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
+            else
+              <<>>
+            end
+
+          %{state | mode: mode, frame_prefix: frame_prefix}
       end
 
-    state = %{state | mode: mode}
     {[], state}
   end
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
+    {payload, state} =
+      case state.frame_prefix do
+        <<>> -> {buffer.payload, state}
+        prefix -> {prefix <> buffer.payload, %{state | frame_prefix: <<>>}}
+      end
+
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
 
     {nalus_payloads_list, nalu_splitter} =
       if state.mode != :bytestream do
