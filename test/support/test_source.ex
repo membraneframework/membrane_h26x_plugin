@@ -6,7 +6,6 @@ defmodule Membrane.H264.Support.TestSource do
   def_options mode: []
 
   def_output_pad :output,
-    demand_mode: :auto,
     mode: :push,
     accepted_format:
       any_of(
