@@ -51,7 +51,7 @@ defmodule Membrane.H264.Parser do
 
   def_output_pad :output,
     demand_mode: :auto,
-    accepted_format: %H264{alignment: :au, nalu_in_metadata?: true}
+    accepted_format: %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
   def_options sps: [
                 spec: binary(),
@@ -77,6 +77,15 @@ defmodule Membrane.H264.Parser do
                 denominator.
                 Its value will be sent inside the output Membrane.H264 stream format.
                 """
+              ],
+              output_alignment: [
+                spec: :au | :nalu,
+                default: :au,
+                description: """
+                Alignment of the buffers produced as an output of the parser.
+                If set to `:au`, each output buffer will be a single access unit.
+                Otherwise, if set to `:nalu`, each output buffer will be a single NAL unit.
+                """
               ]
 
   @impl true
@@ -89,7 +98,8 @@ defmodule Membrane.H264.Parser do
       profile: nil,
       previous_timestamps: {nil, nil},
       framerate: opts.framerate,
-      au_counter: 0
+      au_counter: 0,
+      output_alignment: opts.output_alignment
     }
 
     {[], state}
@@ -200,7 +210,7 @@ defmodule Membrane.H264.Parser do
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
         {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
-        {actions_acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}],
+        {actions_acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}],
          cnt + 1, profile}
       end)
 
@@ -259,8 +269,8 @@ defmodule Membrane.H264.Parser do
     {buffer_pts, buffer_dts}
   end
 
-  defp wrap_into_buffer(access_unit, pts, dts) do
-    metadata = prepare_metadata(access_unit)
+  defp wrap_into_buffer(access_unit, pts, dts, :au) do
+    metadata = prepare_au_metadata(access_unit)
 
     buffer =
       access_unit
@@ -274,7 +284,19 @@ defmodule Membrane.H264.Parser do
     buffer
   end
 
-  defp prepare_metadata(nalus) do
+  defp wrap_into_buffer(access_unit, pts, dts, :nalu) do
+
+
+    buffers = access_unit
+      |> Enum.map(fn nalu ->
+        metadata = prepare_nalu_metadata(nalu)
+        %Buffer{payload: nalu.payload, metadata: metadata, pts: pts, dts: dts}
+      end)
+
+    buffers
+  end
+
+  defp prepare_au_metadata(nalus) do
     is_keyframe = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
 
     nalus =
@@ -311,6 +333,10 @@ defmodule Membrane.H264.Parser do
       |> elem(0)
 
     %{h264: %{key_frame?: is_keyframe, nalus: nalus}}
+  end
+
+  defp prepare_nalu_metadata(_nalus) do
+    []
   end
 
   defp stream_format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
