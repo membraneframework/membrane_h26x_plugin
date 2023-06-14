@@ -161,76 +161,59 @@ defmodule Membrane.H264.Parser.AUSplitter do
     {state.nalus_acc, %{state | nalus_acc: []}}
   end
 
-  # credo has been disabled since I believe that cyclomatic complexity of this function, though large, doesn't imply
-  # that the function is unreadible - in fact, what the function does, is simply checking the sequence of conditions, as
-  # specified in the documentation
-  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
-  defp is_new_primary_coded_vcl_nalu(nalu, last_nalu) do
-    # See: 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
-    # of the "ITU-T Rec. H.264 (01/2012)"
+  defguardp frame_num_differs(a, b) when a.frame_num != b.frame_num
 
-    if nalu.type in @vcl_nalus do
-      cond do
-        last_nalu == nil ->
-          true
+  defguardp pic_parameter_set_id_differs(a, b)
+            when a.pic_parameter_set_id != b.pic_parameter_set_id
 
-        # in case of a nalu holding the keyframe, return true
-        # this one wasn't specified in the documentation, however it seems logical to do so
-        # and not doing that has made the application crash
+  defguardp field_pic_flag_differs(a, b) when a.field_pic_flag != b.field_pic_flag
 
-        nalu.type == :idr ->
-          true
+  defguardp bottom_field_flag_differs(a, b) when a.bottom_field_flag != b.bottom_field_flag
 
-        nalu.parsed_fields.frame_num != last_nalu.parsed_fields.frame_num ->
-          true
+  defguardp nal_ref_idc_differs_one_zero(a, b)
+            when (a.nal_ref_idc == 0 or b.nal_ref_idc == 0) and
+                   a.nal_ref_idc != b.nal_ref_idc
 
-        nalu.parsed_fields.pic_parameter_set_id != last_nalu.parsed_fields.pic_parameter_set_id ->
-          true
+  defguardp pic_order_cnt_zero_check(a, b)
+            when a.pic_order_cnt_type == 0 and b.pic_order_cnt_type == 0 and
+                   (a.pic_order_cnt_lsb != b.pic_order_cnt_lsb or
+                      a.delta_pic_order_cnt_bottom != b.delta_pic_order_cnt_bottom)
 
-        Map.has_key?(nalu.parsed_fields, :field_pic_flag) and
-          Map.has_key?(last_nalu.parsed_fields, :field_pic_flag) and
-            nalu.parsed_fields.field_pic_flag != last_nalu.parsed_fields.field_pic_flag ->
-          true
+  defguardp pic_order_cnt_one_check_zero(a, b)
+            when a.pic_order_cnt_type == 1 and b.pic_order_cnt_type == 1 and
+                   hd(a.delta_pic_order_cnt) != hd(b.delta_pic_order_cnt)
 
-        Map.has_key?(nalu.parsed_fields, :field_pic_flag) and
-          Map.has_key?(last_nalu.parsed_fields, :field_pic_flag) and
-          nalu.parsed_fields.field_pic_flag == 1 and
-          last_nalu.parsed_fields.field_pic_flag == 1 and
-            nalu.parsed_fields.bottom_field_flag != last_nalu.parsed_fields.bottom_field_flag ->
-          true
+  defguardp pic_order_cnt_one_check_one(a, b)
+            when a.pic_order_cnt_type == 1 and b.pic_order_cnt_type == 1 and
+                   hd(hd(a.delta_pic_order_cnt)) != hd(hd(b.delta_pic_order_cnt))
 
-        nalu.parsed_fields.nal_ref_idc != last_nalu.parsed_fields.nal_ref_idc and
-            Enum.any?(
-              [nalu.parsed_fields.nal_ref_idc, last_nalu.parsed_fields.nal_ref_idc],
-              &(&1 == 0)
-            ) ->
-          true
+  defguardp idr_and_non_idr(a, b)
+            when (a.nal_unit_type == 5 or b.nal_unit_type == 5) and
+                   a.nal_unit_type != b.nal_unit_type
 
-        nalu.parsed_fields.pic_order_cnt_type == 0 and
-          last_nalu.parsed_fields.pic_order_cnt_type == 0 and
-            (nalu.parsed_fields.pic_order_cnt_lsb != last_nalu.parsed_fields.pic_order_cnt_lsb or
-               Map.get(nalu.parsed_fields, :delta_pic_order_cnt_bottom) !=
-                 Map.get(last_nalu.parsed_fields, :delta_pic_order_cnt_bottom)) ->
-          true
+  defguardp idrs_with_idr_pic_id_differ(a, b)
+            when a.nal_unit_type == 5 and b.nal_unit_type == 5 and a.idr_pic_id != b.idr_pic_id
 
-        nalu.parsed_fields.pic_order_cnt_type == 1 and
-          last_nalu.parsed_fields.pic_order_cnt_type == 1 and
-            (Bunch.Access.get_in(nalu.parsed_fields, [:delta_pic_order_cnt, 0]) !=
-               Bunch.Access.get_in(last_nalu.parsed_fields, [:delta_pic_order_cnt, 0]) or
-               Bunch.Access.get_in(nalu.parsed_fields, [:delta_pic_order_cnt, 1]) !=
-                 Bunch.Access.get_in(last_nalu.parsed_fields, [:delta_pic_order_cnt, 1])) ->
-          true
+  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu) when type not in @vcl_nalus,
+    do: false
 
-        # The following condition to be checked is also specified in the documentation: "IdrPicFlag is equal to 1 for
-        # both and idr_pic_id differs in value".
-        # At the same time, it seems that it describes the situation, that we are having two different IDR frames - and
-        # that should imply, that their frame_num should differ, which is already checked in the second condition
+  defp is_new_primary_coded_vcl_nalu(_nalu, nil), do: true
 
-        true ->
-          false
-      end
-    else
-      false
-    end
+  # Conditions based on 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
+  # of the "ITU-T Rec. H.264 (01/2012)"
+  defp is_new_primary_coded_vcl_nalu(%{parsed_fields: nalu}, %{parsed_fields: last_nalu})
+       when frame_num_differs(nalu, last_nalu)
+       when pic_parameter_set_id_differs(nalu, last_nalu)
+       when field_pic_flag_differs(nalu, last_nalu)
+       when bottom_field_flag_differs(nalu, last_nalu)
+       when nal_ref_idc_differs_one_zero(nalu, last_nalu)
+       when pic_order_cnt_zero_check(nalu, last_nalu)
+       when pic_order_cnt_one_check_zero(nalu, last_nalu)
+       when pic_order_cnt_one_check_one(nalu, last_nalu)
+       when idr_and_non_idr(nalu, last_nalu)
+       when idrs_with_idr_pic_id_differ(nalu, last_nalu) do
+    true
   end
+
+  defp is_new_primary_coded_vcl_nalu(_nalu, _last_nalu), do: false
 end
