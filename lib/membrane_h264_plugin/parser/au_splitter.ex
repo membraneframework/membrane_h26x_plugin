@@ -101,6 +101,15 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   def split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
+      first_nalu.type in [:end_of_seq, :end_of_stream] ->
+        split(
+          rest_nalus,
+          %__MODULE__{
+            state
+            | nalus_acc: state.nalus_acc ++ [first_nalu]
+          }
+        )
+
       first_nalu.type in @non_vcl_nalus ->
         split(
           rest_nalus,
