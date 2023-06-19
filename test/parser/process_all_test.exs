@@ -7,25 +7,34 @@ defmodule Membrane.H264.ProcessAllTest do
   alias Membrane.H264
   alias Membrane.Testing.Pipeline
 
-  defp make_pipeline(in_path, out_path) do
+  @prefix <<1::32>>
+
+  defp make_pipeline(in_path, out_path, sps, pps) do
     structure = [
       child(:file_src, %Membrane.File.Source{chunk_size: 40_960, location: in_path})
-      |> child(:parser, H264.Parser)
+      |> child(:parser, %H264.Parser{sps: sps, pps: pps})
       |> child(:sink, %Membrane.File.Sink{location: out_path})
     ]
 
     Pipeline.start_link_supervised(structure: structure)
   end
 
-  defp perform_test(filename, tmp_dir, timeout) do
+  defp perform_test(filename, tmp_dir, timeout, sps \\ <<>>, pps \\ <<>>) do
     in_path = "../fixtures/input-#{filename}.h264" |> Path.expand(__DIR__)
     out_path = Path.join(tmp_dir, "output-all-#{filename}.h264")
 
-    assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path)
+    assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, sps, pps)
     assert_pipeline_play(pid)
     assert_end_of_stream(pid, :sink, :input, timeout)
 
-    assert File.read(out_path) == File.read(in_path)
+    expected =
+      if byte_size(sps) > 0 and byte_size(pps) > 0 do
+        @prefix <> sps <> @prefix <> pps <> File.read!(in_path)
+      else
+        File.read!(in_path)
+      end
+
+    assert File.read!(out_path) == expected
 
     Pipeline.terminate(pid, blocking?: true)
   end
@@ -55,6 +64,16 @@ defmodule Membrane.H264.ProcessAllTest do
 
     test "process all 100 240p frames with no b frames", ctx do
       perform_test("100-240p-no-b-frames", ctx.tmp_dir, 1000)
+    end
+
+    test "process all 10 720p frames with provided sps and pps", ctx do
+      sps =
+        <<103, 100, 0, 50, 172, 114, 132, 64, 80, 5, 187, 1, 16, 0, 0, 3, 0, 16, 0, 0, 3, 3, 192,
+          241, 131, 24, 70>>
+
+      pps = <<104, 232, 67, 135, 75, 34, 192>>
+
+      perform_test("10-720p-no-sps-pps", ctx.tmp_dir, 1000, sps, pps)
     end
   end
 end

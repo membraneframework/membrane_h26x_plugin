@@ -84,7 +84,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(_ctx, opts) do
     state = %{
-      nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
+      nalu_splitter: NALuSplitter.new(maybe_add_prefix(opts.sps) <> maybe_add_prefix(opts.pps)),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new(),
       mode: nil,
@@ -221,6 +221,15 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
+  end
+
+  defp maybe_add_prefix(parameter_set) do
+    case parameter_set do
+      <<>> -> <<>>
+      <<0, 0, 1, _rest::binary>> -> parameter_set
+      <<0, 0, 0, 1, _rest::binary>> -> parameter_set
+      parameter_set -> <<0, 0, 0, 1>> <> parameter_set
+    end
   end
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
