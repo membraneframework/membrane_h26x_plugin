@@ -48,7 +48,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
     }
   end
 
-  @non_vcl_nalus [:sps, :pps, :aud, :sei]
+  @non_vcl_nalus_at_au_beginning [:sps, :pps, :aud, :sei]
+  @non_vcl_nalus_at_au_end [:end_of_seq, :end_of_stream]
   @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
 
   @typedoc """
@@ -88,7 +89,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus ->
+      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
         split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
@@ -101,7 +102,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   def split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
-      first_nalu.type in [:end_of_seq, :end_of_stream] ->
+      first_nalu.type in @non_vcl_nalus_at_au_end ->
         split(
           rest_nalus,
           %__MODULE__{
@@ -110,7 +111,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus ->
+      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
         split(
           rest_nalus,
           %__MODULE__{
