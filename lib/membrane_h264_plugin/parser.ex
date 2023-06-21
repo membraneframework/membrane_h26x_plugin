@@ -40,6 +40,8 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.H264.Parser.{AUSplitter, Format, NALuParser, NALuSplitter}
 
+  alias __MODULE__.DecoderConfigurationRecord
+
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -91,7 +93,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_init(_ctx, opts) do
     state = %{
-      nalu_splitter: NALuSplitter.new(opts.sps <> opts.pps),
+      nalu_splitter: NALuSplitter.new(maybe_add_prefix(opts.sps) <> maybe_add_prefix(opts.pps)),
       nalu_parser: NALuParser.new(),
       au_splitter: AUSplitter.new(),
       mode: nil,
@@ -99,7 +101,9 @@ defmodule Membrane.H264.Parser do
       previous_timestamps: {nil, nil},
       framerate: opts.framerate,
       au_counter: 0,
-      output_alignment: opts.output_alignment
+      output_alignment: opts.output_alignment,
+      frame_prefix: <<>>,
+      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0
     }
 
     {[], state}
@@ -107,20 +111,46 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_stream_format(:input, stream_format, _ctx, state) do
-    mode =
+    state =
       case stream_format do
-        %RemoteStream{type: :bytestream} -> :bytestream
-        %H264.RemoteStream{alignment: :nalu} -> :nalu_aligned
-        %H264.RemoteStream{alignment: :au} -> :au_aligned
+        %RemoteStream{type: :bytestream} ->
+          %{state | mode: :bytestream}
+
+        %H264.RemoteStream{alignment: alignment, decoder_configuration_record: dcr} ->
+          mode =
+            case alignment do
+              :nalu -> :nalu_aligned
+              :au -> :au_aligned
+            end
+
+          frame_prefix =
+            case dcr do
+              nil ->
+                <<>>
+
+              _dcr when state.parameter_sets_present? ->
+                raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
+
+              _dcr ->
+                {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
+                Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
+            end
+
+          %{state | mode: mode, frame_prefix: frame_prefix}
       end
 
-    state = %{state | mode: mode}
     {[], state}
   end
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(buffer.payload, state.nalu_splitter)
+    {payload, state} =
+      case state.frame_prefix do
+        <<>> -> {buffer.payload, state}
+        prefix -> {prefix <> buffer.payload, %{state | frame_prefix: <<>>}}
+      end
+
+    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
 
     {nalus_payloads_list, nalu_splitter} =
       if state.mode != :bytestream do
@@ -201,6 +231,15 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
+  end
+
+  defp maybe_add_prefix(parameter_set) do
+    case parameter_set do
+      <<>> -> <<>>
+      <<0, 0, 1, _rest::binary>> -> parameter_set
+      <<0, 0, 0, 1, _rest::binary>> -> parameter_set
+      parameter_set -> <<0, 0, 0, 1>> <> parameter_set
+    end
   end
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
