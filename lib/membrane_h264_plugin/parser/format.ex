@@ -81,7 +81,8 @@ defmodule Membrane.H264.Parser.Format do
       | width: width,
         height: height,
         profile: profile,
-        framerate: Keyword.get(options_fields, :framerate)
+        framerate: Keyword.get(options_fields, :framerate),
+        alignment: Keyword.get(options_fields, :output_alignment)
     }
   end
 
