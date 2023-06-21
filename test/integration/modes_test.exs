@@ -158,6 +158,7 @@ defmodule Membrane.H264.ModesTest do
 
     binary = File.read!(@h264_input_file)
     ref_buffers = prepare_buffers(binary, :nalu_aligned)
+
     Enum.each(ref_buffers, fn ref_buffer ->
       assert_sink_buffer(pid, :sink, buffer)
       assert buffer.payload == ref_buffer.payload

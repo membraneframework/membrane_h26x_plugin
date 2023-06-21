@@ -53,7 +53,8 @@ defmodule Membrane.H264.Parser do
 
   def_output_pad :output,
     demand_mode: :auto,
-    accepted_format: any_of(%H264{alignment: :au, nalu_in_metadata?: true}, %H264{alignment: :nalu})
+    accepted_format:
+      any_of(%H264{alignment: :au, nalu_in_metadata?: true}, %H264{alignment: :nalu})
 
   def_options sps: [
                 spec: binary(),
@@ -274,7 +275,12 @@ defmodule Membrane.H264.Parser do
         {[], profile}
 
       sps_nalu ->
-        fmt = Format.from_sps(sps_nalu, framerate: state.framerate, output_alignment: state.output_alignment)
+        fmt =
+          Format.from_sps(sps_nalu,
+            framerate: state.framerate,
+            output_alignment: state.output_alignment
+          )
+
         {[stream_format: {:output, fmt}], fmt.profile}
     end
   end
