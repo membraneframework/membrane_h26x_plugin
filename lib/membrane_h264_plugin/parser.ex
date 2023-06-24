@@ -42,6 +42,8 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__.DecoderConfigurationRecord
 
+  @prefix_code <<0, 0, 0, 1>>
+
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -84,10 +86,12 @@ defmodule Membrane.H264.Parser do
                 spec: boolean(),
                 default: false,
                 description: """
-                Repeat parameter sets (`sps` and `pps`) on each IDR picture.
+                Repeat all parameter sets (`sps` and `pps`) on each IDR picture.
 
-                Parameter sets may be in the bytestream, provided via this `Parser` options, or
-                provided via decoder configuration record.
+                Parameter sets may be retrieved from:
+                  * The bytestream
+                  * `Parser` options.
+                  * Decoder Configuration Record
                 """
               ]
 
@@ -136,7 +140,7 @@ defmodule Membrane.H264.Parser do
 
               _dcr ->
                 {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
-                Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
+                Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
             end
 
           %{state | mode: mode, frame_prefix: frame_prefix}
@@ -241,7 +245,7 @@ defmodule Membrane.H264.Parser do
       <<>> -> <<>>
       <<0, 0, 1, _rest::binary>> -> parameter_set
       <<0, 0, 0, 1, _rest::binary>> -> parameter_set
-      parameter_set -> <<0, 0, 0, 1>> <> parameter_set
+      parameter_set -> @prefix_code <> parameter_set
     end
   end
 
@@ -251,8 +255,10 @@ defmodule Membrane.H264.Parser do
                                                                         {actions_acc, state, cnt,
                                                                          profile} ->
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
-        au = maybe_add_parameter_sets(au, state)
-        state = cache_parameter_sets(au, state)
+
+        au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
+        state = cache_parameter_sets(state, au)
+
         {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
         {actions_acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}],
@@ -317,18 +323,18 @@ defmodule Membrane.H264.Parser do
   defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do
-    sps = Map.values(state.sps)
-    pps = Map.values(state.pps)
-
-    # Delete duplicate parameter sets
-    if :idr in Enum.map(au, & &1.type),
-      do: Enum.uniq(sps ++ pps ++ au),
+    if idr_au?(au),
+      do: Map.values(state.sps) ++ Map.values(state.pps) ++ au,
       else: au
   end
 
-  defp cache_parameter_sets(_au, %{repeat_parameter_sets?: false} = state), do: state
+  defp delete_duplicate_parameter_sets(au) do
+    if idr_au?(au), do: Enum.uniq(au), else: au
+  end
 
-  defp cache_parameter_sets(au, state) do
+  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
+
+  defp cache_parameter_sets(state, au) do
     sps =
       Enum.filter(au, &(&1.type == :sps))
       |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
@@ -343,6 +349,8 @@ defmodule Membrane.H264.Parser do
 
     %{state | sps: sps, pps: pps}
   end
+
+  defp idr_au?(au), do: :idr in Enum.map(au, & &1.type)
 
   defp wrap_into_buffer(access_unit, pts, dts) do
     metadata = prepare_metadata(access_unit)

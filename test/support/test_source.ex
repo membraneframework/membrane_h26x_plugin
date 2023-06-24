@@ -3,7 +3,10 @@ defmodule Membrane.H264.Support.TestSource do
 
   use Membrane.Source
 
-  def_options mode: []
+  def_options mode: [],
+              dcr: [
+                default: nil
+              ]
 
   def_output_pad :output,
     mode: :push,
@@ -15,7 +18,7 @@ defmodule Membrane.H264.Support.TestSource do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], %{mode: opts.mode}}
+    {[], %{mode: opts.mode, dcr: opts.dcr}}
   end
 
   @impl true
@@ -27,9 +30,14 @@ defmodule Membrane.H264.Support.TestSource do
   def handle_playing(_ctx, state) do
     stream_format =
       case state.mode do
-        :bytestream -> %Membrane.RemoteStream{type: :bytestream}
-        :nalu_aligned -> %Membrane.H264.RemoteStream{alignment: :nalu}
-        :au_aligned -> %Membrane.H264.RemoteStream{alignment: :au}
+        :bytestream ->
+          %Membrane.RemoteStream{type: :bytestream}
+
+        :nalu_aligned ->
+          %Membrane.H264.RemoteStream{alignment: :nalu}
+
+        :au_aligned ->
+          %Membrane.H264.RemoteStream{alignment: :au, decoder_configuration_record: state.dcr}
       end
 
     {[stream_format: {:output, stream_format}], state}
