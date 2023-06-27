@@ -91,7 +91,8 @@ defmodule Membrane.H264.Parser do
                 Parameter sets may be retrieved from:
                   * The bytestream
                   * `Parser` options.
-                  * Decoder Configuration Record
+                  * Decoder Configuration Record, sent as decoder_configuration_record
+                  in `Membrane.H264.RemoteStream` stream format
                 """
               ]
 
@@ -109,8 +110,8 @@ defmodule Membrane.H264.Parser do
       frame_prefix: <<>>,
       parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
       repeat_parameter_sets?: opts.repeat_parameter_sets,
-      sps: %{},
-      pps: %{}
+      cached_sps: %{},
+      cached_pps: %{}
     }
 
     {[], state}
@@ -324,7 +325,7 @@ defmodule Membrane.H264.Parser do
 
   defp maybe_add_parameter_sets(au, state) do
     if idr_au?(au),
-      do: Map.values(state.sps) ++ Map.values(state.pps) ++ au,
+      do: Map.values(state.cached_sps) ++ Map.values(state.cached_pps) ++ au,
       else: au
   end
 
@@ -339,15 +340,15 @@ defmodule Membrane.H264.Parser do
       Enum.filter(au, &(&1.type == :sps))
       |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
       |> Map.new()
-      |> Map.merge(state.sps)
+      |> Map.merge(state.cached_sps)
 
     pps =
       Enum.filter(au, &(&1.type == :pps))
       |> Enum.map(&{&1.parsed_fields.pic_parameter_set_id, &1})
       |> Map.new()
-      |> Map.merge(state.pps)
+      |> Map.merge(state.cached_pps)
 
-    %{state | sps: sps, pps: pps}
+    %{state | cached_sps: sps, cached_pps: pps}
   end
 
   defp idr_au?(au), do: :idr in Enum.map(au, & &1.type)
