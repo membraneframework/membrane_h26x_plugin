@@ -57,7 +57,6 @@ defmodule Membrane.H264.SkipUntilTest do
       Pipeline.terminate(pid, blocking?: true)
     end
 
-    @tag :some_tag
     test "skip until AU with parameters and IDR is provided, when `skip_until_keyframe: true`",
          ctx do
       filename = "idr-sps-pps-non-idr"
