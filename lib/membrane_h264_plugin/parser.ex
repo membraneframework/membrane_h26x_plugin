@@ -42,6 +42,8 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__.DecoderConfigurationRecord
 
+  @prefix_code <<0, 0, 0, 1>>
+
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
@@ -79,6 +81,19 @@ defmodule Membrane.H264.Parser do
                 denominator.
                 Its value will be sent inside the output Membrane.H264 stream format.
                 """
+              ],
+              repeat_parameter_sets: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Repeat all parameter sets (`sps` and `pps`) on each IDR picture.
+
+                Parameter sets may be retrieved from:
+                  * The bytestream
+                  * `Parser` options.
+                  * Decoder Configuration Record, sent as decoder_configuration_record
+                  in `Membrane.H264.RemoteStream` stream format
+                """
               ]
 
   @impl true
@@ -93,7 +108,10 @@ defmodule Membrane.H264.Parser do
       framerate: opts.framerate,
       au_counter: 0,
       frame_prefix: <<>>,
-      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0
+      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
+      repeat_parameter_sets?: opts.repeat_parameter_sets,
+      cached_sps: %{},
+      cached_pps: %{}
     }
 
     {[], state}
@@ -123,7 +141,7 @@ defmodule Membrane.H264.Parser do
 
               _dcr ->
                 {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
-                Enum.concat([[<<>>], sps, pps]) |> Enum.join(<<0, 0, 1>>)
+                Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
             end
 
           %{state | mode: mode, frame_prefix: frame_prefix}
@@ -228,19 +246,24 @@ defmodule Membrane.H264.Parser do
       <<>> -> <<>>
       <<0, 0, 1, _rest::binary>> -> parameter_set
       <<0, 0, 0, 1, _rest::binary>> -> parameter_set
-      parameter_set -> <<0, 0, 0, 1>> <> parameter_set
+      parameter_set -> @prefix_code <> parameter_set
     end
   end
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
-    {actions, au_counter, profile} =
-      Enum.reduce(aus, {[], state.au_counter, state.profile}, fn au,
-                                                                 {actions_acc, cnt, profile} ->
+    {actions, state, au_counter, profile} =
+      Enum.reduce(aus, {[], state, state.au_counter, state.profile}, fn au,
+                                                                        {actions_acc, state, cnt,
+                                                                         profile} ->
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
+
+        au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
+        state = cache_parameter_sets(state, au)
+
         {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
         {actions_acc ++ sps_actions ++ [{:buffer, {:output, wrap_into_buffer(au, pts, dts)}}],
-         cnt + 1, profile}
+         state, cnt + 1, profile}
       end)
 
     state = %{state | profile: profile, au_counter: au_counter}
@@ -297,6 +320,38 @@ defmodule Membrane.H264.Parser do
        when state.mode == :au_aligned do
     {buffer_pts, buffer_dts}
   end
+
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
+
+  defp maybe_add_parameter_sets(au, state) do
+    if idr_au?(au),
+      do: Map.values(state.cached_sps) ++ Map.values(state.cached_pps) ++ au,
+      else: au
+  end
+
+  defp delete_duplicate_parameter_sets(au) do
+    if idr_au?(au), do: Enum.uniq(au), else: au
+  end
+
+  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
+
+  defp cache_parameter_sets(state, au) do
+    sps =
+      Enum.filter(au, &(&1.type == :sps))
+      |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
+      |> Map.new()
+      |> Map.merge(state.cached_sps)
+
+    pps =
+      Enum.filter(au, &(&1.type == :pps))
+      |> Enum.map(&{&1.parsed_fields.pic_parameter_set_id, &1})
+      |> Map.new()
+      |> Map.merge(state.cached_pps)
+
+    %{state | cached_sps: sps, cached_pps: pps}
+  end
+
+  defp idr_au?(au), do: :idr in Enum.map(au, & &1.type)
 
   defp wrap_into_buffer(access_unit, pts, dts) do
     metadata = prepare_metadata(access_unit)
