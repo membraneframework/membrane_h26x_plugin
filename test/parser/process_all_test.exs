@@ -66,14 +66,14 @@ defmodule Membrane.H264.ProcessAllTest do
       perform_test("100-240p-no-b-frames", ctx.tmp_dir, 1000)
     end
 
-    test "process all 10 720p frames with provided sps and pps", ctx do
+    test "process all 30 240p frames with provided sps and pps", ctx do
       sps =
         <<103, 100, 0, 50, 172, 114, 132, 64, 80, 5, 187, 1, 16, 0, 0, 3, 0, 16, 0, 0, 3, 3, 192,
           241, 131, 24, 70>>
 
       pps = <<104, 232, 67, 135, 75, 34, 192>>
 
-      perform_test("10-720p-no-sps-pps", ctx.tmp_dir, 1000, sps, pps)
+      perform_test("30-240p-no-sps-pps", ctx.tmp_dir, 1000, sps, pps)
     end
   end
 end
