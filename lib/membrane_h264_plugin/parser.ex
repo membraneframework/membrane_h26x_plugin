@@ -248,7 +248,7 @@ defmodule Membrane.H264.Parser do
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
     {actions, state} =
-      Enum.reduce(aus, {[], state}, fn au, {actions_acc, state} ->
+      Enum.flat_map_reduce(aus, state, fn au, state ->
         cnt = state.au_counter
         profile = state.profile
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
@@ -275,7 +275,7 @@ defmodule Membrane.H264.Parser do
             [{:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}]
           end
 
-        {actions_acc ++ sps_actions ++ buffers_actions, state}
+        {sps_actions ++ buffers_actions, state}
       end)
 
     state =

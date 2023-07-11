@@ -11,11 +11,10 @@ defmodule Membrane.H264.Parser.NALuParser do
   A structure holding the state of the NALu parser.
   """
   @opaque t :: %__MODULE__{
-            scheme_parser_state: SchemeParser.t(),
-            has_seen_keyframe?: boolean()
+            scheme_parser_state: SchemeParser.t()
           }
 
-  defstruct scheme_parser_state: SchemeParser.new(), has_seen_keyframe?: false
+  defstruct scheme_parser_state: SchemeParser.new()
 
   @doc """
   Returns a structure holding a clear NALu parser state.
