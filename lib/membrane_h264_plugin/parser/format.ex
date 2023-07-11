@@ -6,15 +6,6 @@ defmodule Membrane.H264.Parser.Format do
 
   alias Membrane.H264
 
-  @default_format %H264{
-    alignment: :au,
-    framerate: nil,
-    height: 720,
-    nalu_in_metadata?: true,
-    profile: :high,
-    width: 1280
-  }
-
   @profiles_description [
     high_cavlc_4_4_4_intra: [profile_idc: 44],
     constrained_baseline: [profile_idc: 66, constraint_set1: 1],
@@ -39,7 +30,10 @@ defmodule Membrane.H264.Parser.Format do
   """
   @spec from_sps(
           sps_nalu :: H264.Parser.NALu.t(),
-          options_fields :: [framerate: {pos_integer(), pos_integer()}]
+          options_fields :: [
+            framerate: {pos_integer(), pos_integer()},
+            output_alignment: :au | :nalu
+          ]
         ) :: H264.t()
   def from_sps(sps_nalu, options_fields) do
     sps = sps_nalu.parsed_fields
@@ -77,11 +71,12 @@ defmodule Membrane.H264.Parser.Format do
     profile = parse_profile(sps_nalu)
 
     %H264{
-      @default_format
-      | width: width,
-        height: height,
-        profile: profile,
-        framerate: Keyword.get(options_fields, :framerate)
+      width: width,
+      height: height,
+      profile: profile,
+      framerate: Keyword.get(options_fields, :framerate),
+      alignment: Keyword.get(options_fields, :output_alignment),
+      nalu_in_metadata?: true
     }
   end
 

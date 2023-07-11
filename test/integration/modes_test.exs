@@ -99,4 +99,30 @@ defmodule Membrane.H264.ModesTest do
 
     Pipeline.terminate(pid, blocking?: true)
   end
+
+  test "if single NAL unit is sent per buffer with `output_alignment: :nalu`" do
+    {:ok, _supervisor_pid, pid} =
+      Pipeline.start_supervised(
+        structure: [
+          child(:source, %Membrane.File.Source{location: @h264_input_file})
+          |> child(:parser, %Parser{output_alignment: :nalu})
+          |> child(:sink, Sink)
+        ]
+      )
+
+    assert_pipeline_play(pid)
+    assert_sink_stream_format(pid, :sink, %Membrane.H264{alignment: :nalu})
+
+    binary = File.read!(@h264_input_file)
+    ref_buffers = prepare_buffers(binary, :nalu_aligned)
+
+    Enum.each(ref_buffers, fn ref_buffer ->
+      assert_sink_buffer(pid, :sink, buffer)
+      assert buffer.payload == ref_buffer.payload
+      assert Map.has_key?(buffer.metadata, :h264) and Map.has_key?(buffer.metadata.h264, :type)
+    end)
+
+    assert_end_of_stream(pid, :sink)
+    Pipeline.terminate(pid, blocking?: true)
+  end
 end
