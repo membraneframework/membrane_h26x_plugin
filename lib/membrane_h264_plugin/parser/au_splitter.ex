@@ -15,6 +15,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
+  require Membrane.Logger
+
   alias Membrane.H264.Parser.NALu
 
   @typedoc """
@@ -96,7 +98,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        raise "AUSplitter: Improper transition"
+        Membrane.Logger.warn("AUSplitter: Improper transition")
+        return(state)
     end
   end
 
@@ -140,11 +143,16 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        raise "AUSplitter: Improper transition"
+        Membrane.Logger.warn("AUSplitter: Improper transition")
+        return(state)
     end
   end
 
   def split([], state) do
+    return(state)
+  end
+
+  defp return(state) do
     {state.access_units_to_output |> Enum.filter(&(&1 != [])),
      %__MODULE__{state | access_units_to_output: []}}
   end

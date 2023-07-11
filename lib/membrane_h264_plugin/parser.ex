@@ -93,6 +93,15 @@ defmodule Membrane.H264.Parser do
                 Defaults to `:au`.
                 """
               ],
+              skip_until_keyframe?: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Determines whether to drop the stream until the first key frame is received.
+
+                Defaults to false.
+                """
+              ],
               repeat_parameter_sets: [
                 spec: boolean(),
                 default: false,
@@ -121,6 +130,7 @@ defmodule Membrane.H264.Parser do
       output_alignment: opts.output_alignment,
       frame_prefix: <<>>,
       parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
+      skip_until_keyframe?: opts.skip_until_keyframe?,
       repeat_parameter_sets?: opts.repeat_parameter_sets,
       cached_sps: %{},
       cached_pps: %{}
@@ -190,10 +200,7 @@ defmodule Membrane.H264.Parser do
         NALuParser.parse(nalu_payload, nalu_parser)
       end)
 
-    {access_units, au_splitter} =
-      nalus
-      |> Enum.filter(fn nalu -> nalu.status == :valid end)
-      |> AUSplitter.split(state.au_splitter)
+    {access_units, au_splitter} = nalus |> AUSplitter.split(state.au_splitter)
 
     {access_units, au_splitter} =
       if state.mode == :au_aligned do
@@ -222,12 +229,7 @@ defmodule Membrane.H264.Parser do
     {{access_units, au_splitter}, nalu_parser} =
       if last_nalu_payload != <<>> do
         {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
-
-        if last_nalu.status == :valid do
-          {AUSplitter.split([last_nalu], state.au_splitter), nalu_parser}
-        else
-          {{[], state.au_splitter}, nalu_parser}
-        end
+        {AUSplitter.split([last_nalu], state.au_splitter), nalu_parser}
       else
         {{[], state.au_splitter}, state.nalu_parser}
       end
@@ -263,10 +265,10 @@ defmodule Membrane.H264.Parser do
   end
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
-    {actions, state, au_counter, profile} =
-      Enum.reduce(aus, {[], state, state.au_counter, state.profile}, fn au,
-                                                                        {actions_acc, state, cnt,
-                                                                         profile} ->
+    {actions, state} =
+      Enum.flat_map_reduce(aus, state, fn au, state ->
+        cnt = state.au_counter
+        profile = state.profile
         {sps_actions, profile} = maybe_parse_sps(au, state, profile)
 
         au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
@@ -274,13 +276,29 @@ defmodule Membrane.H264.Parser do
 
         {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
-        {actions_acc ++
-           sps_actions ++
-           [{:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}], state,
-         cnt + 1, profile}
-      end)
+        state = %{
+          state
+          | profile: profile,
+            au_counter: cnt + 1
+        }
 
-    state = %{state | profile: profile, au_counter: au_counter}
+        has_seen_keyframe? =
+          Enum.all?(au, &(&1.status == :valid)) and Enum.any?(au, &(&1.type == :idr))
+
+        state = %{
+          state
+          | skip_until_keyframe?: state.skip_until_keyframe? and not has_seen_keyframe?
+        }
+
+        buffers_actions =
+          if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe? do
+            []
+          else
+            [{:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}]
+          end
+
+        {sps_actions ++ buffers_actions, state}
+      end)
 
     state =
       if state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} do

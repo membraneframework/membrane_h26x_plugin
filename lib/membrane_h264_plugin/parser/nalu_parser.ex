@@ -11,11 +11,10 @@ defmodule Membrane.H264.Parser.NALuParser do
   A structure holding the state of the NALu parser.
   """
   @opaque t :: %__MODULE__{
-            scheme_parser_state: SchemeParser.t(),
-            has_seen_keyframe?: boolean()
+            scheme_parser_state: SchemeParser.t()
           }
 
-  defstruct scheme_parser_state: SchemeParser.new(), has_seen_keyframe?: false
+  defstruct scheme_parser_state: SchemeParser.new()
 
   @doc """
   Returns a structure holding a clear NALu parser state.
@@ -52,21 +51,18 @@ defmodule Membrane.H264.Parser.NALuParser do
 
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
-    {nalu, scheme_parser_state, has_seen_keyframe?} =
+    {nalu, scheme_parser_state} =
       try do
         {parsed_fields, scheme_parser_state} =
           parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
 
-        status = if type != :non_idr or state.has_seen_keyframe?, do: :valid, else: :error
-        has_seen_keyframe? = state.has_seen_keyframe? or type == :idr
-
         {%NALu{
            parsed_fields: parsed_fields,
            type: type,
-           status: status,
+           status: :valid,
            prefix_length: prefix_length,
            payload: nalu_payload
-         }, scheme_parser_state, has_seen_keyframe?}
+         }, scheme_parser_state}
       catch
         "Cannot load information from SPS" ->
           {%NALu{
@@ -75,12 +71,11 @@ defmodule Membrane.H264.Parser.NALuParser do
              status: :error,
              prefix_length: prefix_length,
              payload: nalu_payload
-           }, scheme_parser_state, state.has_seen_keyframe?}
+           }, scheme_parser_state}
       end
 
     state = %__MODULE__{
-      scheme_parser_state: scheme_parser_state,
-      has_seen_keyframe?: has_seen_keyframe?
+      scheme_parser_state: scheme_parser_state
     }
 
     {nalu, state}

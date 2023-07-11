@@ -88,7 +88,6 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
     scheme = scheme_module.scheme()
     defaults_map = Map.new(scheme_module.defaults())
     state = Map.update!(state, :__local__, &Map.merge(defaults_map, &1))
-
     {_remaining_payload, state} = do_parse_with_scheme(payload, scheme, state, iterators)
     {get_local_state(state), state}
   end
