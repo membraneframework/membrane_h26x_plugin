@@ -78,7 +78,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
-  @spec split(list(NALu.t()) , t()) :: {list({access_unit_t(), integer()}), t()}
+  @spec split(list(NALu.t()), t()) :: {list({access_unit_t(), integer()}), t()}
   def split(nalus, state)
 
   def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
@@ -165,7 +165,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   """
   @spec flush(t()) :: {{list(NALu.t()), integer()}, t()}
   def flush(state) do
-    if length(state.pocs) != 1, do: raise("Improper pocs length #{length(state.pocs)} #{inspect(state.nalus_acc)}")
+    if length(state.pocs) != 1,
+      do: raise("Improper pocs length #{length(state.pocs)} #{inspect(state.nalus_acc)}")
+
     poc = state.pocs |> Enum.at(0)
     {{state.nalus_acc, poc}, %{state | nalus_acc: [], pocs: []}}
   end
