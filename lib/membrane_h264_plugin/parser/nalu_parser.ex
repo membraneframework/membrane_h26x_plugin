@@ -11,16 +11,17 @@ defmodule Membrane.H264.Parser.NALuParser do
   A structure holding the state of the NALu parser.
   """
   @opaque t :: %__MODULE__{
-            scheme_parser_state: SchemeParser.t()
+            scheme_parser_state: SchemeParser.t(),
+            stream_type: :annexb | {:avcc, nalu_length_size :: pos_integer()}
           }
-
-  defstruct scheme_parser_state: SchemeParser.new()
+  @enforce_keys [:stream_type]
+  defstruct @enforce_keys ++ [scheme_parser_state: SchemeParser.new()]
 
   @doc """
   Returns a structure holding a clear NALu parser state.
   """
-  @spec new() :: t()
-  def new(), do: %__MODULE__{}
+  @spec new(:annexb | {:avcc, nalu_length_size :: pos_integer()}) :: t()
+  def new(stream_type \\ :annexb), do: %__MODULE__{stream_type: stream_type}
 
   @doc """
   Parses a binary representing a single NALu.
@@ -33,9 +34,17 @@ defmodule Membrane.H264.Parser.NALuParser do
   @spec parse(binary(), t()) :: {NALu.t(), t()}
   def parse(nalu_payload, state) do
     {prefix_length, nalu_payload_without_prefix} =
-      case nalu_payload do
-        <<0, 0, 1, rest::binary>> -> {3, rest}
-        <<0, 0, 0, 1, rest::binary>> -> {4, rest}
+      case state.stream_type do
+        :annexb ->
+          case nalu_payload do
+            <<0, 0, 1, rest::binary>> -> {3, rest}
+            <<0, 0, 0, 1, rest::binary>> -> {4, rest}
+          end
+
+        {:avcc, nalu_length_size} ->
+          <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
+
+          {nalu_length_size, rest}
       end
 
     <<nalu_header::binary-size(1), nalu_body::binary>> = nalu_payload_without_prefix
@@ -74,9 +83,7 @@ defmodule Membrane.H264.Parser.NALuParser do
            }, scheme_parser_state}
       end
 
-    state = %__MODULE__{
-      scheme_parser_state: scheme_parser_state
-    }
+    state = %{state | scheme_parser_state: scheme_parser_state}
 
     {nalu, state}
   end

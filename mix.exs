@@ -38,7 +38,7 @@ defmodule Membrane.H264.TODO.Mixfile do
   defp deps do
     [
       {:membrane_core, "~> 0.12.0"},
-      {:membrane_h264_format, "~> 0.5.0"},
+      {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format"},
       {:bunch, "~> 1.4"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},

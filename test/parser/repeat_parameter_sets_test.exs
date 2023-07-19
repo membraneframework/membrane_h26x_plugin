@@ -29,6 +29,10 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
         pps: pps,
         repeat_parameter_sets: true
       })
+      #      |> child(:filter, %Membrane.Debug.Filter{
+      #        handle_buffer: &IO.inspect(&1, label: "buffer"),
+      #        handle_stream_format: &IO.inspect(&1, label: "stream format")
+      #      })
       |> child(:sink, Sink)
     ]
 
@@ -44,7 +48,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
     output_buffers = prepare_buffers(File.read!(@ref_path), :au_aligned)
 
-    Enum.each(output_buffers, fn output_buffer ->
+    Enum.zip(buffers, output_buffers)
+    |> Enum.each(fn {buffer, output_buffer} ->
       assert_sink_buffer(pipeline_pid, :sink, buffer)
       assert buffer.payload == output_buffer.payload
     end)
@@ -76,7 +81,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{mode: :au_aligned, dcr: @dcr}
+      source = %H264.Support.TestSource{mode: :au_aligned, stream_type: {:avcc, @dcr}}
       pid = make_pipeline(source)
       perform_test(pid, File.read!(@in_path), :au_aligned)
     end
@@ -96,7 +101,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       File.read!(ref_path)
       |> prepare_buffers(:au_aligned)
-      |> Enum.each(fn output_buffer ->
+      |> Enum.zip(buffers)
+      |> Enum.each(fn {output_buffer, buffer} ->
         assert_sink_buffer(pid, :sink, buffer)
         assert split_access_unit(output_buffer.payload) == split_access_unit(buffer.payload)
       end)

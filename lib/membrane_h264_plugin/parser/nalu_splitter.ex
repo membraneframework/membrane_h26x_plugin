@@ -10,9 +10,13 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
-  @opaque t :: %__MODULE__{unparsed_payload: binary()}
+  @opaque t :: %__MODULE__{
+            unparsed_payload: binary(),
+            stream_type: :annexb | {:avcc, nalu_length_size :: pos_integer()}
+          }
 
-  defstruct unparsed_payload: <<>>
+  @enforce_keys [:stream_type]
+  defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
   @doc """
   Returns a structure holding a NALu splitter state.
@@ -21,9 +25,10 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   However, there is a possibility to set that `unparsed_payload`
   to a given binary, provided as an argument of the `new/1` function.
   """
-  @spec new(binary()) :: t()
-  def new(intial_binary \\ <<>>) do
-    %__MODULE__{unparsed_payload: intial_binary}
+  @spec new(:annexb | {:avcc, nalu_length_size :: pos_integer()}, initial_binary :: binary()) ::
+          t()
+  def new(stream_type \\ :annexb, initial_binary \\ <<>>) do
+    %__MODULE__{stream_type: stream_type, unparsed_payload: initial_binary}
   end
 
   @doc """
@@ -33,19 +38,12 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   and produces a list of binaries, where each binary is
   a complete NALu that can be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
   """
-  @spec split(payload :: binary(), state :: t()) :: {[binary()], t()}
+  @spec split(payload :: binary(), state :: t()) ::
+          {[binary()], t()}
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
 
-    nalus_payloads_list =
-      total_payload
-      |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
-      |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
-      |> then(&Enum.drop(&1, -1))
-      |> Enum.map(fn [{from, _prefix_len}, {to, _}] ->
-        len = to - from
-        :binary.part(total_payload, from, len)
-      end)
+    nalus_payloads_list = get_complete_nalus_list(total_payload, state.stream_type)
 
     total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
 
@@ -60,6 +58,28 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     }
 
     {nalus_payloads_list, state}
+  end
+
+  defp get_complete_nalus_list(payload, :annexb) do
+    payload
+    |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
+    |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
+    |> then(&Enum.drop(&1, -1))
+    |> Enum.map(fn [{from, _prefix_len}, {to, _}] ->
+      len = to - from
+      :binary.part(payload, from, len)
+    end)
+  end
+
+  defp get_complete_nalus_list(payload, {:avcc, length_size}) do
+    <<nalu_length::size(length_size), rest::binary>> = payload
+
+    if nalu_length > byte_size(rest) do
+      []
+    else
+      <<nalu::integer-size(nalu_length + length_size)-unit(8), rest::binary>> = payload
+      [nalu | get_complete_nalus_list(rest, {:avcc, length_size})]
+    end
   end
 
   @doc """
