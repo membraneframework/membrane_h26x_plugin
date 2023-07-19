@@ -4,10 +4,7 @@ defmodule Membrane.H264.Support.TestSource do
   use Membrane.Source
 
   def_options mode: [],
-              dcr: [
-                default: nil
-              ],
-              output_stream_format_stream_type: [default: :annexb]
+              stream_type: [default: :annexb]
 
   def_output_pad :output,
     mode: :push,
@@ -19,7 +16,7 @@ defmodule Membrane.H264.Support.TestSource do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], %{mode: opts.mode, dcr: opts.dcr, output_stream_type: opts.stream_type}}
+    {[], %{mode: opts.mode, output_stream_type: opts.stream_type}}
   end
 
   @impl true

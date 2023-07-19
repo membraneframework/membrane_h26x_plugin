@@ -3,21 +3,39 @@ defmodule Membrane.H264.Support.Common do
 
   alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
 
-  @spec prepare_buffers(binary, :au_aligned | :bytestream | :nalu_aligned) :: list
-  def prepare_buffers(binary, :bytestream) do
+  @spec prepare_buffers(
+          binary,
+          :au_aligned | :bytestream | :nalu_aligned,
+          Membrane.H264.Parser.parsed_stream_type_t()
+        ) :: list
+
+  def prepare_buffers(
+        binary,
+        alignment,
+        parsed_stream_type \\ :annexb,
+        output_parsed_stream_type \\ :annexb
+      )
+
+  def prepare_buffers(binary, :bytestream, _, _) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
 
     Enum.map(buffers, &%Membrane.Buffer{payload: &1})
   end
 
-  def prepare_buffers(binary, :nalu_aligned) do
-    {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new())
+  def prepare_buffers(binary, :nalu_aligned, input_parsed_stream_type, output_parsed_stream_type) do
+    {nalus_payloads, nalu_splitter} =
+      NALuSplitter.split(binary, NALuSplitter.new(input_parsed_stream_type))
+
     {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
     nalus_payloads = nalus_payloads ++ [last_nalu_payload]
 
     {nalus, _nalu_parser} =
-      Enum.map_reduce(nalus_payloads, NALuParser.new(), &NALuParser.parse(&1, &2))
+      Enum.map_reduce(
+        nalus_payloads,
+        NALuParser.new(input_parsed_stream_type, output_parsed_stream_type),
+        &NALuParser.parse(&1, &2)
+      )
 
     {aus, au_splitter} = nalus |> AUSplitter.split(AUSplitter.new())
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
@@ -30,13 +48,19 @@ defmodule Membrane.H264.Support.Common do
     |> Enum.flat_map(& &1)
   end
 
-  def prepare_buffers(binary, :au_aligned) do
-    {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new())
+  def prepare_buffers(binary, :au_aligned, input_parsed_stream_type, output_parsed_stream_type) do
+    {nalus_payloads, nalu_splitter} =
+      NALuSplitter.split(binary, NALuSplitter.new(input_parsed_stream_type))
+
     {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
     nalus_payloads = nalus_payloads ++ [last_nalu_payload]
 
     {nalus, _nalu_parser} =
-      Enum.map_reduce(nalus_payloads, NALuParser.new(), &NALuParser.parse(&1, &2))
+      Enum.map_reduce(
+        nalus_payloads,
+        NALuParser.new(input_parsed_stream_type, output_parsed_stream_type),
+        &NALuParser.parse(&1, &2)
+      )
 
     {aus, au_splitter} = nalus |> AUSplitter.split(AUSplitter.new())
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)

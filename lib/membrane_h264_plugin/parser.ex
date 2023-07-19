@@ -50,8 +50,11 @@ defmodule Membrane.H264.Parser do
 
   alias __MODULE__.DecoderConfigurationRecord
 
-  @prefix_code <<0, 0, 0, 1>>
+  @annexb_prefix_code <<0, 0, 0, 1>>
   @nalu_length_size 4
+
+  @type parsed_stream_type_t :: :annexb | {:avcc, nalu_length_size :: pos_integer()}
+  @type stream_format_stream_type_t :: :annexb | {:avcc, dcr :: binary()}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -164,33 +167,16 @@ defmodule Membrane.H264.Parser do
       initial_pps: parse_initial_parameters(opts.pps),
       input_stream_format_stream_type: nil,
       output_parsed_stream_type: output_parsed_stream_type,
-      stream_type_converter: & &1
     }
 
     {[], state}
   end
 
-  #  @impl true
-  #  def handle_stream_format(:input, %RemoteStream{type: :bytestream}, _ctx, state) do
-  #    frame_prefix = get_frame_prefix(:annexb, state)
-  #
-  #    {[],
-  #     %{
-  #       state
-  #       | mode: :bytestream,
-  #         input_stream_format_stream_type: :annexb,
-  #         frame_prefix: frame_prefix,
-  #         nalu_parser: NALuParser.new(:annexb),
-  #         nalu_splitter: NALuSplitter.new(:annexb),
-  #         stream_type_converter: get_stream_type_converter(:annexb, state.output_parsed_stream_type)
-  #     }}
-  #  end
-
   @impl true
   def handle_stream_format(:input, stream_format, _ctx, state) do
-    #    if state.parameters_sets_present? do
-    #      raise "TODO handle :P"
-    #    end
+    #     if state.parameters_sets_present? do
+    #       raise "idk lol :P"
+    #     end
 
     {mode, input_stream_format_stream_type} =
       case stream_format do
@@ -204,6 +190,8 @@ defmodule Membrane.H264.Parser do
           {:au_aligned, stream_type}
       end
 
+    input_parsed_stream_type = parse_stream_format_stream_type(input_stream_format_stream_type)
+
     frame_prefix = get_frame_prefix(input_stream_format_stream_type, state)
 
     state = %{
@@ -211,13 +199,8 @@ defmodule Membrane.H264.Parser do
       | mode: mode,
         frame_prefix: frame_prefix,
         input_stream_format_stream_type: input_stream_format_stream_type,
-        nalu_parser: NALuParser.new(input_stream_format_stream_type),
-        nalu_splitter: NALuSplitter.new(input_stream_format_stream_type),
-        stream_type_converter:
-          get_stream_type_converter(
-            input_stream_format_stream_type,
-            state.output_parsed_stream_type
-          )
+        nalu_parser: NALuParser.new(input_parsed_stream_type, state.output_parsed_stream_type),
+        nalu_splitter: NALuSplitter.new(input_parsed_stream_type),
     }
 
     {[], state}
@@ -316,9 +299,16 @@ defmodule Membrane.H264.Parser do
   defp parse_initial_parameters(pss) when is_binary(pss), do: [pss]
   defp parse_initial_parameters(pss), do: pss
 
+  defp parse_stream_format_stream_type(:annexb), do: :annexb
+
+  defp parse_stream_format_stream_type({:avcc, dcr}) do
+    {:ok, %{length_size_minus_one: length_size_minus_one}} = DecoderConfigurationRecord.parse(dcr)
+    {:avcc, length_size_minus_one + 1}
+  end
+
   defp get_frame_prefix(:annexb, state) do
     Enum.concat([[<<>>], state.initial_sps, state.initial_pps])
-    |> Enum.join(@prefix_code)
+    |> Enum.join(@annexb_prefix_code)
 
     #    |> IO.inspect(label: "frame prefix")
   end
@@ -330,52 +320,11 @@ defmodule Membrane.H264.Parser do
     nalu_length_size = length_size_minus_one + 1
 
     Enum.concat([state.initial_sps, state.initial_pps, sps, pps])
+    |> IO.inspect()
     |> Enum.map(fn nalu ->
       <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
     end)
     |> Enum.join()
-  end
-
-  defp get_stream_type_converter(input_stream_format_stream_type, output_parsed_stream_type) do
-    input_parsed_stream_type =
-      case input_stream_format_stream_type do
-        :annexb ->
-          :annexb
-
-        {:avcc, dcr} ->
-          {:ok, %{length_size_minus_one: length_size_minus_one}} =
-            DecoderConfigurationRecord.parse(dcr)
-
-          {:avcc, length_size_minus_one + 1}
-      end
-
-    if input_parsed_stream_type == output_parsed_stream_type do
-      & &1
-    else
-      &(&1
-        |> to_unprefixed(input_parsed_stream_type)
-        |> to_prefixed(output_parsed_stream_type))
-    end
-  end
-
-  defp to_unprefixed(payload, :annexb) do
-    case payload do
-      <<0, 0, 0, 1, rest::binary>> -> rest
-      <<0, 0, 1, rest::binary>> -> rest
-    end
-  end
-
-  defp to_unprefixed(payload, {:avcc, nalu_length_size}) do
-    <<_nalu_length::integer-size(nalu_length_size)-unit(8), payload_unprefixed::binary>> = payload
-    payload_unprefixed
-  end
-
-  defp to_prefixed(payload, :annexb) do
-    @prefix_code <> payload
-  end
-
-  defp to_prefixed(payload, {:avcc, nalu_length_size}) do
-    <<byte_size(payload)::integer-size(nalu_length_size)-unit(8), payload::binary>>
   end
 
   defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
@@ -415,8 +364,7 @@ defmodule Membrane.H264.Parser do
                   au,
                   pts,
                   dts,
-                  state.output_alignment,
-                  state.stream_type_converter
+                  state.output_alignment
                 )}}
             ]
           end
@@ -556,14 +504,14 @@ defmodule Membrane.H264.Parser do
 
   defp idr_au?(au), do: :idr in Enum.map(au, & &1.type)
 
-  defp wrap_into_buffer(access_unit, pts, dts, :au, stream_type_converter) do
+  defp wrap_into_buffer(access_unit, pts, dts, :au) do
     metadata = prepare_au_metadata(access_unit)
     #    IO.inspect(access_unit, label: "AU")
 
     buffer =
       access_unit
       |> Enum.reduce(<<>>, fn nalu, acc ->
-        acc <> stream_type_converter.(nalu.payload)
+        acc <> nalu.payload
       end)
       |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
@@ -572,13 +520,13 @@ defmodule Membrane.H264.Parser do
     buffer
   end
 
-  defp wrap_into_buffer(access_unit, pts, dts, :nalu, stream_type_converter) do
+  defp wrap_into_buffer(access_unit, pts, dts, :nalu) do
     #    IO.inspect(access_unit, label: "NALUs")
     access_unit
     |> Enum.zip(prepare_nalus_metadata(access_unit))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: stream_type_converter.(nalu.payload),
+        payload: nalu.payload,
         metadata: metadata,
         pts: pts,
         dts: dts

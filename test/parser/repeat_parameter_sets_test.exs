@@ -21,26 +21,29 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          5, 4, 64, 0, 0, 3, 0, 64, 0, 0, 15, 3, 197, 139, 101, 128, 1, 0, 6, 104, 235, 227, 203,
          34, 192>>
 
-  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>) do
+  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>, output_parsed_stream_type \\ :annexb) do
     structure = [
       child(:source, source)
       |> child(:parser, %H264.Parser{
         sps: sps,
         pps: pps,
-        repeat_parameter_sets: true
+        repeat_parameter_sets: true,
+        output_parsed_stream_type: output_parsed_stream_type
       })
-      #      |> child(:filter, %Membrane.Debug.Filter{
-      #        handle_buffer: &IO.inspect(&1, label: "buffer"),
-      #        handle_stream_format: &IO.inspect(&1, label: "stream format")
-      #      })
       |> child(:sink, Sink)
     ]
 
     Pipeline.start_link_supervised!(structure: structure)
   end
 
-  defp perform_test(pipeline_pid, data, mode \\ :bytestream) do
-    buffers = prepare_buffers(data, mode)
+  defp perform_test(
+         pipeline_pid,
+         data,
+         mode \\ :bytestream,
+         input_parsed_stream_type \\ :annexb,
+         output_parsed_stream_type \\ :annexb
+       ) do
+    buffers = prepare_buffers(data, mode, input_parsed_stream_type, output_parsed_stream_type)
 
     assert_pipeline_play(pipeline_pid)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
@@ -82,7 +85,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
     test "when provided via DCR" do
       source = %H264.Support.TestSource{mode: :au_aligned, stream_type: {:avcc, @dcr}}
-      pid = make_pipeline(source)
+      pid = make_pipeline(source, <<>>, <<>>, {:avcc, 4})
       perform_test(pid, File.read!(@in_path), :au_aligned)
     end
 

@@ -12,10 +12,10 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   """
   @opaque t :: %__MODULE__{
             unparsed_payload: binary(),
-            stream_type: :annexb | {:avcc, nalu_length_size :: pos_integer()}
+            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t()
           }
 
-  @enforce_keys [:stream_type]
+  @enforce_keys [:input_parsed_stream_type]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
   @doc """
@@ -25,10 +25,13 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   However, there is a possibility to set that `unparsed_payload`
   to a given binary, provided as an argument of the `new/1` function.
   """
-  @spec new(:annexb | {:avcc, nalu_length_size :: pos_integer()}, initial_binary :: binary()) ::
+  @spec new(Membrane.H264.Parser.parsed_stream_type_t(), initial_binary :: binary()) ::
           t()
-  def new(stream_type \\ :annexb, initial_binary \\ <<>>) do
-    %__MODULE__{stream_type: stream_type, unparsed_payload: initial_binary}
+  def new(input_parsed_stream_type \\ :annexb, initial_binary \\ <<>>) do
+    %__MODULE__{
+      input_parsed_stream_type: input_parsed_stream_type,
+      unparsed_payload: initial_binary
+    }
   end
 
   @doc """
@@ -43,7 +46,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
 
-    nalus_payloads_list = get_complete_nalus_list(total_payload, state.stream_type)
+    nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_parsed_stream_type)
 
     total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
 
@@ -71,14 +74,14 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     end)
   end
 
-  defp get_complete_nalus_list(payload, {:avcc, length_size}) do
-    <<nalu_length::size(length_size), rest::binary>> = payload
+  defp get_complete_nalus_list(payload, {:avcc, nalu_length_size}) do
+    <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = payload
 
     if nalu_length > byte_size(rest) do
       []
     else
-      <<nalu::integer-size(nalu_length + length_size)-unit(8), rest::binary>> = payload
-      [nalu | get_complete_nalus_list(rest, {:avcc, length_size})]
+      <<nalu::binary-size(nalu_length + nalu_length_size), rest::binary>> = payload
+      [nalu | get_complete_nalus_list(rest, {:avcc, nalu_length_size})]
     end
   end
 

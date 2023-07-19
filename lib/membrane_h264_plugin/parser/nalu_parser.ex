@@ -3,25 +3,38 @@ defmodule Membrane.H264.Parser.NALuParser do
   A module providing functionality of parsing a stream of binaries, out of which each
   is a payload of a single NAL unit.
   """
+  require Membrane.Logger
+
   alias Membrane.H264.Parser.{NALu, NALuTypes}
   alias Membrane.H264.Parser.NALuParser.SchemeParser
   alias Membrane.H264.Parser.NALuParser.Schemes
+
+  @annexb_prefix_code <<0, 0, 0, 1>>
 
   @typedoc """
   A structure holding the state of the NALu parser.
   """
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
-            stream_type: :annexb | {:avcc, nalu_length_size :: pos_integer()}
+            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t(),
+            output_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t()
           }
-  @enforce_keys [:stream_type]
+  @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
   defstruct @enforce_keys ++ [scheme_parser_state: SchemeParser.new()]
 
   @doc """
   Returns a structure holding a clear NALu parser state.
   """
-  @spec new(:annexb | {:avcc, nalu_length_size :: pos_integer()}) :: t()
-  def new(stream_type \\ :annexb), do: %__MODULE__{stream_type: stream_type}
+  @spec new(
+          Membrane.H264.Parser.parsed_stream_type_t(),
+          Membrane.H264.Parser.parsed_stream_type_t()
+        ) :: t()
+  def new(input_parsed_stream_type \\ :annexb, output_parsed_stream_type \\ :annexb) do
+    %__MODULE__{
+      input_parsed_stream_type: input_parsed_stream_type,
+      output_parsed_stream_type: output_parsed_stream_type
+    }
+  end
 
   @doc """
   Parses a binary representing a single NALu.
@@ -33,8 +46,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @spec parse(binary(), t()) :: {NALu.t(), t()}
   def parse(nalu_payload, state) do
-    {prefix_length, nalu_payload_without_prefix} =
-      case state.stream_type do
+    {prefix_length, unprefixed_nalu_payload} =
+      case state.input_parsed_stream_type do
         :annexb ->
           case nalu_payload do
             <<0, 0, 1, rest::binary>> -> {3, rest}
@@ -47,7 +60,7 @@ defmodule Membrane.H264.Parser.NALuParser do
           {nalu_length_size, rest}
       end
 
-    <<nalu_header::binary-size(1), nalu_body::binary>> = nalu_payload_without_prefix
+    <<nalu_header::binary-size(1), nalu_body::binary>> = unprefixed_nalu_payload
 
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 
@@ -60,6 +73,24 @@ defmodule Membrane.H264.Parser.NALuParser do
 
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
+    #    Membrane.Logger.log(:debug, {state.input_parsed_stream_type, state.output_parsed_stream_type})
+    if {state.input_parsed_stream_type, state.output_parsed_stream_type} != {:annexb, :annexb} do
+      IO.inspect({state.input_parsed_stream_type, state.output_parsed_stream_type}, label: "bbbbb")
+    end
+
+    reprefixed_nalu_payload =
+      case {state.input_parsed_stream_type, state.output_parsed_stream_type} do
+        {type, type} ->
+          nalu_payload
+
+        {_, :annexb} ->
+          @annexb_prefix_code <> unprefixed_nalu_payload
+
+        {_, {:avcc, nalu_length_size}} ->
+          <<byte_size(unprefixed_nalu_payload)::integer-size(nalu_length_size)-unit(8),
+            unprefixed_nalu_payload::binary>>
+      end
+
     {nalu, scheme_parser_state} =
       try do
         {parsed_fields, scheme_parser_state} =
@@ -70,7 +101,7 @@ defmodule Membrane.H264.Parser.NALuParser do
            type: type,
            status: :valid,
            prefix_length: prefix_length,
-           payload: nalu_payload
+           payload: reprefixed_nalu_payload
          }, scheme_parser_state}
       catch
         "Cannot load information from SPS" ->
@@ -79,7 +110,7 @@ defmodule Membrane.H264.Parser.NALuParser do
              type: type,
              status: :error,
              prefix_length: prefix_length,
-             payload: nalu_payload
+             payload: reprefixed_nalu_payload
            }, scheme_parser_state}
       end
 
