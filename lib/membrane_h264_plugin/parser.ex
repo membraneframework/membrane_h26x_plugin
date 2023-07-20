@@ -50,6 +50,7 @@ defmodule Membrane.H264.Parser do
     accepted_format:
       any_of(
         %RemoteStream{type: :bytestream},
+        %H264{alignment: alignment} when alignment in [:nalu, :au],
         %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au]
       )
 
