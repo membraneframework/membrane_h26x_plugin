@@ -7,6 +7,8 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
 
+  require Membrane.Logger
+
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
@@ -72,6 +74,11 @@ defmodule Membrane.H264.Parser.NALuSplitter do
       len = to - from
       :binary.part(payload, from, len)
     end)
+  end
+
+  defp get_complete_nalus_list(payload, {:avcc, nalu_length_size})
+       when byte_size(payload) < nalu_length_size do
+    []
   end
 
   defp get_complete_nalus_list(payload, {:avcc, nalu_length_size}) do

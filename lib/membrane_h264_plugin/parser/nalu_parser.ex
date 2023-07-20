@@ -17,22 +17,30 @@ defmodule Membrane.H264.Parser.NALuParser do
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
             input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t(),
-            output_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t()
+            output_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t(),
+            optimize_reprefixing?: boolean()
           }
   @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
-  defstruct @enforce_keys ++ [scheme_parser_state: SchemeParser.new()]
+  defstruct @enforce_keys ++
+              [scheme_parser_state: SchemeParser.new(), optimize_reprefixing?: true]
 
   @doc """
   Returns a structure holding a clear NALu parser state.
   """
   @spec new(
           Membrane.H264.Parser.parsed_stream_type_t(),
-          Membrane.H264.Parser.parsed_stream_type_t()
+          Membrane.H264.Parser.parsed_stream_type_t(),
+          boolean()
         ) :: t()
-  def new(input_parsed_stream_type \\ :annexb, output_parsed_stream_type \\ :annexb) do
+  def new(
+        input_parsed_stream_type \\ :annexb,
+        output_parsed_stream_type \\ :annexb,
+        optimize_reprefixing? \\ true
+      ) do
     %__MODULE__{
       input_parsed_stream_type: input_parsed_stream_type,
-      output_parsed_stream_type: output_parsed_stream_type
+      output_parsed_stream_type: output_parsed_stream_type,
+      optimize_reprefixing?: optimize_reprefixing?
     }
   end
 
@@ -73,14 +81,9 @@ defmodule Membrane.H264.Parser.NALuParser do
 
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
-    #    Membrane.Logger.log(:debug, {state.input_parsed_stream_type, state.output_parsed_stream_type})
-    if {state.input_parsed_stream_type, state.output_parsed_stream_type} != {:annexb, :annexb} do
-      IO.inspect({state.input_parsed_stream_type, state.output_parsed_stream_type}, label: "bbbbb")
-    end
-
     reprefixed_nalu_payload =
       case {state.input_parsed_stream_type, state.output_parsed_stream_type} do
-        {type, type} ->
+        {type, type} when state.optimize_reprefixing? ->
           nalu_payload
 
         {_, :annexb} ->

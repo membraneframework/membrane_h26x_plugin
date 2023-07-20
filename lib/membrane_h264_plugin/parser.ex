@@ -54,7 +54,7 @@ defmodule Membrane.H264.Parser do
   @nalu_length_size 4
 
   @type parsed_stream_type_t :: :annexb | {:avcc, nalu_length_size :: pos_integer()}
-  @type stream_format_stream_type_t :: :annexb | {:avcc, dcr :: binary()}
+  @type raw_stream_type_t :: :annexb | {:avcc, dcr :: binary()}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -62,7 +62,8 @@ defmodule Membrane.H264.Parser do
     accepted_format:
       any_of(
         %RemoteStream{type: :bytestream},
-        %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au]
+        %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au],
+        %H264{}
       )
 
   def_output_pad :output,
@@ -165,8 +166,8 @@ defmodule Membrane.H264.Parser do
       cached_pps: %{},
       initial_sps: parse_initial_parameters(opts.sps),
       initial_pps: parse_initial_parameters(opts.pps),
-      input_stream_format_stream_type: nil,
-      output_parsed_stream_type: output_parsed_stream_type,
+      input_raw_stream_type: nil,
+      output_parsed_stream_type: output_parsed_stream_type
     }
 
     {[], state}
@@ -178,29 +179,34 @@ defmodule Membrane.H264.Parser do
     #       raise "idk lol :P"
     #     end
 
-    {mode, input_stream_format_stream_type} =
+    {mode, input_raw_stream_type} =
       case stream_format do
         %RemoteStream{type: :bytestream} ->
           {:bytestream, :annexb}
 
-        %H264.RemoteStream{alignment: :nalu, stream_type: stream_type} ->
-          {:nalu_aligned, stream_type}
+        %H264.RemoteStream{alignment: alignment, stream_type: stream_type} ->
+          {alignment, stream_type}
 
-        %H264.RemoteStream{alignment: :au, stream_type: stream_type} ->
-          {:au_aligned, stream_type}
+        %H264{alignment: alignment, stream_type: stream_type} ->
+          {alignment, stream_type}
       end
 
-    input_parsed_stream_type = parse_stream_format_stream_type(input_stream_format_stream_type)
+    mode =
+      case mode do
+        :au -> :au_aligned
+        :nalu -> :nalu_aligned
+        mode -> mode
+      end
 
-    frame_prefix = get_frame_prefix(input_stream_format_stream_type, state)
+    input_parsed_stream_type = parse_raw_stream_type(input_raw_stream_type)
 
     state = %{
       state
       | mode: mode,
-        frame_prefix: frame_prefix,
-        input_stream_format_stream_type: input_stream_format_stream_type,
+        frame_prefix: get_frame_prefix(input_raw_stream_type, state),
+        input_raw_stream_type: input_raw_stream_type,
         nalu_parser: NALuParser.new(input_parsed_stream_type, state.output_parsed_stream_type),
-        nalu_splitter: NALuSplitter.new(input_parsed_stream_type),
+        nalu_splitter: NALuSplitter.new(input_parsed_stream_type)
     }
 
     {[], state}
@@ -299,9 +305,9 @@ defmodule Membrane.H264.Parser do
   defp parse_initial_parameters(pss) when is_binary(pss), do: [pss]
   defp parse_initial_parameters(pss), do: pss
 
-  defp parse_stream_format_stream_type(:annexb), do: :annexb
+  defp parse_raw_stream_type(:annexb), do: :annexb
 
-  defp parse_stream_format_stream_type({:avcc, dcr}) do
+  defp parse_raw_stream_type({:avcc, dcr}) do
     {:ok, %{length_size_minus_one: length_size_minus_one}} = DecoderConfigurationRecord.parse(dcr)
     {:avcc, length_size_minus_one + 1}
   end
@@ -309,8 +315,6 @@ defmodule Membrane.H264.Parser do
   defp get_frame_prefix(:annexb, state) do
     Enum.concat([[<<>>], state.initial_sps, state.initial_pps])
     |> Enum.join(@annexb_prefix_code)
-
-    #    |> IO.inspect(label: "frame prefix")
   end
 
   defp get_frame_prefix({:avcc, dcr}, state) do
@@ -320,7 +324,6 @@ defmodule Membrane.H264.Parser do
     nalu_length_size = length_size_minus_one + 1
 
     Enum.concat([state.initial_sps, state.initial_pps, sps, pps])
-    |> IO.inspect()
     |> Enum.map(fn nalu ->
       <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
     end)
@@ -332,10 +335,10 @@ defmodule Membrane.H264.Parser do
       Enum.flat_map_reduce(aus, state, fn au, state ->
         cnt = state.au_counter
         profile = state.profile
-        {sps_actions, profile} = maybe_parse_sps(au, state, profile)
 
         au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
         state = cache_parameter_sets(state, au)
+        {sps_actions, profile} = maybe_parse_sps(au, state, profile)
 
         {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
 
@@ -393,44 +396,41 @@ defmodule Membrane.H264.Parser do
             framerate: state.framerate,
             output_alignment: state.output_alignment
           )
-          |> Map.put(:stream_type, get_output_stream_format_stream_type(state))
+          |> Map.put(:stream_type, get_output_raw_stream_type(state))
 
         {[stream_format: {:output, format}], format.profile}
     end
   end
 
-  defp get_output_stream_format_stream_type(%{output_parsed_stream_type: :annexb}) do
+  defp get_output_raw_stream_type(%{output_parsed_stream_type: :annexb}) do
     :annexb
   end
 
-  defp get_output_stream_format_stream_type(%{
+  defp get_output_raw_stream_type(%{
          output_parsed_stream_type: {:avcc, nalu_length_size},
          cached_sps: spss
        }) do
     sps_dqrs =
-      Enum.map(spss, fn sps ->
+      Enum.map(spss, fn {_id, sps} ->
         fields = sps.parsed_fields
 
         profile = fields.profile_idc
 
         compatibility =
-          fields.constraint_set0 <>
-            fields.constraint_set1 <>
-            fields.constraint_set2 <>
-            fields.constraint_set3 <>
-            fields.constraint_set4 <>
-            fields.constraint_set5 <>
-            fields.reserved_zero_2bits
+          <<fields.constraint_set0::integer-1, fields.constraint_set1::integer-1,
+            fields.constraint_set2::integer-1, fields.constraint_set3::integer-1,
+            fields.constraint_set4::integer-1, fields.constraint_set5::integer-1,
+            fields.reserved_zero_2bits::integer-2>>
 
         level = fields.level_idc
 
-        <<1::8, profile::binary-8, compatibility::binary-8, level::binary-8, 0b111111::6,
-          nalu_length_size - 1::2-integer, 0b111::3>>
+        <<1::8, profile::integer-8, compatibility::binary, level::integer-8, 0b111111::6,
+          nalu_length_size - 1::2-integer, 0b111::3, 0::5, 0::8>>
       end)
       |> Enum.uniq()
 
     if length(sps_dqrs) > 1 do
-      raise("SPS parameters that should be the same for all of them are different")
+      raise("SPS parameters should be the same for all sets but are different")
     end
 
     {:avcc, hd(sps_dqrs)}
@@ -484,7 +484,7 @@ defmodule Membrane.H264.Parser do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
+  #  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
 
   defp cache_parameter_sets(state, au) do
     sps =

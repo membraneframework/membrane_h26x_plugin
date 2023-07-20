@@ -22,7 +22,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          34, 192>>
 
   defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>, output_parsed_stream_type \\ :annexb) do
-    structure = [
+    structure =
       child(:source, source)
       |> child(:parser, %H264.Parser{
         sps: sps,
@@ -31,7 +31,6 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
         output_parsed_stream_type: output_parsed_stream_type
       })
       |> child(:sink, Sink)
-    ]
 
     Pipeline.start_link_supervised!(structure: structure)
   end
@@ -40,19 +39,26 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          pipeline_pid,
          data,
          mode \\ :bytestream,
-         input_parsed_stream_type \\ :annexb,
-         output_parsed_stream_type \\ :annexb
+         parser_input_parsed_stream_type \\ :annexb,
+         parser_output_parsed_stream_type \\ :annexb,
+         data_parsed_stream_type \\ :annexb
        ) do
-    buffers = prepare_buffers(data, mode, input_parsed_stream_type, output_parsed_stream_type)
+    buffers =
+      prepare_buffers(data, mode, data_parsed_stream_type, parser_input_parsed_stream_type)
 
     assert_pipeline_play(pipeline_pid)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(File.read!(@ref_path), :au_aligned)
+    output_buffers =
+      prepare_buffers(
+        File.read!(@ref_path),
+        :au_aligned,
+        data_parsed_stream_type,
+        parser_output_parsed_stream_type
+      )
 
-    Enum.zip(buffers, output_buffers)
-    |> Enum.each(fn {buffer, output_buffer} ->
+    Enum.each(output_buffers, fn output_buffer ->
       assert_sink_buffer(pipeline_pid, :sink, buffer)
       assert buffer.payload == output_buffer.payload
     end)
@@ -84,9 +90,9 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{mode: :au_aligned, stream_type: {:avcc, @dcr}}
+      source = %H264.Support.TestSource{mode: :au_aligned, output_raw_stream_type: {:avcc, @dcr}}
       pid = make_pipeline(source, <<>>, <<>>, {:avcc, 4})
-      perform_test(pid, File.read!(@in_path), :au_aligned)
+      perform_test(pid, File.read!(@in_path), :au_aligned, {:avcc, 4}, {:avcc, 4}, :annexb)
     end
 
     test "when bytestream has variable parameter sets" do
@@ -104,8 +110,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       File.read!(ref_path)
       |> prepare_buffers(:au_aligned)
-      |> Enum.zip(buffers)
-      |> Enum.each(fn {output_buffer, buffer} ->
+      |> Enum.each(fn output_buffer ->
         assert_sink_buffer(pid, :sink, buffer)
         assert split_access_unit(output_buffer.payload) == split_access_unit(buffer.payload)
       end)
