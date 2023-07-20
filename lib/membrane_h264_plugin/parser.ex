@@ -56,7 +56,7 @@ defmodule Membrane.H264.Parser do
   def_output_pad :output,
     demand_mode: :auto,
     accepted_format:
-      any_of(%H264{alignment: :au, nalu_in_metadata?: true}, %H264{alignment: :nalu})
+      %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
   def_options sps: [
                 spec: binary(),
@@ -143,6 +143,14 @@ defmodule Membrane.H264.Parser do
   def handle_stream_format(:input, stream_format, _ctx, state) do
     state =
       case stream_format do
+        %H264{alignment: alignment} ->
+          mode =
+            case alignment do
+              :nalu -> :nalu_aligned
+              :au -> :au_aligned
+            end
+          %{state | mode: mode}
+
         %RemoteStream{type: :bytestream} ->
           %{state | mode: :bytestream}
 
