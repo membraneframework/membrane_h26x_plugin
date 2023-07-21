@@ -38,12 +38,14 @@ defmodule Membrane.H264.TODO.Mixfile do
   defp deps do
     [
       {:membrane_core, "~> 0.12.0"},
-      {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format"},
+      {:membrane_h264_format,
+       path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true},
       {:bunch, "~> 1.4"},
+      {:membrane_stream_plugin, "~> 0.3.1", only: :test},
+      {:membrane_file_plugin, "~> 0.14.0", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false},
-      {:membrane_file_plugin, "~> 0.13.0", only: :test}
+      {:credo, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 

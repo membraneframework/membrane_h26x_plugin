@@ -214,7 +214,8 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-    #    IO.inspect(buffer, label: "Buffer")
+#    IO.inspect(buffer, label: "inparser buffer")
+
     {payload, state} =
       case state.frame_prefix do
         <<>> -> {buffer.payload, state}
@@ -236,7 +237,7 @@ defmodule Membrane.H264.Parser do
         {nalus_payloads_list, nalu_splitter}
       end
 
-    #    IO.inspect(nalus_payloads_list, label: "payloads")
+        IO.inspect(nalus_payloads_list, label: "payloads")
 
     {nalus, nalu_parser} =
       Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
@@ -244,8 +245,8 @@ defmodule Membrane.H264.Parser do
       end)
 
     {access_units, au_splitter} = AUSplitter.split(nalus, state.au_splitter)
-    #    IO.inspect(nalus, label: "NALUs")
-    #    IO.inspect(access_units, label: "AUs")
+#        IO.inspect(nalus, label: "NALUs")
+#        IO.inspect(access_units, label: "AUs")
 
     {access_units, au_splitter} =
       if state.mode == :au_aligned do
@@ -361,14 +362,14 @@ defmodule Membrane.H264.Parser do
             []
           else
             [
-              {:buffer,
-               {:output,
-                wrap_into_buffer(
-                  au,
-                  pts,
-                  dts,
-                  state.output_alignment
-                )}}
+              buffer:
+                {:output,
+                 wrap_into_buffer(
+                   au,
+                   pts,
+                   dts,
+                   state.output_alignment
+                 )}
             ]
           end
 
@@ -506,7 +507,7 @@ defmodule Membrane.H264.Parser do
 
   defp wrap_into_buffer(access_unit, pts, dts, :au) do
     metadata = prepare_au_metadata(access_unit)
-    #    IO.inspect(access_unit, label: "AU")
+    IO.inspect(access_unit, label: "AU")
 
     buffer =
       access_unit

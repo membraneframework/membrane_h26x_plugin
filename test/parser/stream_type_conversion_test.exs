@@ -8,7 +8,13 @@ defmodule Membrane.H264.StreamTypeConversionTest do
   alias Membrane.H264
   alias Membrane.Testing.{Pipeline, Sink}
 
-  @fixtures "../fixtures/!(*no-sps*|*no-pps*).h264" |> Path.expand(__DIR__) |> Path.wildcard()
+  @annexb_fixtures "../fixtures/!(*no-sps*|*no-pps*).h264"
+                   |> Path.expand(__DIR__)
+                   |> Path.wildcard()
+
+  @avc1_fixture "../fixtures/input-avc1.msf" |> Path.expand(__DIR__)
+
+  @mp4_fixture "https://raw.githubusercontent.com/membraneframework/static/gh-pages/samples/big-buck-bunny/bun33s.mp4"
 
   defp make_pipeline(source, parser1, parser2) do
     structure =
@@ -43,14 +49,45 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     Pipeline.terminate(pipeline_pid, blocking?: true)
   end
 
+  defp make_avcc_pipeline(source_file_path, alignment) do
+    structure = [
+      child(:source1, %Membrane.File.Source{location: source_file_path})
+      |> child(:deserializer1, Membrane.Stream.Deserializer)
+      |> child(:parser1, %H264.Parser{output_alignment: alignment, output_parsed_stream_type: :annexb})
+      |> child(:parser2, %H264.Parser{output_alignment: alignment, output_parsed_stream_type: {:avcc, 4}})
+      |> child(:sink1, Sink),
+
+      child(:source2, %Membrane.File.Source{location: source_file_path})
+      |> child(:deserializer2, Membrane.Stream.Deserializer)
+      |> child(:parser3, %H264.Parser{output_alignment: alignment, output_parsed_stream_type: {:avcc, 4}})
+      |> child(:sink2, Sink)
+    ]
+
+    Pipeline.start_link_supervised!(structure: structure)
+  end
+
+  defp perform_avcc_test(pipeline_pid) do
+    assert_pipeline_play(pipeline_pid)
+    Pipeline.message_child(pipeline_pid, :source1, end_of_stream: :output)
+    Pipeline.message_child(pipeline_pid, :source2, end_of_stream: :output)
+
+    assert_sink_buffer(pipeline_pid, :sink1, buffer1)
+    assert_sink_buffer(pipeline_pid, :sink2, buffer2)
+
+    assert buffer1.payload == buffer2.payload
+
+    assert_end_of_stream(pipeline_pid, :sink1, :input, 3_000)
+    assert_end_of_stream(pipeline_pid, :sink2, :input, 3_000)
+    Pipeline.terminate(pipeline_pid, blocking?: true)
+  end
+
   describe "The output stream should be the same as the input stream" do
     test "for au aligned streams annexb -> avcc -> annexb" do
       source = %H264.Support.TestSource{mode: :au_aligned, output_raw_stream_type: :annexb}
       parser1 = %H264.Parser{output_alignment: :au, output_parsed_stream_type: {:avcc, 4}}
       parser2 = %H264.Parser{output_alignment: :au, output_parsed_stream_type: :annexb}
 
-      Enum.each(@fixtures, fn path ->
-        IO.inspect(path)
+      Enum.each(@annexb_fixtures, fn path ->
         pid = make_pipeline(source, parser1, parser2)
         perform_test(pid, File.read!(path), :au_aligned, :annexb, :annexb)
       end)
@@ -61,11 +98,15 @@ defmodule Membrane.H264.StreamTypeConversionTest do
       parser1 = %H264.Parser{output_alignment: :nalu, output_parsed_stream_type: {:avcc, 4}}
       parser2 = %H264.Parser{output_alignment: :nalu, output_parsed_stream_type: :annexb}
 
-      Enum.each(@fixtures, fn path ->
-        IO.inspect(path)
+      Enum.each(@annexb_fixtures, fn path ->
         pid = make_pipeline(source, parser1, parser2)
         perform_test(pid, File.read!(path), :nalu_aligned, :annexb, :annexb)
       end)
+    end
+
+    test "for au aligned streams avcc -> annexb -> avcc" do
+      pid = make_avcc_pipeline(@avc1_fixture, :au)
+      perform_avcc_test(pid)
     end
   end
 end
