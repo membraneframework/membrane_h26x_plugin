@@ -25,6 +25,30 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
         }
 
   @doc """
+  Generates a DCR based on given PPSs and SPSs.
+  """
+  @spec generate([binary()], [binary()], pos_integer()) :: binary()
+  def generate(ppss, spss, nalu_length_size \\ 4) do
+    sps_common_parameters =
+      Enum.map(spss, fn <<_idc_and_type, profile, compatibility, level, _rest::binary>> ->
+        <<profile, compatibility, level>>
+      end)
+      |> Enum.uniq()
+
+    if length(sps_common_parameters) > 1 do
+      raise("SPS parameters should be the same for all sets but are different")
+    end
+
+    <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
+      length(spss)::5-integer, encode_parameter_sets(spss)::binary, length(ppss)::8-integer,
+      encode_parameter_sets(ppss)::binary>>
+  end
+
+  defp encode_parameter_sets(pss) do
+    Enum.map_join(pss, &<<byte_size(&1)::16-integer, &1::binary>>)
+  end
+
+  @doc """
   Parses the DCR.
   """
   @spec parse(binary()) :: {:ok, t()} | {:error, any()}
