@@ -30,16 +30,13 @@ defmodule Membrane.H264.Parser do
    input buffer that was holding the first NAL unit making up given access unit (that is being sent inside that output buffer).
   * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
   (holding the whole access unit being output)
-
-
-  TODO Consider
-  * unifying H264 and H264.RemoteStream formats (H264 having all H264.RemoteStream functionalities)
-  * making stream type format :annexb | {:avcc, dcr}
-  * option output_stream_type: :annexb | :avcc | {:avcc, nalu_length_size}
-  * for input_stream_type: :annexb pps and sps are put at the beggining of the stream
-  * for input_stream_type: :avcc pps and sps the DCR is extended based on them
-  * moving NALuParser and NALuSplitter initialisations to handle_stream_format (once input stream format is known)
   """
+
+  @typedoc """
+  Type referencing `Membrane.H264.stream_type_t` type, but instead of whole DCR it only contains
+  an information about the size of each NALU's prefix describing their length.
+  """
+  @type parsed_stream_type_t :: :annexb | {:avcc, nalu_length_size :: pos_integer()}
 
   use Membrane.Filter
 
@@ -52,9 +49,6 @@ defmodule Membrane.H264.Parser do
 
   @annexb_prefix_code <<0, 0, 0, 1>>
   @nalu_length_size 4
-
-  @type parsed_stream_type_t :: :annexb | {:avcc, nalu_length_size :: pos_integer()}
-  @type raw_stream_type_t :: :annexb | {:avcc, dcr :: binary()}
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -159,7 +153,6 @@ defmodule Membrane.H264.Parser do
       au_counter: 0,
       output_alignment: opts.output_alignment,
       frame_prefix: <<>>,
-      #      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
       skip_until_keyframe?: opts.skip_until_keyframe?,
       repeat_parameter_sets?: opts.repeat_parameter_sets,
       cached_sps: %{},
@@ -175,10 +168,6 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_stream_format(:input, stream_format, _ctx, state) do
-    #     if state.parameters_sets_present? do
-    #       raise "idk lol :P"
-    #     end
-
     {mode, input_raw_stream_type} =
       case stream_format do
         %RemoteStream{type: :bytestream} ->
@@ -214,8 +203,6 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
-#    IO.inspect(buffer, label: "inparser buffer")
-
     {payload, state} =
       case state.frame_prefix do
         <<>> -> {buffer.payload, state}
@@ -237,16 +224,12 @@ defmodule Membrane.H264.Parser do
         {nalus_payloads_list, nalu_splitter}
       end
 
-        IO.inspect(nalus_payloads_list, label: "payloads")
-
     {nalus, nalu_parser} =
       Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
         NALuParser.parse(nalu_payload, nalu_parser)
       end)
 
     {access_units, au_splitter} = AUSplitter.split(nalus, state.au_splitter)
-#        IO.inspect(nalus, label: "NALUs")
-#        IO.inspect(access_units, label: "AUs")
 
     {access_units, au_splitter} =
       if state.mode == :au_aligned do
@@ -437,10 +420,6 @@ defmodule Membrane.H264.Parser do
     {:avcc, hd(sps_dqrs)}
   end
 
-  defp encode_parameter_sets(pss) do
-    Enum.map_join(pss, fn _id, ps -> <<byte_size(ps)::16-integer, ps::binary>> end)
-  end
-
   defp prepare_timestamps(_buffer_pts, _buffer_dts, state, profile, frame_order_number)
        when state.mode == :bytestream do
     cond do
@@ -485,8 +464,6 @@ defmodule Membrane.H264.Parser do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  #  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
-
   defp cache_parameter_sets(state, au) do
     sps =
       Enum.filter(au, &(&1.type == :sps))
@@ -507,7 +484,6 @@ defmodule Membrane.H264.Parser do
 
   defp wrap_into_buffer(access_unit, pts, dts, :au) do
     metadata = prepare_au_metadata(access_unit)
-    IO.inspect(access_unit, label: "AU")
 
     buffer =
       access_unit
@@ -522,7 +498,6 @@ defmodule Membrane.H264.Parser do
   end
 
   defp wrap_into_buffer(access_unit, pts, dts, :nalu) do
-    #    IO.inspect(access_unit, label: "NALUs")
     access_unit
     |> Enum.zip(prepare_nalus_metadata(access_unit))
     |> Enum.map(fn {nalu, metadata} ->

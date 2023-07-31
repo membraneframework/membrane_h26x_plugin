@@ -8,6 +8,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   alias Membrane.H264.Parser.{NALu, NALuTypes}
   alias Membrane.H264.Parser.NALuParser.SchemeParser
   alias Membrane.H264.Parser.NALuParser.Schemes
+  alias Membrane.H264.Parser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -16,8 +17,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
-            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t(),
-            output_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t(),
+            input_parsed_stream_type: Parser.parsed_stream_type_t(),
+            output_parsed_stream_type: Parser.parsed_stream_type_t(),
             optimize_reprefixing?: boolean()
           }
   @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
@@ -28,8 +29,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   Returns a structure holding a clear NALu parser state.
   """
   @spec new(
-          Membrane.H264.Parser.parsed_stream_type_t(),
-          Membrane.H264.Parser.parsed_stream_type_t(),
+          Parser.parsed_stream_type_t(),
+          Parser.parsed_stream_type_t(),
           boolean()
         ) :: t()
   def new(
@@ -49,8 +50,9 @@ defmodule Membrane.H264.Parser.NALuParser do
 
   Returns a structure that
   contains parsed fields fetched from that NALu.
-  The input binary is expected to contain the prefix, defined as in
-  the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
+  The input binary is expected to contain one of:
+  * prefix defined as the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
+  * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
   @spec parse(binary(), t()) :: {NALu.t(), t()}
   def parse(nalu_payload, state) do
