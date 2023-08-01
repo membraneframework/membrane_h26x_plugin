@@ -50,13 +50,14 @@ defmodule Membrane.H264.Parser do
     accepted_format:
       any_of(
         %RemoteStream{type: :bytestream},
+        %H264{alignment: alignment} when alignment in [:nalu, :au],
         %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au]
       )
 
   def_output_pad :output,
     demand_mode: :auto,
     accepted_format:
-      any_of(%H264{alignment: :au, nalu_in_metadata?: true}, %H264{alignment: :nalu})
+      %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
   def_options sps: [
                 spec: binary(),
@@ -143,6 +144,15 @@ defmodule Membrane.H264.Parser do
   def handle_stream_format(:input, stream_format, _ctx, state) do
     state =
       case stream_format do
+        %H264{alignment: alignment} ->
+          mode =
+            case alignment do
+              :nalu -> :nalu_aligned
+              :au -> :au_aligned
+            end
+
+          %{state | mode: mode}
+
         %RemoteStream{type: :bytestream} ->
           %{state | mode: :bytestream}
 
@@ -153,20 +163,7 @@ defmodule Membrane.H264.Parser do
               :au -> :au_aligned
             end
 
-          frame_prefix =
-            case dcr do
-              nil ->
-                <<>>
-
-              _dcr when state.parameter_sets_present? ->
-                raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
-
-              _dcr ->
-                {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
-                Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
-            end
-
-          %{state | mode: mode, frame_prefix: frame_prefix}
+          %{state | mode: mode, frame_prefix: get_frame_prefix!(dcr, state)}
       end
 
     {[], state}
@@ -482,5 +479,19 @@ defmodule Membrane.H264.Parser do
     pts = div(presentation_order_number * seconds * Membrane.Time.second(), frames)
     dts = div(decoding_order_number * seconds * Membrane.Time.second(), frames)
     {pts, dts}
+  end
+
+  defp get_frame_prefix!(dcr, state) do
+    cond do
+      dcr == nil ->
+        <<>>
+
+      state.parameter_sets_present? ->
+        raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
+
+      true ->
+        {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
+        Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
+    end
   end
 end
