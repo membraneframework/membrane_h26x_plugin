@@ -163,20 +163,7 @@ defmodule Membrane.H264.Parser do
               :au -> :au_aligned
             end
 
-          frame_prefix =
-            case dcr do
-              nil ->
-                <<>>
-
-              _dcr when state.parameter_sets_present? ->
-                raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
-
-              _dcr ->
-                {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
-                Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
-            end
-
-          %{state | mode: mode, frame_prefix: frame_prefix}
+          %{state | mode: mode, frame_prefix: get_frame_prefix!(dcr, state)}
       end
 
     {[], state}
@@ -492,5 +479,19 @@ defmodule Membrane.H264.Parser do
     pts = div(presentation_order_number * seconds * Membrane.Time.second(), frames)
     dts = div(decoding_order_number * seconds * Membrane.Time.second(), frames)
     {pts, dts}
+  end
+
+  defp get_frame_prefix!(dcr, state) do
+    case dcr do
+      nil ->
+        <<>>
+
+      _dcr when state.parameter_sets_present? ->
+        raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
+
+      _dcr ->
+        {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
+        Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
+    end
   end
 end

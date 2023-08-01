@@ -98,7 +98,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warn("AUSplitter: Improper transition")
+        Membrane.Logger.warning("AUSplitter: Improper transition")
         return(state)
     end
   end
@@ -143,7 +143,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warn("AUSplitter: Improper transition")
+        Membrane.Logger.warning("AUSplitter: Improper transition")
         return(state)
     end
   end
