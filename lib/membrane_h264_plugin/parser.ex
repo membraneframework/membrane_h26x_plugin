@@ -482,14 +482,14 @@ defmodule Membrane.H264.Parser do
   end
 
   defp get_frame_prefix!(dcr, state) do
-    case dcr do
-      nil ->
+    cond do
+      dcr == nil ->
         <<>>
 
-      _dcr when state.parameter_sets_present? ->
+      state.parameter_sets_present? ->
         raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
 
-      _dcr ->
+      true ->
         {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
         Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
     end
