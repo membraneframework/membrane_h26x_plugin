@@ -150,6 +150,7 @@ defmodule Membrane.H264.Parser do
               :nalu -> :nalu_aligned
               :au -> :au_aligned
             end
+
           %{state | mode: mode}
 
         %RemoteStream{type: :bytestream} ->

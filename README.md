@@ -39,7 +39,8 @@ defmodule Decoding.Pipeline do
 
   @impl true
   def handle_init(_ctx, _opts) do
-    structure = child(:source, %File.Source{location: "test/fixtures/input-10-720p-main.h264"})
+    structure = 
+      child(:source, %File.Source{location: "test/fixtures/input-10-720p-main.h264"})
       |> child(:parser, H264.Parser)
       |> child(:decoder, H264.FFmpeg.Decoder)
       |> child(:sink, %File.Sink{location: "output.raw"})

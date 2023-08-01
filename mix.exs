@@ -1,4 +1,4 @@
-defmodule Membrane.H264.TODO.Mixfile do
+defmodule Membrane.H264.Plugin.Mixfile do
   use Mix.Project
 
   @version "0.4.2"
