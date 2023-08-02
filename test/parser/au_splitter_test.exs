@@ -20,7 +20,7 @@ defmodule AUSplitterTest do
       NALuSplitter
     }
 
-    @spec parse(binary()) :: AUSplitter.access_unit_t()
+    @spec parse(binary()) :: AUSplitter.access_unit()
     def parse(payload) do
       nalu_splitter = NALuSplitter.new()
       {nalus_payloads, nalu_splitter} = NALuSplitter.split(payload, nalu_splitter)

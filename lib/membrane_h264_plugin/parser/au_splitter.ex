@@ -26,7 +26,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
             nalus_acc: [NALu.t()],
             fsm_state: :first | :second,
             previous_primary_coded_picture_nalu: NALu.t() | nil,
-            access_units_to_output: access_unit_t()
+            access_units_to_output: access_unit()
           }
   @enforce_keys [
     :nalus_acc,
@@ -57,7 +57,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   @typedoc """
   A type representing an access unit - a list of logically associated NAL units.
   """
-  @type access_unit_t() :: list(NALu.t())
+  @type access_unit() :: list(NALu.t())
 
   # split/2 defines a finite state machine with two states: :first and :second.
   # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
@@ -75,7 +75,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   describes the state after processing the primary coded picture NALu of a given
   access unit.
   """
-  @spec split(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
+  @spec split(list(NALu.t()), t()) :: {list(access_unit()), t()}
   def split(nalus, state)
 
   def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do

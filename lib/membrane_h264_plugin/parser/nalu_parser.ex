@@ -17,8 +17,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
-            input_parsed_stream_type: Parser.parsed_stream_type_t(),
-            output_parsed_stream_type: Parser.parsed_stream_type_t(),
+            input_parsed_stream_type: Parser.parsed_stream_type(),
+            output_parsed_stream_type: Parser.parsed_stream_type(),
             optimize_reprefixing?: boolean()
           }
   @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
@@ -29,8 +29,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   Returns a structure holding a clear NALu parser state.
   """
   @spec new(
-          Parser.parsed_stream_type_t(),
-          Parser.parsed_stream_type_t(),
+          Parser.parsed_stream_type(),
+          Parser.parsed_stream_type(),
           boolean()
         ) :: t()
   def new(
@@ -54,20 +54,24 @@ defmodule Membrane.H264.Parser.NALuParser do
   * prefix defined as the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
-  @spec parse(binary(), t()) :: {NALu.t(), t()}
-  def parse(nalu_payload, state) do
+  @spec parse(binary(), t(), boolean()) :: {NALu.t(), t()}
+  def parse(nalu_payload, state, payload_prefixed? \\ true) do
     {prefix_length, unprefixed_nalu_payload} =
-      case state.input_parsed_stream_type do
-        :annexb ->
-          case nalu_payload do
-            <<0, 0, 1, rest::binary>> -> {3, rest}
-            <<0, 0, 0, 1, rest::binary>> -> {4, rest}
-          end
+      if payload_prefixed? do
+        case state.input_parsed_stream_type do
+          :annexb ->
+            case nalu_payload do
+              <<0, 0, 1, rest::binary>> -> {3, rest}
+              <<0, 0, 0, 1, rest::binary>> -> {4, rest}
+            end
 
-        {:avcc, nalu_length_size} ->
-          <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
+          {_avc, nalu_length_size} ->
+            <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
 
-          {nalu_length_size, rest}
+            {nalu_length_size, rest}
+        end
+      else
+        {0, nalu_payload}
       end
 
     <<nalu_header::binary-size(1), nalu_body::binary>> = unprefixed_nalu_payload
@@ -91,7 +95,7 @@ defmodule Membrane.H264.Parser.NALuParser do
         {_, :annexb} ->
           @annexb_prefix_code <> unprefixed_nalu_payload
 
-        {_, {:avcc, nalu_length_size}} ->
+        {_, {_avc, nalu_length_size}} ->
           <<byte_size(unprefixed_nalu_payload)::integer-size(nalu_length_size)-unit(8),
             unprefixed_nalu_payload::binary>>
       end

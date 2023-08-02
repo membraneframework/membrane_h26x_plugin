@@ -28,14 +28,13 @@ defmodule Membrane.H264.Parser.NALuParser.Scheme do
   # which is used to provide the default values of the fields.
   alias Membrane.H264.Parser.NALuParser.SchemeParser
 
-  @type field_t :: {any(), SchemeParser.field_t()}
-  @type if_t :: {value_provider_t(boolean()), t()}
-  @type for_t ::
-          {[iterator: any(), from: value_provider_t(integer()), to: value_provider_t(integer())],
-           t()}
-  @type calculate_t :: {any(), value_provider_t(any())}
-  @type execute_t :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
-  @type save_as_global_state_t :: value_provider_t(any())
+  @type field :: {any(), SchemeParser.field()}
+  @type if :: {value_provider(boolean()), t()}
+  @type for ::
+          {[iterator: any(), from: value_provider(integer()), to: value_provider(integer())], t()}
+  @type calculate :: {any(), value_provider(any())}
+  @type execute :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
+  @type save_as_global_state :: value_provider(any())
 
   @typedoc """
   This type defines a value provider which provides values used in further
@@ -49,16 +48,16 @@ defmodule Membrane.H264.Parser.NALuParser.Scheme do
   the key names given in the parser's state, and the value used in the further
   processing is the value returned by that lambda expression.
   """
-  @type value_provider_t(return_type) :: return_type | {(... -> return_type), list(any())}
+  @type value_provider(return_type) :: return_type | {(... -> return_type), list(any())}
 
-  @type directive_t ::
-          {:field, field_t()}
-          | {:if, if_t()}
-          | {:for, for_t()}
-          | {:calculate, calculate_t()}
-          | {:execute, execute_t()}
-          | {:save_as_global_state, save_as_global_state_t()}
-  @type t :: list(directive_t())
+  @type directive ::
+          {:field, field()}
+          | {:if, if()}
+          | {:for, for()}
+          | {:calculate, calculate()}
+          | {:execute, execute()}
+          | {:save_as_global_state, save_as_global_state()}
+  @type t :: list(directive())
 
   @callback scheme() :: t()
   @callback defaults() :: keyword()

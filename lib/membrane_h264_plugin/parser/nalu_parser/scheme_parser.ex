@@ -18,7 +18,7 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
     of the following NALus.
   * a map under the `:__local__` key -  it holds information valid
     during a time of a single NALu processing, and it's cleaned
-    after the NALu is completly parsed.
+    after the NALu is completely parsed.
   All information fetched from binary part is put into the
   `:__local__` map. If some information needs to be available when
   other binary part is parsed, it needs to be stored in the map under
@@ -37,7 +37,7 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
   Defined as in: *"7.2 Specification of syntax functions, categories, and descriptors"*
   of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
-  @type field_t ::
+  @type field ::
           :u1
           | :u2
           | :u3
@@ -46,7 +46,7 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
           | :u8
           | :u16
           | :u16
-          | {:uv, Scheme.value_provider_t(integer())}
+          | {:uv, Scheme.value_provider(integer())}
           | :ue
           | :se
 

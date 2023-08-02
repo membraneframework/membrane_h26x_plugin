@@ -14,7 +14,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   """
   @opaque t :: %__MODULE__{
             unparsed_payload: binary(),
-            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type_t()
+            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type()
           }
 
   @enforce_keys [:input_parsed_stream_type]
@@ -27,7 +27,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   However, there is a possibility to set that `unparsed_payload`
   to a given binary, provided as an argument of the `new/1` function.
   """
-  @spec new(Membrane.H264.Parser.parsed_stream_type_t(), initial_binary :: binary()) ::
+  @spec new(Membrane.H264.Parser.parsed_stream_type(), initial_binary :: binary()) ::
           t()
   def new(input_parsed_stream_type \\ :annexb, initial_binary \\ <<>>) do
     %__MODULE__{
@@ -76,12 +76,12 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     end)
   end
 
-  defp get_complete_nalus_list(payload, {:avcc, nalu_length_size})
+  defp get_complete_nalus_list(payload, {_avc, nalu_length_size})
        when byte_size(payload) < nalu_length_size do
     []
   end
 
-  defp get_complete_nalus_list(payload, {:avcc, nalu_length_size}) do
+  defp get_complete_nalus_list(payload, {_avc, nalu_length_size}) do
     <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = payload
 
     if nalu_length > byte_size(rest) do

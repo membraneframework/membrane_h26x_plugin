@@ -24,11 +24,14 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
           length_size_minus_one: non_neg_integer()
         }
 
+  import Membrane.H264.Parser
+
   @doc """
   Generates a DCR based on given PPSs and SPSs.
   """
-  @spec generate([binary()], [binary()], pos_integer()) :: binary()
-  def generate(ppss, spss, nalu_length_size \\ 4) do
+  @spec generate([binary()], [binary()], parsed_stream_type()) ::
+          binary() | nil
+  def generate(spss, ppss, {avc, nalu_length_size}) do
     sps_common_parameters =
       Enum.map(spss, fn <<_idc_and_type, profile, compatibility, level, _rest::binary>> ->
         <<profile, compatibility, level>>
@@ -39,13 +42,29 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
       raise("SPS parameters should be the same for all sets but are different")
     end
 
-    <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
-      length(spss)::5-integer, encode_parameter_sets(spss)::binary, length(ppss)::8-integer,
-      encode_parameter_sets(ppss)::binary>>
+    cond do
+      sps_common_parameters == [] ->
+        nil
+
+      avc == :avc1 ->
+        <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
+          length(spss)::5-integer, encode_parameter_sets(spss)::binary, length(ppss)::8-integer,
+          encode_parameter_sets(ppss)::binary>>
+
+      avc == :avc3 ->
+        <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
+          0::5, 0::8>>
+    end
   end
 
   defp encode_parameter_sets(pss) do
     Enum.map_join(pss, &<<byte_size(&1)::16-integer, &1::binary>>)
+  end
+
+  @spec remove_parameter_sets(binary()) :: binary()
+  def remove_parameter_sets(dcr) do
+    <<dcr_head::binary-(8 * 5), _rest::binary>> = dcr
+    <<dcr_head::binary, 0b111::3, 0::5, 0::8>>
   end
 
   @doc """
@@ -56,12 +75,12 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
         <<1::8, avc_profile_indication::8, profile_compatibility::8, avc_level::8, 0b111111::6,
           length_size_minus_one::2, 0b111::3, rest::bitstring>>
       ) do
-    {sps, rest} = parse_sps(rest)
-    {pps, _rest} = parse_pps(rest)
+    {spss, rest} = parse_spss(rest)
+    {ppss, _rest} = parse_ppss(rest)
 
     %__MODULE__{
-      sps: sps,
-      pps: pps,
+      spss: spss,
+      ppss: ppss,
       avc_profile_indication: avc_profile_indication,
       profile_compatibility: profile_compatibility,
       avc_level: avc_level,
@@ -72,11 +91,11 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
 
   def parse(_data), do: {:error, :unknown_pattern}
 
-  defp parse_sps(<<num_of_sps::5, rest::bitstring>>) do
-    do_parse_array(num_of_sps, rest)
+  defp parse_spss(<<num_of_spss::5, rest::bitstring>>) do
+    do_parse_array(num_of_spss, rest)
   end
 
-  defp parse_pps(<<num_of_pps::8, rest::bitstring>>), do: do_parse_array(num_of_pps, rest)
+  defp parse_ppss(<<num_of_ppss::8, rest::bitstring>>), do: do_parse_array(num_of_ppss, rest)
 
   defp do_parse_array(amount, rest, acc \\ [])
   defp do_parse_array(0, rest, acc), do: {Enum.reverse(acc), rest}

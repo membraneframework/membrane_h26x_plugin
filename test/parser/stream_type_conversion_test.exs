@@ -13,7 +13,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
                    |> Path.wildcard()
 
   @avc1_fixture "../fixtures/input-avc1-no-dcr.msf" |> Path.expand(__DIR__)
-#  @avc1_fixture_buffers 811
+  #  @avc1_fixture_buffers 811
 
   defp make_pipeline(source, parser1, parser2) do
     structure =
@@ -86,11 +86,11 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     Pipeline.message_child(fixture_pipeline_pid, :source, end_of_stream: :output)
     assert_end_of_stream(fixture_pipeline_pid, :sink, :input, 3_000)
 
-#    IO.inspect(fixture_pipeline_pid)
-#    IO.inspect(conversion_pipeline_pid)
+    #    IO.inspect(fixture_pipeline_pid)
+    #    IO.inspect(conversion_pipeline_pid)
 
     fixture_buffers_set = receive_buffers_set(fixture_pipeline_pid)
-#    IO.inspect(fixture_buffers_set)
+    #    IO.inspect(fixture_buffers_set)
 
     assert_pipeline_play(conversion_pipeline_pid)
     Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
@@ -101,14 +101,22 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     IO.inspect(MapSet.size(fixture_buffers_set))
     IO.inspect(MapSet.size(converted_buffers_set))
 
-    Enum.each(fixture_buffers_set, &IO.inspect(&1, label: "fix", limit: :infinity, width: :infinity))
-    Enum.each(converted_buffers_set, &IO.inspect(&1, label: "conv", limit: :infinity, width: :infinity))
-#    MapSet.difference(fixture_buffers_set, converted_buffers_set)
-#    |> IO.inspect()
-#    |> MapSet.to_list()
-#    |> hd()
-#    |> byte_size()
-#    |> IO.inspect()
+    Enum.each(
+      fixture_buffers_set,
+      &IO.inspect(&1, label: "fix", limit: :infinity, width: :infinity)
+    )
+
+    Enum.each(
+      converted_buffers_set,
+      &IO.inspect(&1, label: "conv", limit: :infinity, width: :infinity)
+    )
+
+    #    MapSet.difference(fixture_buffers_set, converted_buffers_set)
+    #    |> IO.inspect()
+    #    |> MapSet.to_list()
+    #    |> hd()
+    #    |> byte_size()
+    #    |> IO.inspect()
 
     assert MapSet.subset?(fixture_buffers_set, converted_buffers_set)
 
@@ -126,7 +134,8 @@ defmodule Membrane.H264.StreamTypeConversionTest do
 
   defp receive_buffers_set(pipeline_pid, fixture_buffers \\ []) do
     receive do
-      {Membrane.Testing.Pipeline, ^pipeline_pid, {:handle_child_notification, {{:buffer, buffer}, :sink}}} ->
+      {Membrane.Testing.Pipeline, ^pipeline_pid,
+       {:handle_child_notification, {{:buffer, buffer}, :sink}}} ->
         receive_buffers_set(pipeline_pid, [buffer.payload | fixture_buffers])
     after
       0 ->
