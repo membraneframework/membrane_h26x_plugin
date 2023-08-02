@@ -43,7 +43,7 @@ defmodule AUSplitterTest do
       full_name = "test/fixtures/input-#{name}.h264"
       binary = File.read!(full_name)
 
-      aus = FullBinaryParser.parse(binary) |> Enum.unzip() |> elem(0)
+      aus = FullBinaryParser.parse(binary)
 
       au_lengths =
         for au <- aus,
