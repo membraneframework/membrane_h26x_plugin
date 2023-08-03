@@ -19,11 +19,11 @@ defmodule Membrane.H264.Parser.NALuParser do
             scheme_parser_state: SchemeParser.t(),
             input_parsed_stream_type: Parser.parsed_stream_type(),
             output_parsed_stream_type: Parser.parsed_stream_type(),
-            optimize_reprefixing?: boolean()
+            stable_reprefixing?: boolean()
           }
   @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
   defstruct @enforce_keys ++
-              [scheme_parser_state: SchemeParser.new(), optimize_reprefixing?: true]
+              [scheme_parser_state: SchemeParser.new(), stable_reprefixing?: true]
 
   @doc """
   Returns a structure holding a clear NALu parser state.
@@ -36,12 +36,12 @@ defmodule Membrane.H264.Parser.NALuParser do
   def new(
         input_parsed_stream_type \\ :annexb,
         output_parsed_stream_type \\ :annexb,
-        optimize_reprefixing? \\ true
+        stable_reprefixing? \\ true
       ) do
     %__MODULE__{
       input_parsed_stream_type: input_parsed_stream_type,
       output_parsed_stream_type: output_parsed_stream_type,
-      optimize_reprefixing?: optimize_reprefixing?
+      stable_reprefixing?: stable_reprefixing?
     }
   end
 
@@ -56,7 +56,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @spec parse(binary(), t(), boolean()) :: {NALu.t(), t()}
   def parse(nalu_payload, state, payload_prefixed? \\ true) do
-    {prefix_length, unprefixed_nalu_payload} =
+    {initial_prefix_length, unprefixed_nalu_payload} =
       if payload_prefixed? do
         case state.input_parsed_stream_type do
           :annexb ->
@@ -87,17 +87,18 @@ defmodule Membrane.H264.Parser.NALuParser do
 
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
-    reprefixed_nalu_payload =
+    {prefix_length, reprefixed_nalu_payload} =
       case {state.input_parsed_stream_type, state.output_parsed_stream_type} do
-        {type, type} when state.optimize_reprefixing? ->
-          nalu_payload
+        {type, type} when state.stable_reprefixing? and payload_prefixed? ->
+          {initial_prefix_length, nalu_payload}
 
         {_, :annexb} ->
-          @annexb_prefix_code <> unprefixed_nalu_payload
+          {4, @annexb_prefix_code <> unprefixed_nalu_payload}
 
         {_, {_avc, nalu_length_size}} ->
-          <<byte_size(unprefixed_nalu_payload)::integer-size(nalu_length_size)-unit(8),
-            unprefixed_nalu_payload::binary>>
+          {nalu_length_size,
+           <<byte_size(unprefixed_nalu_payload)::integer-size(nalu_length_size)-unit(8),
+             unprefixed_nalu_payload::binary>>}
       end
 
     {nalu, scheme_parser_state} =

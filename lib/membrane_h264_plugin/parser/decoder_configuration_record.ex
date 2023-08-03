@@ -5,8 +5,8 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
   """
   @enforce_keys [
-    :sps,
-    :pps,
+    :spss,
+    :ppss,
     :avc_profile_indication,
     :avc_level,
     :profile_compatibility,
@@ -16,20 +16,20 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
 
   @typedoc "Structure representing the Decoder Configuartion Record"
   @type t() :: %__MODULE__{
-          sps: [binary()],
-          pps: [binary()],
+          spss: [binary()],
+          ppss: [binary()],
           avc_profile_indication: non_neg_integer(),
           profile_compatibility: non_neg_integer(),
           avc_level: non_neg_integer(),
           length_size_minus_one: non_neg_integer()
         }
 
-  import Membrane.H264.Parser
+  alias Membrane.H264.Parser
 
   @doc """
   Generates a DCR based on given PPSs and SPSs.
   """
-  @spec generate([binary()], [binary()], parsed_stream_type()) ::
+  @spec generate([binary()], [binary()], Parser.parsed_stream_type()) ::
           binary() | nil
   def generate(spss, ppss, {avc, nalu_length_size}) do
     sps_common_parameters =
@@ -47,13 +47,13 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
         nil
 
       avc == :avc1 ->
-        <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
-          length(spss)::5-integer, encode_parameter_sets(spss)::binary, length(ppss)::8-integer,
-          encode_parameter_sets(ppss)::binary>>
+        <<1, hd(sps_common_parameters)::binary, 0b111111::6, nalu_length_size - 1::2-integer,
+          0b111::3, length(spss)::5-integer, encode_parameter_sets(spss)::binary,
+          length(ppss)::8-integer, encode_parameter_sets(ppss)::binary>>
 
       avc == :avc3 ->
-        <<1, hd(sps_common_parameters), 0b111111::6, nalu_length_size - 1::2-integer, 0b111::3,
-          0::5, 0::8>>
+        <<1, hd(sps_common_parameters)::binary, 0b111111::6, nalu_length_size - 1::2-integer,
+          0b111::3, 0::5, 0::8>>
     end
   end
 

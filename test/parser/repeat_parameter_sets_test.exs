@@ -40,11 +40,9 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          data,
          mode \\ :bytestream,
          parser_input_parsed_stream_type \\ :annexb,
-         parser_output_parsed_stream_type \\ :annexb,
-         data_parsed_stream_type \\ :annexb
+         parser_output_parsed_stream_type \\ :annexb
        ) do
-    buffers =
-      prepare_buffers(data, mode, data_parsed_stream_type, parser_input_parsed_stream_type)
+    buffers = prepare_buffers(data, mode, parser_input_parsed_stream_type)
 
     assert_pipeline_play(pipeline_pid)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
@@ -54,7 +52,6 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       prepare_buffers(
         File.read!(@ref_path),
         :au_aligned,
-        data_parsed_stream_type,
         parser_output_parsed_stream_type
       )
 
@@ -90,9 +87,9 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{mode: :au_aligned, output_raw_stream_type: {:avcc, @dcr}}
-      pid = make_pipeline(source, <<>>, <<>>, {:avcc, 4})
-      perform_test(pid, File.read!(@in_path), :au_aligned, {:avcc, 4}, {:avcc, 4}, :annexb)
+      source = %H264.Support.TestSource{mode: :au_aligned, output_raw_stream_type: {:avc3, @dcr}}
+      pid = make_pipeline(source, <<>>, <<>>, {:avc3, 4})
+      perform_test(pid, File.read!(@in_path), :au_aligned, {:avc3, 4}, {:avc3, 4})
     end
 
     test "when bytestream has variable parameter sets" do

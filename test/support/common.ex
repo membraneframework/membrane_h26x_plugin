@@ -13,12 +13,11 @@ defmodule Membrane.H264.Support.Common do
   def prepare_buffers(
         binary,
         alignment,
-        parsed_stream_type \\ :annexb,
         output_parsed_stream_type \\ :annexb,
-        optimize_reprefixing? \\ true
+        stable_reprefixing? \\ true
       )
 
-  def prepare_buffers(binary, :bytestream, _, _, _) do
+  def prepare_buffers(binary, :bytestream, _, _) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
 
@@ -28,12 +27,10 @@ defmodule Membrane.H264.Support.Common do
   def prepare_buffers(
         binary,
         alignment,
-        input_parsed_stream_type,
         output_parsed_stream_type,
-        optimize_reprefixing?
+        stable_reprefixing?
       ) do
-    {nalus_payloads, nalu_splitter} =
-      NALuSplitter.split(binary, NALuSplitter.new(input_parsed_stream_type))
+    {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new(:annexb))
 
     {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
     nalus_payloads = nalus_payloads ++ [last_nalu_payload]
@@ -42,9 +39,9 @@ defmodule Membrane.H264.Support.Common do
       Enum.map_reduce(
         nalus_payloads,
         NALuParser.new(
-          input_parsed_stream_type,
+          :annexb,
           output_parsed_stream_type,
-          optimize_reprefixing?
+          stable_reprefixing?
         ),
         &NALuParser.parse(&1, &2)
       )

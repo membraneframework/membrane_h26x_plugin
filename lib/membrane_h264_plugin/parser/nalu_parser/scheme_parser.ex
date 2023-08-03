@@ -98,8 +98,7 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
          state,
          iterators
        ) do
-    scheme
-    |> Enum.reduce({payload, state}, fn {operator, arguments}, {payload, state} ->
+    Enum.reduce(scheme, {payload, state}, fn {operator, arguments}, {payload, state} ->
       case {operator, arguments} do
         {:field, {name, type}} ->
           {field_value, payload} = parse_field(payload, state, type)
