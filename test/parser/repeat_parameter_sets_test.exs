@@ -54,10 +54,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   end
 
   defp split_access_unit(access_unit) do
-    {nalus, splitter} = NALuSplitter.split(access_unit, NALuSplitter.new())
-    {remaining_nalu, _} = NALuSplitter.flush(splitter)
-
-    Enum.sort(nalus ++ [remaining_nalu])
+    {nalus, _splitter} = NALuSplitter.split(access_unit, true, NALuSplitter.new())
+    Enum.sort(nalus)
   end
 
   describe "Parameter sets should be reapeated on each IDR access unit" do
