@@ -8,6 +8,8 @@ Mix.install([
   {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true}
 ])
 
+alias Membrane.H264.Parser.NALuSplitter
+
 defmodule MP4ToH264Filter do
   use Membrane.Filter
 
@@ -19,6 +21,16 @@ defmodule MP4ToH264Filter do
   def_output_pad :output,
     demand_mode: :auto,
     accepted_format: Membrane.H264
+
+  def_options output_alignment: [
+                spec: :au | :nalu,
+                default: :au
+              ]
+
+  @impl true
+  def handle_init(_ctx, opts) do
+    {[], %{output_alignment: opts.output_alignment}}
+  end
 
   @impl true
   def handle_stream_format(
@@ -42,27 +54,22 @@ defmodule MP4ToH264Filter do
      ], state}
   end
 
-  #  @impl true
-  #  def handle_stream_format(
-  #        :input,
-  #        %Membrane.MP4.Payload{
-  #          width: width,
-  #          height: height,
-  #          content: %Membrane.MP4.Payload.AVC1{avcc: <<dcr_header::binary-8*5, _rest::binary>>}
-  #        },
-  #        _ctx,
-  #        state
-  #      ) do
-  #    IO.inspect(dcr_header)
-  #    {[
-  #      stream_format:
-  #        {:output, %Membrane.H264{width: width, height: height, stream_type: {:avcc, <<dcr_header::binary, 0b111::3, 0::5, 0::8>>}}}
-  #    ], state}
-  #  end
-
   @impl true
   def handle_process(:input, buffer, _ctx, state) do
-    {[buffer: {:output, buffer}], state}
+    buffers =
+      case state.output_alignment do
+        :au ->
+          buffer
+
+        :nalu ->
+          {nalus, splitter} =
+            NALuSplitter.split(buffer.payload, NALuSplitter.new())
+
+          nalus = nalus ++ [elem(NALuSplitter.flush(splitter), 0)]
+          Enum.map(nalus, fn nalu -> %Membrane.Buffer{payload: nalu} end)
+      end
+
+    {[buffer: {:output, buffers}], state}
   end
 
   @impl true
@@ -71,7 +78,7 @@ defmodule MP4ToH264Filter do
   end
 end
 
-defmodule FixtureGenerator do
+defmodule FixtureGeneratorPipeline do
   use Membrane.Pipeline
 
   import Membrane.ChildrenSpec
@@ -80,14 +87,15 @@ defmodule FixtureGenerator do
   @output_location "../fixtures/ref_video_variable_parameters-avc1.msf" |> Path.expand(__DIR__)
 
   @impl true
-  def handle_init(_ctx, _opts) do
+  def handle_init(_ctx, options) do
+    IO.inspect(options)
     structure = [
-      child(:video_source, %Membrane.File.Source{location: @mp4_fixture})
+      child(:video_source, %Membrane.File.Source{location: options.input_location})
       |> child(:demuxer, Membrane.MP4.Demuxer.ISOM)
       |> via_out(Pad.ref(:output, 1))
-      |> child(:filter, MP4ToH264Filter)
+      |> child(:filter, %MP4ToH264Filter{output_alignment: options.output_alignment})
       |> child(:serializer, Membrane.Stream.Serializer)
-      |> child(:sink, %Membrane.File.Sink{location: @output_location})
+      |> child(:sink, %Membrane.File.Sink{location: options.output_location})
     ]
 
     {[spec: structure], %{children_with_eos: MapSet.new()}}
@@ -106,10 +114,39 @@ defmodule FixtureGenerator do
   end
 end
 
-{:ok, _supervisor_pid, pipeline_pid} = FixtureGenerator.start_link()
-ref = Process.monitor(pipeline_pid)
+defmodule FixtureGenerator do
+  def generate_avc1_fixture(input_location, output_alignment) do
+    output_location =
+      input_location
+      |> Path.split()
+      |> List.replace_at(-2, "msf")
+      |> List.update_at(-1, fn file ->
+        [name, "mp4"] = String.split(file, ".")
+        "#{name}-avc1-#{output_alignment}.msf"
+      end)
+      |> Path.join()
 
-receive do
-  {:DOWN, ^ref, :process, _pipeline_pid, _reason} ->
-    :ok
+    options = %{
+      input_location: input_location,
+      output_location: output_location,
+      output_alignment: output_alignment
+    }
+
+    {:ok, _supervisor_pid, pipeline_pid} = FixtureGeneratorPipeline.start(options)
+    ref = Process.monitor(pipeline_pid)
+
+    receive do
+      {:DOWN, ^ref, :process, _pipeline_pid, _reason} ->
+        :ok
+    end
+
+    Membrane.Pipeline.terminate(pipeline_pid)
+  end
 end
+
+
+Enum.each("../fixtures/mp4/*.mp4" |> Path.expand(__DIR__) |> Path.wildcard(), fn input_location ->
+  FixtureGenerator.generate_avc1_fixture(input_location, :au)
+  FixtureGenerator.generate_avc1_fixture(input_location, :nalu)
+end)
+

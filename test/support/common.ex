@@ -26,7 +26,7 @@ defmodule Membrane.H264.Support.Common do
 
   def prepare_buffers(
         binary,
-        alignment,
+        mode,
         output_parsed_stream_type,
         stable_reprefixing?
       ) do
@@ -50,7 +50,7 @@ defmodule Membrane.H264.Support.Common do
     {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
     aus = aus ++ [last_au]
 
-    case alignment do
+    case mode do
       :nalu_aligned ->
         Enum.map_reduce(aus, 0, fn au, ts ->
           {for(nalu <- au, do: %Membrane.Buffer{payload: nalu.payload, pts: ts, dts: ts}), ts + 1}
