@@ -169,6 +169,12 @@ defmodule Membrane.H264.Parser.AUSplitter do
     {state.nalus_acc, %{state | nalus_acc: []}}
   end
 
+  # Explanation to the  guard below
+  # https://github.com/GStreamer/gst-plugins-bad/blob/ca8068c6d793d7aaa6f2e2cc6324fdedfe2f33fa/gst/videoparsers/gsth264parse.c#L1183C45-L1185C49
+  defguardp first_mb_in_slice_zero(a, b)
+            when a.first_mb_in_slice == 0 and b.first_mb_in_slice == 0 and
+                   a.nal_unit_type in [1, 2, 5]
+
   defguardp frame_num_differs(a, b) when a.frame_num != b.frame_num
 
   defguardp pic_parameter_set_id_differs(a, b)
@@ -210,6 +216,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   # Conditions based on 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
   # of the "ITU-T Rec. H.264 (01/2012)"
   defp is_new_primary_coded_vcl_nalu(%{parsed_fields: nalu}, %{parsed_fields: last_nalu})
+       when first_mb_in_slice_zero(nalu, last_nalu)
        when frame_num_differs(nalu, last_nalu)
        when pic_parameter_set_id_differs(nalu, last_nalu)
        when field_pic_flag_differs(nalu, last_nalu)
@@ -223,5 +230,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
     true
   end
 
-  defp is_new_primary_coded_vcl_nalu(_nalu, _last_nalu), do: false
+  defp is_new_primary_coded_vcl_nalu(_nalu, _last_nalu) do
+    false
+  end
 end
