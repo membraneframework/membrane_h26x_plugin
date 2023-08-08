@@ -19,6 +19,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   alias Membrane.H264.Parser.NALu
 
+  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+
   @typedoc """
   A structure holding a state of the access unit splitter.
   """
@@ -50,9 +52,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
     }
   end
 
-  @non_vcl_nalus_at_au_beginning [:sps, :pps, :aud, :sei]
-  @non_vcl_nalus_at_au_end [:end_of_seq, :end_of_stream]
-  @vcl_nalus NALu.vcl_nalus()
+  @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
+  @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]
 
   @typedoc """
   A type representing an access unit - a list of logically associated NAL units.
@@ -91,7 +92,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
+      first_nalu.type in @non_vcl_nalu_types_at_au_beginning ->
         split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
@@ -105,7 +106,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
 
   def split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
-      first_nalu.type in @non_vcl_nalus_at_au_end ->
+      first_nalu.type in @non_vcl_nalu_types_at_au_end ->
         split(
           rest_nalus,
           %__MODULE__{
@@ -114,7 +115,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
+      first_nalu.type in @non_vcl_nalu_types_at_au_beginning ->
         split(
           rest_nalus,
           %__MODULE__{
@@ -136,7 +137,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
+      NALuTypes.is_vcl_nalu_type(first_nalu.type) or first_nalu.type == :filler_data ->
         split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
@@ -202,8 +203,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   defguardp idrs_with_idr_pic_id_differ(a, b)
             when a.nal_unit_type == 5 and b.nal_unit_type == 5 and a.idr_pic_id != b.idr_pic_id
 
-  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu) when type not in @vcl_nalus,
-    do: false
+  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu)
+       when not NALuTypes.is_vcl_nalu_type(type),
+       do: false
 
   defp is_new_primary_coded_vcl_nalu(_nalu, nil), do: true
 

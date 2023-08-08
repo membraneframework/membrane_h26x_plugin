@@ -3,7 +3,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
 
   alias Membrane.H264.Parser.NALu
 
-  @vcl_nalus NALu.vcl_nalus()
+  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
 
   @type t :: %{
           au_counter: non_neg_integer(),
@@ -17,7 +17,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     %{
       au_counter: 0,
       key_frame_au_idx: 0,
-      previous_vcl_nalu: nil,
+      prev_pic_vcl_nalu: nil,
       prev_pic_order_cnt_msb: 0
     }
   end
@@ -30,8 +30,8 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
         ) :: {{pts :: non_neg_integer(), dts :: non_neg_integer()}, t}
   def generate_ts_with_constant_framerate(au, {frames, seconds}, max_frame_reorder, state) do
     %{au_counter: au_counter, key_frame_au_idx: key_frame_au_idx} = state
-    vcl_nalu = Enum.find(au, &(&1.type in @vcl_nalus))
-    {poc, state} = calculate_poc(vcl_nalu, state)
+    first_vcl_nalu = Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+    {poc, state} = calculate_poc(first_vcl_nalu, state)
     key_frame_au_idx = if poc == 0, do: au_counter, else: key_frame_au_idx
     pts = div((key_frame_au_idx + poc) * seconds * Membrane.Time.second(), frames)
     dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
@@ -40,12 +40,13 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
       state
       | au_counter: au_counter + 1,
         key_frame_au_idx: key_frame_au_idx,
-        previous_vcl_nalu: vcl_nalu
+        prev_pic_vcl_nalu: first_vcl_nalu
     }
 
     {{pts, dts}, state}
   end
 
+  # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification
   defp calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 0}} = vcl_nalu, state) do
     max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)
 
@@ -62,7 +63,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
         # for some streams and we may generate invalid timestamps because of that.
         # If that happens, may have to implement the aforementioned lacking part.
 
-        previous_vcl_nalu = state.previous_vcl_nalu || vcl_nalu
+        previous_vcl_nalu = state.prev_pic_vcl_nalu || vcl_nalu
         {state.prev_pic_order_cnt_msb, previous_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
       end
 

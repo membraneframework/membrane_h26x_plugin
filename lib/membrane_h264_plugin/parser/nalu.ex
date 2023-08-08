@@ -27,10 +27,4 @@ defmodule Membrane.H264.Parser.NALu do
 
   @enforce_keys [:parsed_fields, :prefix_length, :type, :payload, :status]
   defstruct @enforce_keys
-
-  @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
-  @type vcl_nalu :: unquote(Bunch.Typespec.enum_to_alternative(@vcl_nalus))
-
-  @spec vcl_nalus() :: [vcl_nalu()]
-  def vcl_nalus(), do: @vcl_nalus
 end

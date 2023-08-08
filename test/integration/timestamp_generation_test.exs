@@ -27,8 +27,8 @@ defmodule Membrane.H264.TimestampGenerationTest do
     end
   end
 
-  @h264_input_file "test/fixtures/input-10-720p.h264"
-  @h264_input_timestamps [
+  @h264_input_file_main "test/fixtures/input-10-720p.h264"
+  @h264_input_timestamps_main [
     {0, -500},
     {133, -467},
     {67, -433},
@@ -100,7 +100,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     [
       {":baseline and :constrained_baseline", @h264_input_file_baseline,
        @h264_input_timestamps_baseline},
-      {":main and higher", @h264_input_file, @h264_input_timestamps}
+      {":main and higher", @h264_input_file_main, @h264_input_timestamps_main}
     ],
     fn {profiles, file, timestamps} ->
       test """
