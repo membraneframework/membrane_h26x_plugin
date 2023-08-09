@@ -131,21 +131,24 @@ defmodule Membrane.H264.StreamTypeConversionTest do
         assert_sink_stream_format(conversion_pipeline_pid, :sink, %H264{
           stream_type: {:avc3, conversion_dcr}
         })
+
         {:ok, %{nalu_length_size: converted_nalu_length_size}} =
           H264.Parser.DecoderConfigurationRecord.parse(conversion_dcr)
+
         {:avc3, fixture_dcr} = fixture_stream_type
+
         {:ok, %{spss: dcr_spss, ppss: dcr_ppss, nalu_length_size: fixture_nalu_length_size}} =
           H264.Parser.DecoderConfigurationRecord.parse(fixture_dcr)
 
         fixture_nalus =
-          Enum.map(dcr_spss, &add_length_prefix(&1, converted_nalu_length_size))
-          ++ Enum.map(dcr_ppss, &add_length_prefix(&1, converted_nalu_length_size))
-          ++ split_aus_to_nalus(fixture_buffers, {:avc3, fixture_nalu_length_size})
+          Enum.map(dcr_spss, &add_length_prefix(&1, converted_nalu_length_size)) ++
+            Enum.map(dcr_ppss, &add_length_prefix(&1, converted_nalu_length_size)) ++
+            split_aus_to_nalus(fixture_buffers, {:avc3, fixture_nalu_length_size})
 
-        converted_nalus = split_aus_to_nalus(converted_buffers, {:avc3, converted_nalu_length_size})
+        converted_nalus =
+          split_aus_to_nalus(converted_buffers, {:avc3, converted_nalu_length_size})
 
         assert MapSet.equal?(MapSet.new(fixture_nalus), MapSet.new(converted_nalus))
-
     end
 
     Pipeline.terminate(fixture_pipeline_pid)
@@ -209,7 +212,10 @@ defmodule Membrane.H264.StreamTypeConversionTest do
   defp split_aus_to_nalus(aus_binaries, parsed_stream_type) do
     Enum.map(aus_binaries, fn au_binary ->
       {nalus, splitter} =
-        H264.Parser.NALuSplitter.split(au_binary, H264.Parser.NALuSplitter.new(parsed_stream_type))
+        H264.Parser.NALuSplitter.split(
+          au_binary,
+          H264.Parser.NALuSplitter.new(parsed_stream_type)
+        )
 
       case parsed_stream_type do
         :annexb ->
@@ -218,7 +224,6 @@ defmodule Membrane.H264.StreamTypeConversionTest do
         {_avc, _} ->
           nalus
       end
-
     end)
     |> List.flatten()
   end
@@ -228,144 +233,89 @@ defmodule Membrane.H264.StreamTypeConversionTest do
   end
 
   describe "The output stream should be the same as the input stream" do
-    test "for au aligned stream annexb -> avc3 -> annexb" do
-      perform_test(:annexb, :au, [{:avc3, 4}])
+    generate_tests = fn tested_stream_type_name, parser_chains, name_suffix ->
+      for parser_types <- parser_chains do
+        parser_chain_string =
+          Enum.map_join(parser_types, " -> ", fn parser_type ->
+            case parser_type do
+              :annexb -> "annexb"
+              {:avc1, _} -> "avc1"
+              {:avc3, _} -> "avc3"
+            end
+          end)
+
+        identical_order? = not Enum.any?(parser_types, &match?({:avc1, _}, &1))
+
+        stream_name =
+          "stream #{tested_stream_type_name} -> #{parser_chain_string} -> #{tested_stream_type_name} #{name_suffix}"
+
+        @tag String.to_atom("au aligned #{stream_name}")
+        test "for au aligned #{stream_name}" do
+          perform_test(
+            unquote(tested_stream_type_name),
+            :au,
+            unquote(parser_types),
+            unquote(identical_order?)
+          )
+        end
+
+        @tag String.to_atom("nalu aligned #{stream_name}")
+        test "for nalu aligned #{stream_name}" do
+          perform_test(
+            unquote(tested_stream_type_name),
+            :nalu,
+            unquote(parser_types),
+            unquote(identical_order?)
+          )
+        end
+      end
     end
 
-    test "for nalu aligned stream annexb -> avc3 -> annexb" do
-      perform_test(:annexb, :nalu, [{:avc3, 4}])
-    end
+    generate_tests.(
+      :annexb,
+      [
+        [{:avc3, 4}],
+        [{:avc1, 4}],
+        [{:avc1, 4}, {:avc3, 4}],
+        [{:avc3, 4}, {:avc1, 4}]
+      ],
+      ""
+    )
 
-    test "for au aligned stream annexb -> avc1 -> annexb" do
-      perform_test(:annexb, :au, [{:avc1, 4}], false)
-    end
+    generate_tests.(
+      :avc1,
+      [[:annexb], [{:avc3, 4}], [{:avc3, 4}, :annexb], [:annexb, {:avc3, 4}]],
+      ""
+    )
 
-    test "for nalu aligned stream annexb -> avc1 -> annexb" do
-      perform_test(:annexb, :nalu, [{:avc1, 4}], false)
-    end
+    generate_tests.(
+      :avc3,
+      [[:annexb], [{:avc1, 4}], [{:avc1, 4}, :annexb], [:annexb, {:avc1, 4}]],
+      ""
+    )
 
-    test "for au aligned stream annexb -> avc1 -> avc3 -> annexb" do
-      perform_test(:annexb, :au, [{:avc1, 4}, {:avc3, 4}], false)
-    end
+    generate_tests.(:avc1, [[{:avc3, 2}, {:avc1, 3}, :annexb]], "with varying nalu_length_size")
 
-    test "for nalu aligned stream annexb -> avc1 -> avc3 -> annexb" do
-      perform_test(:annexb, :nalu, [{:avc1, 4}, {:avc3, 4}], false)
-    end
-
-    test "for au aligned stream annexb -> avc3 -> avc1 -> annexb" do
-      perform_test(:annexb, :au, [{:avc3, 4}, {:avc1, 4}], false)
-    end
-
-    test "for nalu aligned stream annexb -> avc3 -> avc1 -> annexb" do
-      perform_test(:annexb, :nalu, [{:avc3, 4}, {:avc1, 4}], false)
-    end
-
-    test "for au aligned stream avc3 -> annexb -> avc3" do
-      perform_test(:avc3, :au, [:annexb])
-    end
-
-    test "for nalu aligned stream avc3 -> annexb -> avc3" do
-      perform_test(:avc3, :nalu, [:annexb])
-    end
-
-    test "for au aligned stream avc3 -> avc1 -> avc3" do
-      perform_test(:avc3, :au, [{:avc1, 4}])
-    end
-
-    test "for nalu aligned stream avc3 -> avc1 -> avc3" do
-      perform_test(:avc3, :nalu, [{:avc1, 4}])
-    end
-
-    test "for au aligned stream avc3 -> avc1 -> annexb -> avc3" do
-      perform_test(:avc3, :au, [{:avc1, 4}, :annexb])
-    end
-
-    test "for nalu aligned stream avc3 -> avc1 -> annexb -> avc3" do
-      perform_test(:avc3, :nalu, [{:avc1, 4}, :annexb])
-    end
-
-    test "for au aligned stream avc3 -> annexb -> avc1 -> avc3" do
-      perform_test(:avc3, :au, [:annexb, {:avc1, 4}])
-    end
-
-    test "for nalu aligned stream avc3 -> annexb -> avc1 -> avc3" do
-      perform_test(:avc3, :nalu, [:annexb, {:avc1, 4}])
-    end
-
-    test "for au aligned stream avc1 -> avc3 -> avc1" do
-      perform_test(:avc1, :au, [{:avc3, 4}])
-    end
-
-    test "for nalu aligned stream avc1 -> avc3 -> avc1" do
-      perform_test(:avc1, :nalu, [{:avc3, 4}])
-    end
-
-    test "for au aligned stream avc1 -> annexb -> avc1" do
-      perform_test(:avc1, :au, [:annexb])
-    end
-
-    test "for nalu aligned stream avc1 -> annexb -> avc1" do
-      perform_test(:avc1, :nalu, [:annexb])
-    end
-
-    test "for au aligned stream avc1 -> annexb -> avc3 -> avc1" do
-      perform_test(:avc1, :au, [:annexb, {:avc3, 4}])
-    end
-
-    test "for nalu aligned stream avc1 -> annexb -> avc3 -> avc1" do
-      perform_test(:avc1, :nalu, [:annexb, {:avc3, 4}])
-    end
-
-    test "for au aligned stream avc1 -> avc3 -> annexb -> avc1" do
-      perform_test(:avc1, :au, [{:avc3, 4}, :annexb])
-    end
-
-    test "for nalu aligned stream avc1 -> avc3 -> annexb -> avc1" do
-      perform_test(:avc1, :nalu, [{:avc3, 4}, :annexb])
-    end
-
-    test "for au aligned stream avc1 -> avc3 -> avc1 -> annexb -> avc1 with varying nalu_length_size" do
-      perform_test(:avc1, :au, [{:avc3, 2}, {:avc1, 3}, :annexb])
-    end
-
-    test "for nalu aligned stream avc1 -> avc3 -> avc1 -> annexb -> avc1 with varying nalu_length_size" do
-      perform_test(:avc1, :nalu, [{:avc3, 2}, {:avc1, 3}, :annexb])
-    end
-
-    test "for au aligned stream avc1 -> avc3 -> annexb -> avc1 -> annexb -> avc3 -> annexb -> avc1 -> avc3 -> annexb -> avc1 -> avc3 -> annexb -> avc1" do
-      perform_test(:avc1, :au, [
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        :annexb,
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4}
-      ])
-    end
-
-    test "for nalu aligned stream avc1 -> avc3 -> annexb -> avc1 -> annexb -> avc3 -> annexb -> avc1 -> avc3 -> annexb -> avc1 -> avc3 -> annexb -> avc1" do
-      perform_test(:avc1, :nalu, [
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        :annexb,
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4},
-        {:avc3, 4},
-        :annexb,
-        {:avc1, 4}
-      ])
-    end
+    generate_tests.(
+      :avc1,
+      [
+        [
+          {:avc3, 4},
+          :annexb,
+          {:avc1, 4},
+          :annexb,
+          {:avc3, 4},
+          :annexb,
+          {:avc1, 4},
+          {:avc3, 4},
+          :annexb,
+          {:avc1, 4},
+          {:avc3, 4},
+          :annexb,
+          {:avc1, 4}
+        ]
+      ],
+      ""
+    )
   end
 end

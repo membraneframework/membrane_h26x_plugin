@@ -5,10 +5,9 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   require Membrane.Logger
 
-  alias Membrane.H264.Parser.{NALu, NALuTypes}
-  alias Membrane.H264.Parser.NALuParser.SchemeParser
-  alias Membrane.H264.Parser.NALuParser.Schemes
   alias Membrane.H264.Parser
+  alias Membrane.H264.Parser.{NALu, NALuTypes}
+  alias Membrane.H264.Parser.NALuParser.{SchemeParser, Schemes}
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -58,18 +57,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   def parse(nalu_payload, state, payload_prefixed? \\ true) do
     {initial_prefix_length, unprefixed_nalu_payload} =
       if payload_prefixed? do
-        case state.input_parsed_stream_type do
-          :annexb ->
-            case nalu_payload do
-              <<0, 0, 1, rest::binary>> -> {3, rest}
-              <<0, 0, 0, 1, rest::binary>> -> {4, rest}
-            end
-
-          {_avc, nalu_length_size} ->
-            <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
-
-            {nalu_length_size, rest}
-        end
+        unprefix_nalu_payload(nalu_payload, state.input_parsed_stream_type)
       else
         {0, nalu_payload}
       end
@@ -127,6 +115,19 @@ defmodule Membrane.H264.Parser.NALuParser do
     state = %{state | scheme_parser_state: scheme_parser_state}
 
     {nalu, state}
+  end
+
+  defp unprefix_nalu_payload(nalu_payload, :annexb) do
+    case nalu_payload do
+      <<0, 0, 1, rest::binary>> -> {3, rest}
+      <<0, 0, 0, 1, rest::binary>> -> {4, rest}
+    end
+  end
+
+  defp unprefix_nalu_payload(nalu_payload, {_avc, nalu_length_size}) do
+    <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
+
+    {nalu_length_size, rest}
   end
 
   defp parse_proper_nalu_type(payload, state, type) do

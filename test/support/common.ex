@@ -7,7 +7,7 @@ defmodule Membrane.H264.Support.Common do
           binary,
           :au | :bytestream | :nalu,
           Membrane.H264.Parser.parsed_stream_type(),
-          Membrane.H264.Parser.parsed_stream_type()
+          boolean()
         ) :: list
 
   def prepare_buffers(
@@ -17,7 +17,7 @@ defmodule Membrane.H264.Support.Common do
         stable_reprefixing? \\ true
       )
 
-  def prepare_buffers(binary, :bytestream, _, _) do
+  def prepare_buffers(binary, :bytestream, _output_parsed_stream_type, _stable_reprefixing?) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
 

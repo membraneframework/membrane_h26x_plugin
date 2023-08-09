@@ -4,6 +4,9 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
 
   The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
   """
+
+  alias Membrane.H264.Parser
+
   @enforce_keys [
     :spss,
     :ppss,
@@ -23,8 +26,6 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
           avc_level: non_neg_integer(),
           nalu_length_size: non_neg_integer()
         }
-
-  alias Membrane.H264.Parser
 
   @doc """
   Generates a DCR based on given PPSs and SPSs.

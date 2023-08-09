@@ -5,8 +5,14 @@ Mix.install([
   {:membrane_mp4_format, ">= 0.0.0"},
   {:membrane_stream_plugin, "~> 0.3.1"},
   {:membrane_aac_plugin, ">= 0.0.0"},
-  {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true},
-  {:membrane_h264_plugin, path: "/Users/jakubpryc/Membrane/membrane_h264_plugin", override: true}
+  {:membrane_h264_format,
+   git: "https://github.com/membraneframework/membrane_h264_format.git",
+   branch: "avc-support-remove-remote-stream",
+   override: true},
+  {:membrane_h264_plugin,
+   git: "https://github.com/membraneframework/membrane_h264_plugin.git",
+   branch: "stream-type-conversion",
+   override: true}
 ])
 
 alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}
@@ -33,10 +39,11 @@ defmodule MP4ToH264Filter do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], %{
-      output_alignment: opts.output_alignment,
-      output_parsed_stream_type: opts.output_parsed_stream_type
-    }}
+    {[],
+     %{
+       output_alignment: opts.output_alignment,
+       output_parsed_stream_type: opts.output_parsed_stream_type
+     }}
   end
 
   @impl true
@@ -50,8 +57,7 @@ defmodule MP4ToH264Filter do
         _ctx,
         %{output_parsed_stream_type: {avc, nalu_length_size}} = state
       ) do
-    {:ok, %{nalu_length_size: dcr_nalu_length_size}} =
-      DecoderConfigurationRecord.parse(dcr)
+    {:ok, %{nalu_length_size: dcr_nalu_length_size}} = DecoderConfigurationRecord.parse(dcr)
 
     if dcr_nalu_length_size != nalu_length_size do
       raise "incoming NALu length size must be equal to the one provided via options"
@@ -104,7 +110,8 @@ defmodule FixtureGeneratorPipeline do
       |> via_out(Pad.ref(:output, 1))
       |> child(:filter, %MP4ToH264Filter{
         output_alignment: options.output_alignment,
-        output_parsed_stream_type: options.parsed_stream_type})
+        output_parsed_stream_type: options.parsed_stream_type
+      })
       |> child(:serializer, Membrane.Stream.Serializer)
       |> child(:sink, %Membrane.File.Sink{location: options.output_location})
     ]
@@ -126,18 +133,18 @@ defmodule FixtureGeneratorPipeline do
 end
 
 defmodule AVCFixtureGenerator do
-
   @mp4_avc1_fixtures [
     "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
     "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__)
   ]
 
   @mp4_avc3_fixtures [
-  "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
+    "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
     "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__),
     "../fixtures/mp4/ref_video_variable_parameters.mp4" |> Path.expand(__DIR__)
   ]
 
+  @spec generate_avc_fixtures() :: :ok
   def generate_avc_fixtures() do
     Enum.each(@mp4_avc1_fixtures, fn input_location ->
       generate_fixture(input_location, :au, {:avc1, 4})
@@ -181,4 +188,3 @@ defmodule AVCFixtureGenerator do
 end
 
 AVCFixtureGenerator.generate_avc_fixtures()
-

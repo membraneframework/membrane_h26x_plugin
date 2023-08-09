@@ -39,7 +39,9 @@ defmodule Membrane.H264.TODO.Mixfile do
     [
       {:membrane_core, "~> 0.12.0"},
       {:membrane_h264_format,
-       path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true},
+       git: "https://github.com/membraneframework/membrane_h264_format.git",
+       branch: "avc-support-remove-remote-stream",
+       override: true},
       {:bunch, "~> 1.4"},
       {:membrane_stream_plugin, "~> 0.3.1", only: :test},
       {:membrane_file_plugin, "~> 0.14.0", only: :test},

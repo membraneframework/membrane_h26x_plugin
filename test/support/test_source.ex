@@ -11,7 +11,7 @@ defmodule Membrane.H264.Support.TestSource do
     accepted_format:
       any_of(
         %Membrane.RemoteStream{type: :bytestream},
-        %Membrane.H264.RemoteStream{alignment: alignment} when alignment in [:au, :nalu]
+        %Membrane.H264{alignment: alignment} when alignment in [:au, :nalu]
       )
 
   @impl true
@@ -32,10 +32,10 @@ defmodule Membrane.H264.Support.TestSource do
           %Membrane.RemoteStream{type: :bytestream}
 
         :nalu_aligned ->
-          %Membrane.H264.RemoteStream{alignment: :nalu, stream_type: state.output_raw_stream_type}
+          %Membrane.H264{alignment: :nalu, stream_type: state.output_raw_stream_type}
 
         :au_aligned ->
-          %Membrane.H264.RemoteStream{alignment: :au, stream_type: state.output_raw_stream_type}
+          %Membrane.H264{alignment: :au, stream_type: state.output_raw_stream_type}
       end
 
     {[stream_format: {:output, stream_format}], state}
