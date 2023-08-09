@@ -122,7 +122,7 @@ defmodule Membrane.H264.Parser do
                   in `Membrane.H264.RemoteStream` stream format
                 """
               ],
-              # FIXME: remove this if possible
+              # TODO: remove this if possible
               max_frame_reorder: [default: nil]
 
   @impl true

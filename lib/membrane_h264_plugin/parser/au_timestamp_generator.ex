@@ -1,9 +1,9 @@
 defmodule Membrane.H264.Parser.AUTimestampGenerator do
   @moduledoc false
 
-  alias Membrane.H264.Parser.NALu
-
   require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+
+  alias Membrane.H264.Parser.NALu
 
   @type t :: %{
           au_counter: non_neg_integer(),

@@ -17,9 +17,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   """
   require Membrane.Logger
 
-  alias Membrane.H264.Parser.NALu
-
   require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+
+  alias Membrane.H264.Parser.NALu
 
   @typedoc """
   A structure holding a state of the access unit splitter.
