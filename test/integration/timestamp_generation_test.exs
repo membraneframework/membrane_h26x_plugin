@@ -110,7 +110,10 @@ defmodule Membrane.H264.TimestampGenerationTest do
           Pipeline.start_supervised(
             structure: [
               child(:source, %TestSource{mode: mode})
-              |> child(:parser, %Membrane.H264.Parser{framerate: framerate})
+              |> child(:parser, %Membrane.H264.Parser{
+                generate_best_effort_timestamps: true,
+                framerate: framerate
+              })
               |> child(:sink, Sink)
             ]
           )

@@ -81,15 +81,6 @@ defmodule Membrane.H264.Parser do
                 be provided via this option.
                 """
               ],
-              framerate: [
-                spec: {pos_integer(), pos_integer()} | nil,
-                default: nil,
-                description: """
-                Framerate of the video, represented as a tuple consisting of a numerator and the
-                denominator.
-                Its value will be sent inside the output Membrane.H264 stream format.
-                """
-              ],
               output_alignment: [
                 spec: :au | :nalu,
                 default: :au,
@@ -122,29 +113,56 @@ defmodule Membrane.H264.Parser do
                   in `Membrane.H264.RemoteStream` stream format
                 """
               ],
+              framerate: [
+                spec: {pos_integer(), pos_integer()} | nil,
+                default: nil,
+                description: """
+                Framerate of the video, represented as a tuple consisting of a numerator and the
+                denominator.
+                Its value will be sent inside the output Membrane.H264 stream format.
+                """
+              ],
+              generate_best_effort_timestamps: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Generates timestamps based on given `framerate`.
+
+                This option works only when `Membrane.RemoteStream` format arrives on
+                input pad and requires the `framerate` option to be specified.
+
+                Keep in mind that the generated timestamps may be inaccurate and lead
+                to video getting out of sync with other media, therefore h264 should
+                be kept in a container that stores the timestamps alongside.
+                """
+              ],
               # TODO: remove this if possible
               max_frame_reorder: [default: nil]
 
   @impl true
   def handle_init(_ctx, opts) do
-    state = %{
-      nalu_splitter: NALuSplitter.new(maybe_add_prefix(opts.sps) <> maybe_add_prefix(opts.pps)),
-      nalu_parser: NALuParser.new(),
-      au_splitter: AUSplitter.new(),
-      au_timestamp_generator: AUTimestampGenerator.new(),
-      mode: nil,
-      profile: nil,
-      previous_buffer_timestamps: nil,
-      framerate: opts.framerate,
-      max_frame_reorder: opts.max_frame_reorder,
-      output_alignment: opts.output_alignment,
-      frame_prefix: <<>>,
-      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
-      skip_until_keyframe?: opts.skip_until_keyframe?,
-      repeat_parameter_sets?: opts.repeat_parameter_sets,
-      cached_sps: %{},
-      cached_pps: %{}
-    }
+    {sps, opts} = Map.pop!(opts, :sps)
+    {pps, opts} = Map.pop!(opts, :pps)
+
+    if opts.generate_best_effort_timestamps and opts.framerate == nil do
+      raise "Invalid options: `generate_best_effort_timestamps` requires `framerate` to be specified"
+    end
+
+    state =
+      %{
+        nalu_splitter: NALuSplitter.new(maybe_add_prefix(sps) <> maybe_add_prefix(pps)),
+        nalu_parser: NALuParser.new(),
+        au_splitter: AUSplitter.new(),
+        au_timestamp_generator: AUTimestampGenerator.new(),
+        mode: nil,
+        profile: nil,
+        previous_buffer_timestamps: nil,
+        frame_prefix: <<>>,
+        parameter_sets_present?: byte_size(sps) > 0 or byte_size(pps) > 0,
+        cached_sps: %{},
+        cached_pps: %{}
+      }
+      |> Map.merge(Map.from_struct(opts))
 
     {[], state}
   end
@@ -302,7 +320,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp prepare_timestamps(au, state) do
-    if state.mode == :bytestream and state.framerate do
+    if state.mode == :bytestream and state.generate_best_effort_timestamps do
       {timestamps, timestamp_generator} =
         AUTimestampGenerator.generate_ts_with_constant_framerate(
           au,
@@ -317,7 +335,7 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do
     if idr_au?(au),
@@ -329,7 +347,7 @@ defmodule Membrane.H264.Parser do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
+  defp cache_parameter_sets(%{repeat_parameter_sets: false} = state, _au), do: state
 
   defp cache_parameter_sets(state, au) do
     sps =
