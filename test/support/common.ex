@@ -5,7 +5,7 @@ defmodule Membrane.H264.Support.Common do
 
   @spec prepare_buffers(
           binary,
-          :au_aligned | :bytestream | :nalu_aligned,
+          :au | :bytestream | :nalu,
           Membrane.H264.Parser.parsed_stream_type(),
           Membrane.H264.Parser.parsed_stream_type()
         ) :: list

@@ -422,8 +422,8 @@ defmodule Membrane.H264.Parser do
   defp parse_raw_stream_type(:annexb), do: :annexb
 
   defp parse_raw_stream_type({avc, dcr}) do
-    {:ok, %{length_size_minus_one: length_size_minus_one}} = DecoderConfigurationRecord.parse(dcr)
-    {avc, length_size_minus_one + 1}
+    {:ok, %{nalu_length_size: nalu_length_size}} = DecoderConfigurationRecord.parse(dcr)
+    {avc, nalu_length_size}
   end
 
   @spec generate_frame_prefix([binary()], parsed_stream_type()) :: binary()

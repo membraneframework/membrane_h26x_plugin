@@ -13,8 +13,8 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            unparsed_payload: binary(),
-            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type()
+            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type(),
+            unparsed_payload: binary()
           }
 
   @enforce_keys [:input_parsed_stream_type]
@@ -47,7 +47,6 @@ defmodule Membrane.H264.Parser.NALuSplitter do
           {[binary()], t()}
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
-
     nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_parsed_stream_type)
 
     total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))

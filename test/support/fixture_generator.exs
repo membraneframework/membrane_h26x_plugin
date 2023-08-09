@@ -5,10 +5,11 @@ Mix.install([
   {:membrane_mp4_format, ">= 0.0.0"},
   {:membrane_stream_plugin, "~> 0.3.1"},
   {:membrane_aac_plugin, ">= 0.0.0"},
-  {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true}
+  {:membrane_h264_format, path: "/Users/jakubpryc/Membrane/membrane_h264_format", override: true},
+  {:membrane_h264_plugin, path: "/Users/jakubpryc/Membrane/membrane_h264_plugin", override: true}
 ])
 
-alias Membrane.H264.Parser.NALuSplitter
+alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}
 
 defmodule MP4ToH264Filter do
   use Membrane.Filter
@@ -25,11 +26,17 @@ defmodule MP4ToH264Filter do
   def_options output_alignment: [
                 spec: :au | :nalu,
                 default: :au
+              ],
+              output_parsed_stream_type: [
+                spec: {:avc1 | :avc3, pos_integer()}
               ]
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], %{output_alignment: opts.output_alignment}}
+    {[], %{
+      output_alignment: opts.output_alignment,
+      output_parsed_stream_type: opts.output_parsed_stream_type
+    }}
   end
 
   @impl true
@@ -41,15 +48,22 @@ defmodule MP4ToH264Filter do
           content: %Membrane.MP4.Payload.AVC1{avcc: dcr}
         },
         _ctx,
-        state
+        %{output_parsed_stream_type: {avc, nalu_length_size}} = state
       ) do
+    {:ok, %{nalu_length_size: dcr_nalu_length_size}} =
+      DecoderConfigurationRecord.parse(dcr)
+
+    if dcr_nalu_length_size != nalu_length_size do
+      raise "incoming NALu length size must be equal to the one provided via options"
+    end
+
     {[
        stream_format:
          {:output,
           %Membrane.H264{
             width: width,
             height: height,
-            stream_type: {:avc1, dcr}
+            stream_type: {avc, dcr}
           }}
      ], state}
   end
@@ -62,10 +76,9 @@ defmodule MP4ToH264Filter do
           buffer
 
         :nalu ->
-          {nalus, splitter} =
-            NALuSplitter.split(buffer.payload, NALuSplitter.new())
+          splitter = NALuSplitter.new(state.output_parsed_stream_type)
+          {nalus, splitter} = NALuSplitter.split(buffer.payload, splitter)
 
-          nalus = nalus ++ [elem(NALuSplitter.flush(splitter), 0)]
           Enum.map(nalus, fn nalu -> %Membrane.Buffer{payload: nalu} end)
       end
 
@@ -83,17 +96,15 @@ defmodule FixtureGeneratorPipeline do
 
   import Membrane.ChildrenSpec
 
-  @mp4_fixture "../fixtures/mp4/ref_video_variable_parameters.mp4" |> Path.expand(__DIR__)
-  @output_location "../fixtures/ref_video_variable_parameters-avc1.msf" |> Path.expand(__DIR__)
-
   @impl true
   def handle_init(_ctx, options) do
-    IO.inspect(options)
     structure = [
       child(:video_source, %Membrane.File.Source{location: options.input_location})
       |> child(:demuxer, Membrane.MP4.Demuxer.ISOM)
       |> via_out(Pad.ref(:output, 1))
-      |> child(:filter, %MP4ToH264Filter{output_alignment: options.output_alignment})
+      |> child(:filter, %MP4ToH264Filter{
+        output_alignment: options.output_alignment,
+        output_parsed_stream_type: options.parsed_stream_type})
       |> child(:serializer, Membrane.Stream.Serializer)
       |> child(:sink, %Membrane.File.Sink{location: options.output_location})
     ]
@@ -114,22 +125,47 @@ defmodule FixtureGeneratorPipeline do
   end
 end
 
-defmodule FixtureGenerator do
-  def generate_avc1_fixture(input_location, output_alignment) do
+defmodule AVCFixtureGenerator do
+
+  @mp4_avc1_fixtures [
+    "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
+    "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__)
+  ]
+
+  @mp4_avc3_fixtures [
+  "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
+    "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__),
+    "../fixtures/mp4/ref_video_variable_parameters.mp4" |> Path.expand(__DIR__)
+  ]
+
+  def generate_avc_fixtures() do
+    Enum.each(@mp4_avc1_fixtures, fn input_location ->
+      generate_fixture(input_location, :au, {:avc1, 4})
+      generate_fixture(input_location, :nalu, {:avc1, 4})
+    end)
+
+    Enum.each(@mp4_avc3_fixtures, fn input_location ->
+      generate_fixture(input_location, :au, {:avc3, 4})
+      generate_fixture(input_location, :nalu, {:avc3, 4})
+    end)
+  end
+
+  defp generate_fixture(input_location, output_alignment, {avc, _} = parsed_stream_type) do
     output_location =
       input_location
       |> Path.split()
       |> List.replace_at(-2, "msf")
       |> List.update_at(-1, fn file ->
         [name, "mp4"] = String.split(file, ".")
-        "#{name}-avc1-#{output_alignment}.msf"
+        "#{name}-#{avc}-#{output_alignment}.msf"
       end)
       |> Path.join()
 
     options = %{
       input_location: input_location,
       output_location: output_location,
-      output_alignment: output_alignment
+      output_alignment: output_alignment,
+      parsed_stream_type: parsed_stream_type
     }
 
     {:ok, _supervisor_pid, pipeline_pid} = FixtureGeneratorPipeline.start(options)
@@ -144,9 +180,5 @@ defmodule FixtureGenerator do
   end
 end
 
-
-Enum.each("../fixtures/mp4/*.mp4" |> Path.expand(__DIR__) |> Path.wildcard(), fn input_location ->
-  FixtureGenerator.generate_avc1_fixture(input_location, :au)
-  FixtureGenerator.generate_avc1_fixture(input_location, :nalu)
-end)
+AVCFixtureGenerator.generate_avc_fixtures()
 
