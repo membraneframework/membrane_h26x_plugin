@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
   @type t :: %{
           au_counter: non_neg_integer(),
           key_frame_au_idx: non_neg_integer(),
-          previous_vcl_nalu: NALu.t() | nil,
+          prev_pic_vcl_nalu: NALu.t() | nil,
           prev_pic_order_cnt_msb: integer()
         }
 
