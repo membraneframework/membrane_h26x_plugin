@@ -1,7 +1,7 @@
 defmodule Membrane.H264.SkipUntilTest do
   @moduledoc false
 
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
   alias Membrane.H264
@@ -27,7 +27,8 @@ defmodule Membrane.H264.SkipUntilTest do
 
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, false)
       assert_pipeline_play(pid)
-      refute_sink_buffer(pid, :sink, _)
+      assert_end_of_stream(pid, :parser)
+      refute_sink_buffer(pid, :sink, _, 500)
 
       Pipeline.terminate(pid, blocking?: true)
     end
@@ -64,7 +65,8 @@ defmodule Membrane.H264.SkipUntilTest do
       out_path = Path.join(ctx.tmp_dir, "output-#{filename}.h264")
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, true)
       assert_pipeline_play(pid)
-      refute_sink_buffer(pid, :sink, _)
+      assert_end_of_stream(pid, :parser)
+      refute_sink_buffer(pid, :sink, _, 500)
       Pipeline.terminate(pid, blocking?: true)
     end
   end

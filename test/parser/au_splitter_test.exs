@@ -1,7 +1,7 @@
 defmodule AUSplitterTest do
   @moduledoc false
 
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   @test_files_names ["10-720a", "10-720p"]
 

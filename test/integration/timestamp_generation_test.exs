@@ -1,7 +1,7 @@
 defmodule Membrane.H264.TimestampGenerationTest do
   @moduledoc false
 
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
