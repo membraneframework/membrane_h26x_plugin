@@ -7,10 +7,10 @@ defmodule Membrane.H264.SkipUntilTest do
   alias Membrane.H264
   alias Membrane.Testing.Pipeline
 
-  defp make_pipeline(in_path, out_path, skip_until_keyframe?) do
+  defp make_pipeline(in_path, out_path, skip_until_keyframe) do
     structure = [
       child(:file_src, %Membrane.File.Source{chunk_size: 40_960, location: in_path})
-      |> child(:parser, %H264.Parser{skip_until_keyframe?: skip_until_keyframe?})
+      |> child(:parser, %H264.Parser{skip_until_keyframe: skip_until_keyframe})
       |> child(:sink, %Membrane.File.Sink{location: out_path})
     ]
 

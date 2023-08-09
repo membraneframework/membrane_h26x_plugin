@@ -91,7 +91,7 @@ defmodule Membrane.H264.Parser do
                 Defaults to `:au`.
                 """
               ],
-              skip_until_keyframe?: [
+              skip_until_keyframe: [
                 spec: boolean(),
                 default: true,
                 description: """
@@ -267,10 +267,10 @@ defmodule Membrane.H264.Parser do
 
       state = %{
         state
-        | skip_until_keyframe?: state.skip_until_keyframe? and not has_seen_keyframe?
+        | skip_until_keyframe: state.skip_until_keyframe and not has_seen_keyframe?
       }
 
-      if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe? do
+      if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe do
         {[], state}
       else
         {[au], state}
