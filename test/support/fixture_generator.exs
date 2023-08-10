@@ -9,7 +9,7 @@ Mix.install([
    git: "https://github.com/membraneframework/membrane_h264_format.git",
    ref: "ea5a3d2",
    override: true},
-  {:membrane_h264_plugin, path: ".", override: true},
+  {:membrane_h264_plugin, path: ".", override: true}
 ])
 
 alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}

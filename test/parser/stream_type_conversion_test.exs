@@ -1,6 +1,6 @@
 defmodule Membrane.H264.StreamTypeConversionTest do
   @moduledoc false
-  
+
   use ExUnit.Case
 
   import Membrane.ChildrenSpec
@@ -113,7 +113,9 @@ defmodule Membrane.H264.StreamTypeConversionTest do
 
     fixture_buffers = receive_buffer_payloads(fixture_pipeline_pid)
 
-    assert_sink_stream_format(fixture_pipeline_pid, :sink, %H264{stream_structure: fixture_stream_structure})
+    assert_sink_stream_format(fixture_pipeline_pid, :sink, %H264{
+      stream_structure: fixture_stream_structure
+    })
 
     assert_pipeline_play(conversion_pipeline_pid)
     Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
@@ -160,7 +162,10 @@ defmodule Membrane.H264.StreamTypeConversionTest do
   defp perform_test(stream_structure, alignment, parser_stream_structures, identical_order?) do
     parsers =
       Enum.map(parser_stream_structures, fn stream_structure ->
-        %H264.Parser{output_alignment: alignment, output_parsed_stream_structure: stream_structure}
+        %H264.Parser{
+          output_alignment: alignment,
+          output_parsed_stream_structure: stream_structure
+        }
       end)
 
     case stream_structure do

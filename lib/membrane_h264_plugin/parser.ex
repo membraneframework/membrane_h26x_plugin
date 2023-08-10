@@ -34,9 +34,15 @@ defmodule Membrane.H264.Parser do
 
   use Membrane.Filter
 
-  require Membrane.Logger
+  alias __MODULE__.{
+    AUSplitter,
+    DecoderConfigurationRecord,
+    Format,
+    NALu,
+    NALuParser,
+    NALuSplitter
+  }
 
-  alias __MODULE__.{AUSplitter, DecoderConfigurationRecord, Format, NALu, NALuParser, NALuSplitter}
   alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.Element.{Action, CallbackContext}
 

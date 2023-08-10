@@ -87,7 +87,11 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{mode: :au_aligned, output_raw_stream_structure: {:avc3, @dcr}}
+      source = %H264.Support.TestSource{
+        mode: :au_aligned,
+        output_raw_stream_structure: {:avc3, @dcr}
+      }
+
       pid = make_pipeline(source, <<>>, <<>>, {:avc3, 4})
       perform_test(pid, File.read!(@in_path), :au_aligned, {:avc3, 4}, {:avc3, 4})
     end

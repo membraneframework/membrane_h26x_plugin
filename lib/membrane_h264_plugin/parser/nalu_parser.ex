@@ -3,7 +3,6 @@ defmodule Membrane.H264.Parser.NALuParser do
   A module providing functionality of parsing a stream of binaries, out of which each
   is a payload of a single NAL unit.
   """
-  require Membrane.Logger
 
   alias Membrane.H264.Parser
   alias Membrane.H264.Parser.{NALu, NALuTypes}

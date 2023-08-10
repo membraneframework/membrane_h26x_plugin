@@ -7,8 +7,6 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
 
-  require Membrane.Logger
-
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
@@ -47,7 +45,9 @@ defmodule Membrane.H264.Parser.NALuSplitter do
           {[binary()], t()}
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
-    nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_parsed_stream_structure)
+
+    nalus_payloads_list =
+      get_complete_nalus_list(total_payload, state.input_parsed_stream_structure)
 
     total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
 
