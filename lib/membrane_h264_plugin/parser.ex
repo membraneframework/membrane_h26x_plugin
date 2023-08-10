@@ -571,8 +571,7 @@ defmodule Membrane.H264.Parser do
     {buffer_pts, buffer_dts}
   end
 
-  @spec maybe_add_parameter_sets(NALuSplitter.access_unit(), state()) ::
-          NALuSplitter.access_unit()
+  @spec maybe_add_parameter_sets(AUSplitter.access_unit(), state()) :: AUSplitter.access_unit()
   defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do

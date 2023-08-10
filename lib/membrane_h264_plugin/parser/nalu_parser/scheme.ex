@@ -29,8 +29,8 @@ defmodule Membrane.H264.Parser.NALuParser.Scheme do
   alias Membrane.H264.Parser.NALuParser.SchemeParser
 
   @type field :: {any(), SchemeParser.field()}
-  @type if :: {value_provider(boolean()), t()}
-  @type for ::
+  @type if_t :: {value_provider(boolean()), t()}
+  @type for_t ::
           {[iterator: any(), from: value_provider(integer()), to: value_provider(integer())], t()}
   @type calculate :: {any(), value_provider(any())}
   @type execute :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
@@ -52,8 +52,8 @@ defmodule Membrane.H264.Parser.NALuParser.Scheme do
 
   @type directive ::
           {:field, field()}
-          | {:if, if()}
-          | {:for, for()}
+          | {:if, if_t()}
+          | {:for, for_t()}
           | {:calculate, calculate()}
           | {:execute, execute()}
           | {:save_as_global_state, save_as_global_state()}
