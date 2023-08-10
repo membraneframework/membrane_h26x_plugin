@@ -424,7 +424,7 @@ defmodule Membrane.H264.Parser do
   end
 
   @spec get_stream_structures(raw_stream_structure(), stream_structure()) ::
-    {stream_structure(), stream_structure()}
+          {stream_structure(), stream_structure()}
   defp get_stream_structures(input_raw_stream_structure, output_stream_structure) do
     input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
 
