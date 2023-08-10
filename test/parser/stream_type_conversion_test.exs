@@ -155,7 +155,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     Pipeline.terminate(conversion_pipeline_pid)
   end
 
-  defp perform_test(stream_type, alignment, parser_stream_types, identical_order? \\ true) do
+  defp perform_test(stream_type, alignment, parser_stream_types, identical_order?) do
     parsers =
       Enum.map(parser_stream_types, fn stream_type ->
         %H264.Parser{output_alignment: alignment, output_parsed_stream_type: stream_type}

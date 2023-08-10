@@ -166,7 +166,6 @@ defmodule Membrane.H264.Parser do
       initial_spss: initial_parameters_to_list(opts.sps),
       initial_ppss: initial_parameters_to_list(opts.pps),
       input_parsed_stream_type: nil,
-      input_raw_stream_type: nil,
       output_parsed_stream_type: output_parsed_stream_type
     }
 
@@ -219,28 +218,6 @@ defmodule Membrane.H264.Parser do
       get_incoming_parameter_sets(input_raw_stream_type, first_received_stream_format?, state)
 
     process_stream_format_parameter_sets(incoming_spss, incoming_ppss, ctx, state)
-  end
-
-  defp get_incoming_parameter_sets(:annexb, first_received_stream_format?, state) do
-    if first_received_stream_format?,
-      do: {state.initial_spss, state.initial_ppss},
-      else: {[], []}
-  end
-
-  defp get_incoming_parameter_sets({_avc, dcr}, _first_received_stream_format?, state) do
-    {:ok, %{spss: dcr_spss, ppss: dcr_ppss}} = DecoderConfigurationRecord.parse(dcr)
-
-    new_spss =
-      Enum.filter(dcr_spss, fn
-        sps -> sps not in Enum.map(state.cached_spss, fn {_id, nalu} -> nalu.payload end)
-      end)
-
-    new_ppss =
-      Enum.filter(dcr_ppss, fn
-        sps -> sps not in Enum.map(state.cached_ppss, fn {_id, nalu} -> nalu.payload end)
-      end)
-
-    {new_spss, new_ppss}
   end
 
   @impl true
@@ -335,6 +312,30 @@ defmodule Membrane.H264.Parser do
     end
   end
 
+  @spec get_incoming_parameter_sets(raw_stream_type(), boolean(), state()) ::
+          {[binary()], [binary()]}
+  defp get_incoming_parameter_sets(:annexb, first_received_stream_format?, state) do
+    if first_received_stream_format?,
+      do: {state.initial_spss, state.initial_ppss},
+      else: {[], []}
+  end
+
+  defp get_incoming_parameter_sets({_avc, dcr}, _first_received_stream_format?, state) do
+    {:ok, %{spss: dcr_spss, ppss: dcr_ppss}} = DecoderConfigurationRecord.parse(dcr)
+
+    new_spss =
+      Enum.filter(dcr_spss, fn
+        sps -> sps not in Enum.map(state.cached_spss, fn {_id, nalu} -> nalu.payload end)
+      end)
+
+    new_ppss =
+      Enum.filter(dcr_ppss, fn
+        sps -> sps not in Enum.map(state.cached_ppss, fn {_id, nalu} -> nalu.payload end)
+      end)
+
+    {new_spss, new_ppss}
+  end
+
   @spec stream_types_compatible?(
           raw_stream_type() | parsed_stream_type(),
           raw_stream_type() | parsed_stream_type()
@@ -369,16 +370,15 @@ defmodule Membrane.H264.Parser do
     {[], %{state | frame_prefix: frame_prefix}}
   end
 
-  @spec parse_nalus([binary()], NALuParser.t()) ::
-          {[NALu.t()], NALuParser.t()}
+  @spec parse_nalus([binary()], NALuParser.t()) :: {[NALu.t()], NALuParser.t()}
   defp parse_nalus(nalus, nalu_parser) do
     Enum.map_reduce(nalus, nalu_parser, fn nalu, nalu_parser ->
       NALuParser.parse(nalu, nalu_parser, false)
     end)
   end
 
-  @spec unparse_nalus([NALu.t()], parsed_stream_type()) :: [binary()]
-  defp unparse_nalus(nalus, :annexb) do
+  @spec get_nalus_payloads([NALu.t()], parsed_stream_type()) :: [binary()]
+  defp get_nalus_payloads(nalus, :annexb) do
     Enum.map(nalus, fn nalu ->
       case nalu.payload do
         <<0, 0, 1, rest::binary>> -> rest
@@ -387,7 +387,7 @@ defmodule Membrane.H264.Parser do
     end)
   end
 
-  defp unparse_nalus(nalus, {_avc, nalu_length_size}) do
+  defp get_nalus_payloads(nalus, {_avc, nalu_length_size}) do
     Enum.map(nalus, fn nalu ->
       <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu.payload
       rest
@@ -486,8 +486,8 @@ defmodule Membrane.H264.Parser do
         {avc, nalu_length_size} ->
           {avc,
            DecoderConfigurationRecord.generate(
-             Map.values(updated_spss) |> unparse_nalus(state.output_parsed_stream_type),
-             Map.values(updated_ppss) |> unparse_nalus(state.output_parsed_stream_type),
+             Map.values(updated_spss) |> get_nalus_payloads(state.output_parsed_stream_type),
+             Map.values(updated_ppss) |> get_nalus_payloads(state.output_parsed_stream_type),
              {avc, nalu_length_size}
            )}
       end
