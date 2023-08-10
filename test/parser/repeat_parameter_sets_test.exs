@@ -21,14 +21,14 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          5, 4, 64, 0, 0, 3, 0, 64, 0, 0, 15, 3, 197, 139, 101, 128, 1, 0, 6, 104, 235, 227, 203,
          34, 192>>
 
-  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>, output_parsed_stream_structure \\ :annexb) do
+  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>, output_stream_structure \\ :annexb) do
     structure =
       child(:source, source)
       |> child(:parser, %H264.Parser{
         sps: sps,
         pps: pps,
         repeat_parameter_sets: true,
-        output_parsed_stream_structure: output_parsed_stream_structure
+        output_stream_structure: output_stream_structure
       })
       |> child(:sink, Sink)
 
@@ -39,10 +39,10 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          pipeline_pid,
          data,
          mode \\ :bytestream,
-         parser_input_parsed_stream_structure \\ :annexb,
-         parser_output_parsed_stream_structure \\ :annexb
+         parser_input_stream_structure \\ :annexb,
+         parser_output_stream_structure \\ :annexb
        ) do
-    buffers = prepare_buffers(data, mode, parser_input_parsed_stream_structure)
+    buffers = prepare_buffers(data, mode, parser_input_stream_structure)
 
     assert_pipeline_play(pipeline_pid)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
@@ -52,7 +52,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       prepare_buffers(
         File.read!(@ref_path),
         :au_aligned,
-        parser_output_parsed_stream_structure
+        parser_output_stream_structure
       )
 
     Enum.each(output_buffers, fn output_buffer ->

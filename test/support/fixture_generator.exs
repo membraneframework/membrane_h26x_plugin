@@ -38,7 +38,7 @@ defmodule MP4ToH264Filter do
                 spec: :au | :nalu,
                 default: :au
               ],
-              output_parsed_stream_structure: [
+              output_stream_structure: [
                 spec: {:avc1 | :avc3, pos_integer()}
               ]
 
@@ -47,7 +47,7 @@ defmodule MP4ToH264Filter do
     {[],
      %{
        output_alignment: opts.output_alignment,
-       output_parsed_stream_structure: opts.output_parsed_stream_structure
+       output_stream_structure: opts.output_stream_structure
      }}
   end
 
@@ -60,7 +60,7 @@ defmodule MP4ToH264Filter do
           content: %Membrane.MP4.Payload.AVC1{avcc: dcr}
         },
         _ctx,
-        %{output_parsed_stream_structure: {avc, nalu_length_size}} = state
+        %{output_stream_structure: {avc, nalu_length_size}} = state
       ) do
     {:ok, %{nalu_length_size: dcr_nalu_length_size}} = DecoderConfigurationRecord.parse(dcr)
 
@@ -87,7 +87,7 @@ defmodule MP4ToH264Filter do
           buffer
 
         :nalu ->
-          splitter = NALuSplitter.new(state.output_parsed_stream_structure)
+          splitter = NALuSplitter.new(state.output_stream_structure)
           {nalus, splitter} = NALuSplitter.split(buffer.payload, splitter)
 
           Enum.map(nalus, fn nalu -> %Membrane.Buffer{payload: nalu} end)
@@ -117,7 +117,7 @@ defmodule FixtureGeneratorPipeline do
       |> via_out(Pad.ref(:output, 1))
       |> child(:filter, %MP4ToH264Filter{
         output_alignment: options.output_alignment,
-        output_parsed_stream_structure: options.parsed_stream_structure
+        output_stream_structure: options.stream_structure
       })
       |> child(:serializer, Membrane.Stream.Serializer)
       |> child(:sink, %Membrane.File.Sink{location: options.output_location})
@@ -166,7 +166,7 @@ defmodule AVCFixtureGenerator do
     end)
   end
 
-  defp generate_fixture(input_location, output_alignment, {avc, _} = parsed_stream_structure) do
+  defp generate_fixture(input_location, output_alignment, {avc, _} = stream_structure) do
     output_location =
       input_location
       |> Path.split()
@@ -181,7 +181,7 @@ defmodule AVCFixtureGenerator do
       input_location: input_location,
       output_location: output_location,
       output_alignment: output_alignment,
-      parsed_stream_structure: parsed_stream_structure
+      stream_structure: stream_structure
     }
 
     {:ok, _supervisor_pid, pipeline_pid} = FixtureGeneratorPipeline.start(options)

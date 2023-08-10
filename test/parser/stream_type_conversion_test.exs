@@ -39,7 +39,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
       |> parser_chain.()
       |> child(:parser_last, %H264.Parser{
         output_alignment: alignment,
-        output_parsed_stream_structure: :annexb
+        output_stream_structure: if(parsers != [], do: :annexb, else: nil)
       })
       |> child(:sink, Sink)
 
@@ -96,7 +96,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
       |> parser_chain.()
       |> child(:parser_last, %H264.Parser{
         output_alignment: alignment,
-        output_parsed_stream_structure: {avc, 4}
+        output_stream_structure: if(parsers != [], do: {avc, 4}, else: nil)
       })
       |> child(:sink, Sink)
 
@@ -164,7 +164,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
       Enum.map(parser_stream_structures, fn stream_structure ->
         %H264.Parser{
           output_alignment: alignment,
-          output_parsed_stream_structure: stream_structure
+          output_stream_structure: stream_structure
         }
       end)
 
@@ -216,15 +216,15 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     end)
   end
 
-  defp split_aus_to_nalus(aus_binaries, parsed_stream_structure) do
+  defp split_aus_to_nalus(aus_binaries, stream_structure) do
     Enum.map(aus_binaries, fn au_binary ->
       {nalus, splitter} =
         H264.Parser.NALuSplitter.split(
           au_binary,
-          H264.Parser.NALuSplitter.new(parsed_stream_structure)
+          H264.Parser.NALuSplitter.new(stream_structure)
         )
 
-      case parsed_stream_structure do
+      case stream_structure do
         :annexb ->
           nalus ++ [elem(H264.Parser.NALuSplitter.flush(splitter), 0)]
 
@@ -281,6 +281,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     generate_tests.(
       :annexb,
       [
+        [],
         [{:avc3, 4}],
         [{:avc1, 4}],
         [{:avc1, 4}, {:avc3, 4}],
@@ -291,13 +292,13 @@ defmodule Membrane.H264.StreamTypeConversionTest do
 
     generate_tests.(
       :avc1,
-      [[:annexb], [{:avc3, 4}], [{:avc3, 4}, :annexb], [:annexb, {:avc3, 4}]],
+      [[], [:annexb], [{:avc3, 4}], [{:avc3, 4}, :annexb], [:annexb, {:avc3, 4}]],
       ""
     )
 
     generate_tests.(
       :avc3,
-      [[:annexb], [{:avc1, 4}], [{:avc1, 4}, :annexb], [:annexb, {:avc1, 4}]],
+      [[], [:annexb], [{:avc1, 4}], [{:avc1, 4}, :annexb], [:annexb, {:avc1, 4}]],
       ""
     )
 
