@@ -8,7 +8,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
   @type t :: %{
           au_counter: non_neg_integer(),
           key_frame_au_idx: non_neg_integer(),
-          prev_pic_vcl_nalu: NALu.t() | nil,
+          prev_pic_first_vcl_nalu: NALu.t() | nil,
           prev_pic_order_cnt_msb: integer()
         }
 
@@ -17,7 +17,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     %{
       au_counter: 0,
       key_frame_au_idx: 0,
-      prev_pic_vcl_nalu: nil,
+      prev_pic_first_vcl_nalu: nil,
       prev_pic_order_cnt_msb: 0
     }
   end
@@ -40,7 +40,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
       state
       | au_counter: au_counter + 1,
         key_frame_au_idx: key_frame_au_idx,
-        prev_pic_vcl_nalu: first_vcl_nalu
+        prev_pic_first_vcl_nalu: first_vcl_nalu
     }
 
     {{pts, dts}, state}
@@ -63,7 +63,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
         # for some streams and we may generate invalid timestamps because of that.
         # If that happens, may have to implement the aforementioned lacking part.
 
-        previous_vcl_nalu = state.prev_pic_vcl_nalu || vcl_nalu
+        previous_vcl_nalu = state.prev_pic_first_vcl_nalu || vcl_nalu
         {state.prev_pic_order_cnt_msb, previous_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
       end
 

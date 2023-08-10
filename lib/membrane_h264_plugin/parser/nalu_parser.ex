@@ -27,12 +27,7 @@ defmodule Membrane.H264.Parser.NALuParser do
 
   See `parse/3` for details.
   """
-  @spec parse_nalus(
-          [binary()],
-          timestamps :: {pts :: integer() | nil, dts :: integer() | nil},
-          t()
-        ) ::
-          {[NALu.t()], t()}
+  @spec parse_nalus([binary()], NALu.timestamps(), t()) :: {[NALu.t()], t()}
   def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, state) do
     Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
       parse(nalu_payload, timestamps, state)

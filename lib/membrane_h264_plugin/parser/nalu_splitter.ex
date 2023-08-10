@@ -33,12 +33,13 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   and produces a list of binaries, where each binary is
   a complete NALu that can be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
 
-  If `is_nalu_aligned` flag is set to `true`, input is assumed to form a complete set of
-  NAL units and therefore all of them are returned. Otherwise, the NALu is not returned
+  If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
+  of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned
   until another NALu starts, as it's the only way to prove that the NALu is complete.
   """
-  @spec split(payload :: binary(), is_nalu_aligned :: boolean, state :: t()) :: {[binary()], t()}
-  def split(payload, is_nalu_aligned \\ false, state) do
+  @spec split(payload :: binary(), assume_nalu_aligned :: boolean, state :: t()) ::
+          {[binary()], t()}
+  def split(payload, assume_nalu_aligned \\ false, state) do
     total_payload = state.unparsed_payload <> payload
 
     nalus_payloads_list =
@@ -64,7 +65,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
       unparsed_payload == <<>> ->
         {nalus_payloads_list, %{state | unparsed_payload: <<>>}}
 
-      is_nalu_aligned ->
+      assume_nalu_aligned ->
         {nalus_payloads_list ++ [unparsed_payload], %{state | unparsed_payload: <<>>}}
 
       true ->

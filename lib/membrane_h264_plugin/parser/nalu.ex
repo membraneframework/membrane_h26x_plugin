@@ -23,8 +23,10 @@ defmodule Membrane.H264.Parser.NALu do
           type: Membrane.H264.Parser.NALuTypes.nalu_type(),
           payload: binary(),
           status: :valid | :error,
-          timestamps: {pts :: integer() | nil, dts :: integer() | nil}
+          timestamps: timestamps()
         }
+
+  @type timestamps :: {pts :: integer() | nil, dts :: integer() | nil}
 
   @enforce_keys [:parsed_fields, :prefix_length, :type, :payload, :status]
   defstruct @enforce_keys ++ [timestamps: {nil, nil}]

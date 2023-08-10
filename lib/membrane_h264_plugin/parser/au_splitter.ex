@@ -72,17 +72,17 @@ defmodule Membrane.H264.Parser.AUSplitter do
   describes the state after processing the primary coded picture NALu of a given
   access unit.
 
-  If `is_au_aligned` flag is set to `true`, input is assumed to form a complete set of
-  access units and therefore all of them are returned. Otherwise, the last access unit
+  If `assume_au_aligned` flag is set to `true`, input is assumed to form a complete set
+  of access units and therefore all of them are returned. Otherwise, the last access unit
   is not returned until another access unit starts, as it's the only way to prove that
   the access unit is complete.
   """
-  @spec split([NALu.t()], is_au_aligned :: boolean(), t()) :: {[access_unit_t()], t()}
-  def split(nalus, is_au_aligned \\ false, state) do
+  @spec split([NALu.t()], assume_au_aligned :: boolean(), t()) :: {[access_unit_t()], t()}
+  def split(nalus, assume_au_aligned \\ false, state) do
     state = do_split(nalus, state)
 
     {aus, state} =
-      if is_au_aligned do
+      if assume_au_aligned do
         {state.access_units_to_output ++ [state.nalus_acc],
          %__MODULE__{state | access_units_to_output: [], nalus_acc: []}}
       else
