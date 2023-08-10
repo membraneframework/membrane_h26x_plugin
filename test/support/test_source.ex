@@ -4,7 +4,7 @@ defmodule Membrane.H264.Support.TestSource do
   use Membrane.Source
 
   def_options mode: [],
-              output_raw_stream_type: [default: :annexb]
+              output_raw_stream_structure: [default: :annexb]
 
   def_output_pad :output,
     mode: :push,
@@ -16,7 +16,7 @@ defmodule Membrane.H264.Support.TestSource do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], %{mode: opts.mode, output_raw_stream_type: opts.output_raw_stream_type}}
+    {[], %{mode: opts.mode, output_raw_stream_structure: opts.output_raw_stream_structure}}
   end
 
   @impl true
@@ -32,10 +32,10 @@ defmodule Membrane.H264.Support.TestSource do
           %Membrane.RemoteStream{type: :bytestream}
 
         :nalu_aligned ->
-          %Membrane.H264{alignment: :nalu, stream_type: state.output_raw_stream_type}
+          %Membrane.H264{alignment: :nalu, stream_structure: state.output_raw_stream_structure}
 
         :au_aligned ->
-          %Membrane.H264{alignment: :au, stream_type: state.output_raw_stream_type}
+          %Membrane.H264{alignment: :au, stream_structure: state.output_raw_stream_structure}
       end
 
     {[stream_format: {:output, stream_format}], state}

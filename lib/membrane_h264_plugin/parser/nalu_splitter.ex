@@ -13,11 +13,11 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            input_parsed_stream_type: Membrane.H264.Parser.parsed_stream_type(),
+            input_parsed_stream_structure: Membrane.H264.Parser.parsed_stream_structure(),
             unparsed_payload: binary()
           }
 
-  @enforce_keys [:input_parsed_stream_type]
+  @enforce_keys [:input_parsed_stream_structure]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
   @doc """
@@ -27,11 +27,11 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   However, there is a possibility to set that `unparsed_payload`
   to a given binary, provided as an argument of the `new/1` function.
   """
-  @spec new(Membrane.H264.Parser.parsed_stream_type(), initial_binary :: binary()) ::
+  @spec new(Membrane.H264.Parser.parsed_stream_structure(), initial_binary :: binary()) ::
           t()
-  def new(input_parsed_stream_type \\ :annexb, initial_binary \\ <<>>) do
+  def new(input_parsed_stream_structure \\ :annexb, initial_binary \\ <<>>) do
     %__MODULE__{
-      input_parsed_stream_type: input_parsed_stream_type,
+      input_parsed_stream_structure: input_parsed_stream_structure,
       unparsed_payload: initial_binary
     }
   end
@@ -47,7 +47,7 @@ defmodule Membrane.H264.Parser.NALuSplitter do
           {[binary()], t()}
   def split(payload, state) do
     total_payload = state.unparsed_payload <> payload
-    nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_parsed_stream_type)
+    nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_parsed_stream_structure)
 
     total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
 

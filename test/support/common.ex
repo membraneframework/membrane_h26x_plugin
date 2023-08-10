@@ -6,18 +6,18 @@ defmodule Membrane.H264.Support.Common do
   @spec prepare_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H264.Parser.parsed_stream_type(),
+          Membrane.H264.Parser.parsed_stream_structure(),
           boolean()
         ) :: list
 
   def prepare_buffers(
         binary,
         alignment,
-        output_parsed_stream_type \\ :annexb,
+        output_parsed_stream_structure \\ :annexb,
         stable_reprefixing? \\ true
       )
 
-  def prepare_buffers(binary, :bytestream, _output_parsed_stream_type, _stable_reprefixing?) do
+  def prepare_buffers(binary, :bytestream, _output_parsed_stream_structure, _stable_reprefixing?) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
 
@@ -27,7 +27,7 @@ defmodule Membrane.H264.Support.Common do
   def prepare_buffers(
         binary,
         mode,
-        output_parsed_stream_type,
+        output_parsed_stream_structure,
         stable_reprefixing?
       ) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new(:annexb))
@@ -40,7 +40,7 @@ defmodule Membrane.H264.Support.Common do
         nalus_payloads,
         NALuParser.new(
           :annexb,
-          output_parsed_stream_type,
+          output_parsed_stream_structure,
           stable_reprefixing?
         ),
         &NALuParser.parse(&1, &2)

@@ -1,4 +1,6 @@
 defmodule Membrane.H264.StreamTypeConversionTest do
+  @moduledoc false
+  
   use ExUnit.Case
 
   import Membrane.ChildrenSpec
@@ -32,12 +34,12 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     structure =
       child(:source, %H264.Support.TestSource{
         mode: mode,
-        output_raw_stream_type: :annexb
+        output_raw_stream_structure: :annexb
       })
       |> parser_chain.()
       |> child(:parser_last, %H264.Parser{
         output_alignment: alignment,
-        output_parsed_stream_type: :annexb
+        output_parsed_stream_structure: :annexb
       })
       |> child(:sink, Sink)
 
@@ -94,7 +96,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
       |> parser_chain.()
       |> child(:parser_last, %H264.Parser{
         output_alignment: alignment,
-        output_parsed_stream_type: {avc, 4}
+        output_parsed_stream_structure: {avc, 4}
       })
       |> child(:sink, Sink)
 
@@ -111,7 +113,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
 
     fixture_buffers = receive_buffer_payloads(fixture_pipeline_pid)
 
-    assert_sink_stream_format(fixture_pipeline_pid, :sink, %H264{stream_type: fixture_stream_type})
+    assert_sink_stream_format(fixture_pipeline_pid, :sink, %H264{stream_structure: fixture_stream_structure})
 
     assert_pipeline_play(conversion_pipeline_pid)
     Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
@@ -124,18 +126,18 @@ defmodule Membrane.H264.StreamTypeConversionTest do
         assert fixture_buffers == converted_buffers
 
         assert_sink_stream_format(conversion_pipeline_pid, :sink, %H264{
-          stream_type: ^fixture_stream_type
+          stream_structure: ^fixture_stream_structure
         })
 
       :avc3 ->
         assert_sink_stream_format(conversion_pipeline_pid, :sink, %H264{
-          stream_type: {:avc3, conversion_dcr}
+          stream_structure: {:avc3, conversion_dcr}
         })
 
         {:ok, %{nalu_length_size: converted_nalu_length_size}} =
           H264.Parser.DecoderConfigurationRecord.parse(conversion_dcr)
 
-        {:avc3, fixture_dcr} = fixture_stream_type
+        {:avc3, fixture_dcr} = fixture_stream_structure
 
         {:ok, %{spss: dcr_spss, ppss: dcr_ppss, nalu_length_size: fixture_nalu_length_size}} =
           H264.Parser.DecoderConfigurationRecord.parse(fixture_dcr)
@@ -155,13 +157,13 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     Pipeline.terminate(conversion_pipeline_pid)
   end
 
-  defp perform_test(stream_type, alignment, parser_stream_types, identical_order?) do
+  defp perform_test(stream_structure, alignment, parser_stream_structures, identical_order?) do
     parsers =
-      Enum.map(parser_stream_types, fn stream_type ->
-        %H264.Parser{output_alignment: alignment, output_parsed_stream_type: stream_type}
+      Enum.map(parser_stream_structures, fn stream_structure ->
+        %H264.Parser{output_alignment: alignment, output_parsed_stream_structure: stream_structure}
       end)
 
-    case stream_type do
+    case stream_structure do
       :annexb ->
         mode =
           case alignment do
@@ -209,15 +211,15 @@ defmodule Membrane.H264.StreamTypeConversionTest do
     end)
   end
 
-  defp split_aus_to_nalus(aus_binaries, parsed_stream_type) do
+  defp split_aus_to_nalus(aus_binaries, parsed_stream_structure) do
     Enum.map(aus_binaries, fn au_binary ->
       {nalus, splitter} =
         H264.Parser.NALuSplitter.split(
           au_binary,
-          H264.Parser.NALuSplitter.new(parsed_stream_type)
+          H264.Parser.NALuSplitter.new(parsed_stream_structure)
         )
 
-      case parsed_stream_type do
+      case parsed_stream_structure do
         :annexb ->
           nalus ++ [elem(H264.Parser.NALuSplitter.flush(splitter), 0)]
 
@@ -233,7 +235,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
   end
 
   describe "The output stream should be the same as the input stream" do
-    generate_tests = fn tested_stream_type_name, parser_chains, name_suffix ->
+    generate_tests = fn tested_stream_structure_name, parser_chains, name_suffix ->
       for parser_types <- parser_chains do
         parser_chain_string =
           Enum.map_join(parser_types, " -> ", fn parser_type ->
@@ -247,12 +249,12 @@ defmodule Membrane.H264.StreamTypeConversionTest do
         identical_order? = not Enum.any?(parser_types, &match?({:avc1, _}, &1))
 
         stream_name =
-          "stream #{tested_stream_type_name} -> #{parser_chain_string} -> #{tested_stream_type_name} #{name_suffix}"
+          "stream #{tested_stream_structure_name} -> #{parser_chain_string} -> #{tested_stream_structure_name} #{name_suffix}"
 
         @tag String.to_atom("au aligned #{stream_name}")
         test "for au aligned #{stream_name}" do
           perform_test(
-            unquote(tested_stream_type_name),
+            unquote(tested_stream_structure_name),
             :au,
             unquote(parser_types),
             unquote(identical_order?)
@@ -262,7 +264,7 @@ defmodule Membrane.H264.StreamTypeConversionTest do
         @tag String.to_atom("nalu aligned #{stream_name}")
         test "for nalu aligned #{stream_name}" do
           perform_test(
-            unquote(tested_stream_type_name),
+            unquote(tested_stream_structure_name),
             :nalu,
             unquote(parser_types),
             unquote(identical_order?)

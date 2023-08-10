@@ -7,17 +7,22 @@ Mix.install([
   {:membrane_aac_plugin, ">= 0.0.0"},
   {:membrane_h264_format,
    git: "https://github.com/membraneframework/membrane_h264_format.git",
-   branch: "avc-support-remove-remote-stream",
+   ref: "ea5a3d2",
    override: true},
-  {:membrane_h264_plugin,
-   git: "https://github.com/membraneframework/membrane_h264_plugin.git",
-   branch: "stream-type-conversion",
-   override: true}
+  {:membrane_h264_plugin, path: ".", override: true},
 ])
 
 alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}
 
+defmodule Membrane.H264.RemoteStream do
+  @moduledoc false
+
+  defstruct []
+end
+
 defmodule MP4ToH264Filter do
+  @moduledoc false
+
   use Membrane.Filter
 
   def_input_pad :input,
@@ -33,7 +38,7 @@ defmodule MP4ToH264Filter do
                 spec: :au | :nalu,
                 default: :au
               ],
-              output_parsed_stream_type: [
+              output_parsed_stream_structure: [
                 spec: {:avc1 | :avc3, pos_integer()}
               ]
 
@@ -42,7 +47,7 @@ defmodule MP4ToH264Filter do
     {[],
      %{
        output_alignment: opts.output_alignment,
-       output_parsed_stream_type: opts.output_parsed_stream_type
+       output_parsed_stream_structure: opts.output_parsed_stream_structure
      }}
   end
 
@@ -55,7 +60,7 @@ defmodule MP4ToH264Filter do
           content: %Membrane.MP4.Payload.AVC1{avcc: dcr}
         },
         _ctx,
-        %{output_parsed_stream_type: {avc, nalu_length_size}} = state
+        %{output_parsed_stream_structure: {avc, nalu_length_size}} = state
       ) do
     {:ok, %{nalu_length_size: dcr_nalu_length_size}} = DecoderConfigurationRecord.parse(dcr)
 
@@ -69,7 +74,7 @@ defmodule MP4ToH264Filter do
           %Membrane.H264{
             width: width,
             height: height,
-            stream_type: {avc, dcr}
+            stream_structure: {avc, dcr}
           }}
      ], state}
   end
@@ -82,7 +87,7 @@ defmodule MP4ToH264Filter do
           buffer
 
         :nalu ->
-          splitter = NALuSplitter.new(state.output_parsed_stream_type)
+          splitter = NALuSplitter.new(state.output_parsed_stream_structure)
           {nalus, splitter} = NALuSplitter.split(buffer.payload, splitter)
 
           Enum.map(nalus, fn nalu -> %Membrane.Buffer{payload: nalu} end)
@@ -98,6 +103,8 @@ defmodule MP4ToH264Filter do
 end
 
 defmodule FixtureGeneratorPipeline do
+  @moduledoc false
+
   use Membrane.Pipeline
 
   import Membrane.ChildrenSpec
@@ -110,7 +117,7 @@ defmodule FixtureGeneratorPipeline do
       |> via_out(Pad.ref(:output, 1))
       |> child(:filter, %MP4ToH264Filter{
         output_alignment: options.output_alignment,
-        output_parsed_stream_type: options.parsed_stream_type
+        output_parsed_stream_structure: options.parsed_stream_structure
       })
       |> child(:serializer, Membrane.Stream.Serializer)
       |> child(:sink, %Membrane.File.Sink{location: options.output_location})
@@ -133,6 +140,8 @@ defmodule FixtureGeneratorPipeline do
 end
 
 defmodule AVCFixtureGenerator do
+  @moduledoc false
+
   @mp4_avc1_fixtures [
     "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
     "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__)
@@ -157,7 +166,7 @@ defmodule AVCFixtureGenerator do
     end)
   end
 
-  defp generate_fixture(input_location, output_alignment, {avc, _} = parsed_stream_type) do
+  defp generate_fixture(input_location, output_alignment, {avc, _} = parsed_stream_structure) do
     output_location =
       input_location
       |> Path.split()
@@ -172,7 +181,7 @@ defmodule AVCFixtureGenerator do
       input_location: input_location,
       output_location: output_location,
       output_alignment: output_alignment,
-      parsed_stream_type: parsed_stream_type
+      parsed_stream_structure: parsed_stream_structure
     }
 
     {:ok, _supervisor_pid, pipeline_pid} = FixtureGeneratorPipeline.start(options)

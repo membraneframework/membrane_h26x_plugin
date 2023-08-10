@@ -30,7 +30,7 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on given PPSs and SPSs.
   """
-  @spec generate([binary()], [binary()], Parser.parsed_stream_type()) ::
+  @spec generate([binary()], [binary()], Parser.parsed_stream_structure()) ::
           binary() | nil
   def generate(spss, ppss, {avc, nalu_length_size}) do
     sps_common_parameters =

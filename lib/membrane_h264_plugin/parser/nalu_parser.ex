@@ -16,11 +16,11 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
-            input_parsed_stream_type: Parser.parsed_stream_type(),
-            output_parsed_stream_type: Parser.parsed_stream_type(),
+            input_parsed_stream_structure: Parser.parsed_stream_structure(),
+            output_parsed_stream_structure: Parser.parsed_stream_structure(),
             stable_reprefixing?: boolean()
           }
-  @enforce_keys [:input_parsed_stream_type, :output_parsed_stream_type]
+  @enforce_keys [:input_parsed_stream_structure, :output_parsed_stream_structure]
   defstruct @enforce_keys ++
               [scheme_parser_state: SchemeParser.new(), stable_reprefixing?: true]
 
@@ -28,18 +28,18 @@ defmodule Membrane.H264.Parser.NALuParser do
   Returns a structure holding a clear NALu parser state.
   """
   @spec new(
-          Parser.parsed_stream_type(),
-          Parser.parsed_stream_type(),
+          Parser.parsed_stream_structure(),
+          Parser.parsed_stream_structure(),
           boolean()
         ) :: t()
   def new(
-        input_parsed_stream_type \\ :annexb,
-        output_parsed_stream_type \\ :annexb,
+        input_parsed_stream_structure \\ :annexb,
+        output_parsed_stream_structure \\ :annexb,
         stable_reprefixing? \\ true
       ) do
     %__MODULE__{
-      input_parsed_stream_type: input_parsed_stream_type,
-      output_parsed_stream_type: output_parsed_stream_type,
+      input_parsed_stream_structure: input_parsed_stream_structure,
+      output_parsed_stream_structure: output_parsed_stream_structure,
       stable_reprefixing?: stable_reprefixing?
     }
   end
@@ -57,7 +57,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   def parse(nalu_payload, state, payload_prefixed? \\ true) do
     {initial_prefix_length, unprefixed_nalu_payload} =
       if payload_prefixed? do
-        unprefix_nalu_payload(nalu_payload, state.input_parsed_stream_type)
+        unprefix_nalu_payload(nalu_payload, state.input_parsed_stream_structure)
       else
         {0, nalu_payload}
       end
@@ -76,7 +76,7 @@ defmodule Membrane.H264.Parser.NALuParser do
     type = NALuTypes.get_type(parsed_fields.nal_unit_type)
 
     {prefix_length, reprefixed_nalu_payload} =
-      case {state.input_parsed_stream_type, state.output_parsed_stream_type} do
+      case {state.input_parsed_stream_structure, state.output_parsed_stream_structure} do
         {type, type} when state.stable_reprefixing? and payload_prefixed? ->
           {initial_prefix_length, nalu_payload}
 

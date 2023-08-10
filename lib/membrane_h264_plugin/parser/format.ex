@@ -30,13 +30,13 @@ defmodule Membrane.H264.Parser.Format do
   """
   @spec from_sps(
           sps_nalu :: H264.Parser.NALu.t(),
-          output_raw_stream_type :: H264.stream_type(),
+          output_raw_stream_structure :: H264.stream_structure(),
           options_fields :: [
             framerate: {pos_integer(), pos_integer()},
             output_alignment: :au | :nalu
           ]
         ) :: H264.t()
-  def from_sps(sps_nalu, output_raw_stream_type, options_fields) do
+  def from_sps(sps_nalu, output_raw_stream_structure, options_fields) do
     sps = sps_nalu.parsed_fields
 
     chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
@@ -78,7 +78,7 @@ defmodule Membrane.H264.Parser.Format do
       framerate: Keyword.get(options_fields, :framerate),
       alignment: Keyword.get(options_fields, :output_alignment),
       nalu_in_metadata?: true,
-      stream_type: output_raw_stream_type
+      stream_structure: output_raw_stream_structure
     }
   end
 
