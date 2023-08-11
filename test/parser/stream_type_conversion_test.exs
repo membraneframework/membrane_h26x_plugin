@@ -136,12 +136,12 @@ defmodule Membrane.H264.StreamTypeConversionTest do
           stream_structure: {:avc3, conversion_dcr}
         })
 
-        {:ok, %{nalu_length_size: converted_nalu_length_size}} =
+        %{nalu_length_size: converted_nalu_length_size} =
           H264.Parser.DecoderConfigurationRecord.parse(conversion_dcr)
 
         {:avc3, fixture_dcr} = fixture_stream_structure
 
-        {:ok, %{spss: dcr_spss, ppss: dcr_ppss, nalu_length_size: fixture_nalu_length_size}} =
+        %{spss: dcr_spss, ppss: dcr_ppss, nalu_length_size: fixture_nalu_length_size} =
           H264.Parser.DecoderConfigurationRecord.parse(fixture_dcr)
 
         fixture_nalus =

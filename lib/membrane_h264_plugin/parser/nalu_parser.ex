@@ -24,7 +24,11 @@ defmodule Membrane.H264.Parser.NALuParser do
               [scheme_parser_state: SchemeParser.new(), stable_reprefixing?: true]
 
   @doc """
-  Returns a structure holding a clear NALu parser state.
+  Returns a structure holding a clear NALu parser state. `input_stream_structure` and
+  `output_stream_structure` determine the prefixes of input and output NALU payloads.
+  If `stable_prefixing?` is set to true, then if input and output stream structures are the same
+  the prefix will not change. If `stable_prefixing?` is set to false, then a Annex B prefix code
+  0x000001 could be replaced by 0x00000001.
   """
   @spec new(
           Parser.stream_structure(),
@@ -44,11 +48,12 @@ defmodule Membrane.H264.Parser.NALuParser do
   end
 
   @doc """
-  Parses a binary representing a single NALu.
+  Parses a binary representing a single NALu and changes it's prefix to the one specified in
+  `output_stream_structure`. In
 
   Returns a structure that
   contains parsed fields fetched from that NALu.
-  The input binary is expected to contain one of:
+  When `payload_prefixed?` is true the input binary is expected to contain one of:
   * prefix defined as the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
@@ -116,14 +121,19 @@ defmodule Membrane.H264.Parser.NALuParser do
     {nalu, state}
   end
 
-  defp unprefix_nalu_payload(nalu_payload, :annexb) do
+  @doc """
+  Removes the prefix specified in the stream structure from the passed binary and returns
+  the unprefixed payload with the removed prefix's length.
+  """
+  @spec unprefix_nalu_payload(binary(), Parser.stream_structure()) :: {pos_integer(), binary()}
+  def unprefix_nalu_payload(nalu_payload, :annexb) do
     case nalu_payload do
       <<0, 0, 1, rest::binary>> -> {3, rest}
       <<0, 0, 0, 1, rest::binary>> -> {4, rest}
     end
   end
 
-  defp unprefix_nalu_payload(nalu_payload, {_avc, nalu_length_size}) do
+  def unprefix_nalu_payload(nalu_payload, {_avc, nalu_length_size}) do
     <<_nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
 
     {nalu_length_size, rest}

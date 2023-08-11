@@ -24,7 +24,7 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
           avc_profile_indication: non_neg_integer(),
           profile_compatibility: non_neg_integer(),
           avc_level: non_neg_integer(),
-          nalu_length_size: non_neg_integer()
+          nalu_length_size: pos_integer()
         }
 
   @doc """
@@ -32,28 +32,21 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   """
   @spec generate([binary()], [binary()], Parser.stream_structure()) ::
           binary() | nil
-  def generate(spss, ppss, {avc, nalu_length_size}) do
-    sps_common_parameters =
-      Enum.map(spss, fn <<_idc_and_type, profile, compatibility, level, _rest::binary>> ->
-        <<profile, compatibility, level>>
-      end)
-      |> Enum.uniq()
+  def generate([], _ppss, _stream_structure) do
+    nil
+  end
 
-    if length(sps_common_parameters) > 1 do
-      raise("SPS parameters should be the same for all sets but are different")
-    end
+  def generate(spss, ppss, {avc, nalu_length_size}) do
+    <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
 
     cond do
-      sps_common_parameters == [] ->
-        nil
-
       avc == :avc1 ->
-        <<1, hd(sps_common_parameters)::binary, 0b111111::6, nalu_length_size - 1::2-integer,
+        <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, length(spss)::5-integer, encode_parameter_sets(spss)::binary,
           length(ppss)::8-integer, encode_parameter_sets(ppss)::binary>>
 
       avc == :avc3 ->
-        <<1, hd(sps_common_parameters)::binary, 0b111111::6, nalu_length_size - 1::2-integer,
+        <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, 0::5, 0::8>>
     end
   end
@@ -71,7 +64,7 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   @doc """
   Parses the DCR.
   """
-  @spec parse(binary()) :: {:ok, t()} | {:error, any()}
+  @spec parse(binary()) :: t()
   def parse(
         <<1::8, avc_profile_indication::8, profile_compatibility::8, avc_level::8, 0b111111::6,
           length_size_minus_one::2, 0b111::3, rest::bitstring>>
@@ -87,7 +80,6 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
       avc_level: avc_level,
       nalu_length_size: length_size_minus_one + 1
     }
-    |> then(&{:ok, &1})
   end
 
   def parse(_data), do: {:error, :unknown_pattern}
