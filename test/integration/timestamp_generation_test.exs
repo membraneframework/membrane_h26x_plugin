@@ -42,7 +42,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
   ]
   @h264_input_file_baseline "test/fixtures/input-10-720p-baseline.h264"
   @h264_input_timestamps_baseline [0, 33, 67, 100, 133, 167, 200, 233, 267, 300]
-                                  |> Enum.map(&{&1, &1})
+                                  |> Enum.map(&{&1, &1 - 500})
   defp prepare_buffers(binary, :bytestream) do
     buffers =
       :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
@@ -97,7 +97,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     ],
     fn {profiles, file, timestamps} ->
       test """
-      if the pts and dts are generated correctly for profiles #{profiles}
+      if the pts and dts are generated correctly for profiles #{profiles}\
       in :bytestream mode when framerate is given
       """ do
         binary = File.read!(unquote(file))
@@ -111,8 +111,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
             structure: [
               child(:source, %TestSource{mode: mode})
               |> child(:parser, %Membrane.H264.Parser{
-                generate_best_effort_timestamps: true,
-                framerate: framerate
+                generate_best_effort_timestamps: %{framerate: framerate}
               })
               |> child(:sink, Sink)
             ]

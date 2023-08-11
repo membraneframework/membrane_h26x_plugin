@@ -24,16 +24,19 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
 
   @spec generate_ts_with_constant_framerate(
           [NALu.t()],
-          framerate :: {frames :: pos_integer(), seconds :: pos_integer()},
-          max_frame_reorder :: non_neg_integer(),
+          config :: %{
+            :framerate => {frames :: pos_integer(), seconds :: pos_integer()},
+            optional(:add_dts_offset) => boolean()
+          },
           t
         ) :: {{pts :: non_neg_integer(), dts :: non_neg_integer()}, t}
-  def generate_ts_with_constant_framerate(au, {frames, seconds}, max_frame_reorder, state) do
+  def generate_ts_with_constant_framerate(au, %{framerate: {frames, seconds}} = config, state) do
     %{au_counter: au_counter, key_frame_au_idx: key_frame_au_idx} = state
     first_vcl_nalu = Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
     {poc, state} = calculate_poc(first_vcl_nalu, state)
     key_frame_au_idx = if poc == 0, do: au_counter, else: key_frame_au_idx
     pts = div((key_frame_au_idx + poc) * seconds * Membrane.Time.second(), frames)
+    max_frame_reorder = if Map.get(config, :add_dts_offset, true), do: 15, else: 0
     dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
 
     state = %{

@@ -113,40 +113,34 @@ defmodule Membrane.H264.Parser do
                   in `Membrane.H264.RemoteStream` stream format
                 """
               ],
-              framerate: [
-                spec: {pos_integer(), pos_integer()} | nil,
-                default: nil,
-                description: """
-                Framerate of the video, represented as a tuple consisting of a numerator and the
-                denominator.
-                Its value will be sent inside the output Membrane.H264 stream format.
-                """
-              ],
               generate_best_effort_timestamps: [
-                spec: boolean(),
+                spec:
+                  false
+                  | %{
+                      :framerate => {pos_integer, pos_integer},
+                      optional(:add_dts_offset) => boolean
+                    },
                 default: false,
                 description: """
                 Generates timestamps based on given `framerate`.
 
-                This option works only when `Membrane.RemoteStream` format arrives on
-                input pad and requires the `framerate` option to be specified.
+                This option works only when `Membrane.RemoteStream` format arrives.
 
                 Keep in mind that the generated timestamps may be inaccurate and lead
                 to video getting out of sync with other media, therefore h264 should
                 be kept in a container that stores the timestamps alongside.
+
+                By default, the parser adds negative DTS offset to the timestamps,
+                so that in case of frame reorder (which always happens when B frames
+                are present) the DTS was always bigger than PTS. If that is not desired,
+                you can set `add_dts_offset: false`.
                 """
-              ],
-              # TODO: remove this if possible
-              max_frame_reorder: [default: nil]
+              ]
 
   @impl true
   def handle_init(_ctx, opts) do
     {sps, opts} = Map.pop!(opts, :sps)
     {pps, opts} = Map.pop!(opts, :pps)
-
-    if opts.generate_best_effort_timestamps and opts.framerate == nil do
-      raise "Invalid options: `generate_best_effort_timestamps` requires `framerate` to be specified"
-    end
 
     state =
       %{
@@ -301,21 +295,8 @@ defmodule Membrane.H264.Parser do
         {[], state}
 
       sps_nalu ->
-        fmt =
-          Format.from_sps(sps_nalu,
-            framerate: state.framerate,
-            output_alignment: state.output_alignment
-          )
-
-        max_frame_reorder = if fmt.profile in [:baseline, :constrained_baseline], do: 0, else: 15
-
-        state = %{
-          state
-          | profile: fmt.profile,
-            max_frame_reorder: state.max_frame_reorder || max_frame_reorder
-        }
-
-        {[stream_format: {:output, fmt}], state}
+        fmt = Format.from_sps(sps_nalu, output_alignment: state.output_alignment)
+        {[stream_format: {:output, fmt}], %{state | profile: fmt.profile}}
     end
   end
 
@@ -324,8 +305,7 @@ defmodule Membrane.H264.Parser do
       {timestamps, timestamp_generator} =
         AUTimestampGenerator.generate_ts_with_constant_framerate(
           au,
-          state.framerate,
-          state.max_frame_reorder,
+          state.generate_best_effort_timestamps,
           state.au_timestamp_generator
         )
 
