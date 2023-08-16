@@ -1,7 +1,7 @@
 defmodule AUSplitterTest do
   @moduledoc false
 
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   @test_files_names ["10-720a", "10-720p"]
 
@@ -22,19 +22,10 @@ defmodule AUSplitterTest do
 
     @spec parse(binary()) :: AUSplitter.access_unit_t()
     def parse(payload) do
-      nalu_splitter = NALuSplitter.new()
-      {nalus_payloads, nalu_splitter} = NALuSplitter.split(payload, nalu_splitter)
-      {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
-      nalus_payloads = nalus_payloads ++ [last_nalu_payload]
-
-      nalu_parser = NALuParser.new()
-
-      {nalus, _nalu_parser} =
-        Enum.map_reduce(nalus_payloads, nalu_parser, &NALuParser.parse(&1, &2))
-
-      {aus, au_splitter} = AUSplitter.split(nalus, AUSplitter.new())
-      {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
-      aus ++ [last_au]
+      {nalus_payloads, _nalu_splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
+      {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
+      {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
+      aus
     end
   end
 

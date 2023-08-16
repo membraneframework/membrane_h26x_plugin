@@ -33,11 +33,15 @@ defmodule Membrane.H264.Parser.NALuTypes do
               end)
               |> Map.new()
 
+  @vcl_nalu_types [:idr, :non_idr, :part_a, :part_b, :part_c]
+
   @typedoc """
   A type representing all the possible human-friendly names of NAL unit types.
   """
   @type nalu_type ::
           unquote(Bunch.Typespec.enum_to_alternative(Map.values(@nalu_types) |> Enum.uniq()))
+
+  @type vcl_nalu_type :: unquote(Bunch.Typespec.enum_to_alternative(@vcl_nalu_types))
 
   @doc """
   The function which returns the human friendly name of a NALu type
@@ -46,8 +50,10 @@ defmodule Membrane.H264.Parser.NALuTypes do
   The mapping is based on: "Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes"
   of the *"ITU-T Rec. H.264 (01/2012)"*
   """
-  @spec get_type(non_neg_integer()) :: atom()
-  def get_type(nal_unit_type) do
-    @nalu_types[nal_unit_type]
+  @spec get_type(non_neg_integer()) :: nalu_type() | nil
+  def get_type(nal_unit_type_id) do
+    @nalu_types[nal_unit_type_id]
   end
+
+  defguard is_vcl_nalu_type(nalu_type) when nalu_type in @vcl_nalu_types
 end

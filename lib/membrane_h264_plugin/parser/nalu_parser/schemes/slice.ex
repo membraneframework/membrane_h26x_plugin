@@ -5,6 +5,9 @@ defmodule Membrane.H264.Parser.NALuParser.Schemes.Slice do
   @impl true
   def defaults(), do: []
 
+  # If we're ever unlucky and have to parse more fields from the slice header
+  # this implementation may come in handy:
+  # https://webrtc.googlesource.com/src/webrtc/+/f54860e9ef0b68e182a01edc994626d21961bc4b/common_video/h264/h264_bitstream_parser.cc
   @impl true
   def scheme(),
     do: [

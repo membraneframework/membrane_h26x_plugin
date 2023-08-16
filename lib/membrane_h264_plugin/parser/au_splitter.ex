@@ -17,6 +17,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
   """
   require Membrane.Logger
 
+  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+
   alias Membrane.H264.Parser.NALu
 
   @typedoc """
@@ -50,23 +52,18 @@ defmodule Membrane.H264.Parser.AUSplitter do
     }
   end
 
-  @non_vcl_nalus_at_au_beginning [:sps, :pps, :aud, :sei]
-  @non_vcl_nalus_at_au_end [:end_of_seq, :end_of_stream]
-  @vcl_nalus [:idr, :non_idr, :part_a, :part_b, :part_c]
+  @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
+  @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]
 
   @typedoc """
   A type representing an access unit - a list of logically associated NAL units.
   """
   @type access_unit_t() :: list(NALu.t())
 
-  # split/2 defines a finite state machine with two states: :first and :second.
-  # The state :first describes the state before reaching the primary coded picture NALu of a given access unit.
-  # The state :second describes the state after processing the primary coded picture NALu of a given access unit.
-
   @doc """
   Splits the given list of NAL units into the access units.
 
-  It can be used for a stream which is not completly available at the time of function invoction,
+  It can be used for a stream which is not completely available at the time of function invocation,
   as the function updates the state of the access unit splitter - the function can
   be invoked once more, with new NAL units and the updated state.
   Under the hood, `split/2` defines a finite state machine
@@ -74,14 +71,31 @@ defmodule Membrane.H264.Parser.AUSplitter do
   reaching the primary coded picture NALu of a given access unit. The state `:second`
   describes the state after processing the primary coded picture NALu of a given
   access unit.
-  """
-  @spec split(list(NALu.t()), t()) :: {list(access_unit_t()), t()}
-  def split(nalus, state)
 
-  def split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
+  If `assume_au_aligned` flag is set to `true`, input is assumed to form a complete set
+  of access units and therefore all of them are returned. Otherwise, the last access unit
+  is not returned until another access unit starts, as it's the only way to prove that
+  the access unit is complete.
+  """
+  @spec split([NALu.t()], assume_au_aligned :: boolean(), t()) :: {[access_unit_t()], t()}
+  def split(nalus, assume_au_aligned \\ false, state) do
+    state = do_split(nalus, state)
+
+    {aus, state} =
+      if assume_au_aligned do
+        {state.access_units_to_output ++ [state.nalus_acc],
+         %__MODULE__{state | access_units_to_output: [], nalus_acc: []}}
+      else
+        {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
+      end
+
+    {Enum.reject(aus, &Enum.empty?/1), state}
+  end
+
+  defp do_split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
     cond do
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split(
+        do_split(
           rest_nalus,
           %__MODULE__{
             state
@@ -91,22 +105,22 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
-        split(
+      first_nalu.type in @non_vcl_nalu_types_at_au_beginning ->
+        do_split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
         Membrane.Logger.warning("AUSplitter: Improper transition")
-        return(state)
+        state
     end
   end
 
-  def split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
+  defp do_split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
     cond do
-      first_nalu.type in @non_vcl_nalus_at_au_end ->
-        split(
+      first_nalu.type in @non_vcl_nalu_types_at_au_end ->
+        do_split(
           rest_nalus,
           %__MODULE__{
             state
@@ -114,8 +128,8 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @non_vcl_nalus_at_au_beginning ->
-        split(
+      first_nalu.type in @non_vcl_nalu_types_at_au_beginning ->
+        do_split(
           rest_nalus,
           %__MODULE__{
             state
@@ -126,7 +140,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
-        split(
+        do_split(
           rest_nalus,
           %__MODULE__{
             state
@@ -136,37 +150,20 @@ defmodule Membrane.H264.Parser.AUSplitter do
           }
         )
 
-      first_nalu.type in @vcl_nalus or first_nalu.type == :filler_data ->
-        split(
+      NALuTypes.is_vcl_nalu_type(first_nalu.type) or first_nalu.type == :filler_data ->
+        do_split(
           rest_nalus,
           %__MODULE__{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
       true ->
         Membrane.Logger.warning("AUSplitter: Improper transition")
-        return(state)
+        state
     end
   end
 
-  def split([], state) do
-    return(state)
-  end
-
-  defp return(state) do
-    {state.access_units_to_output |> Enum.filter(&(&1 != [])),
-     %__MODULE__{state | access_units_to_output: []}}
-  end
-
-  @doc """
-  Returns a list of NAL units which are hold in access unit splitter's state accumulator
-  and sets that accumulator empty.
-
-  These NAL units aren't proved to form a new access units and that is why they haven't yet been
-  output by `Membrane.H264.Parser.AUSplitter.split/2`.
-  """
-  @spec flush(t()) :: {list(NALu.t()), t()}
-  def flush(state) do
-    {state.nalus_acc, %{state | nalus_acc: []}}
+  defp do_split([], state) do
+    state
   end
 
   # Reference source for the behaviour below:
@@ -215,8 +212,9 @@ defmodule Membrane.H264.Parser.AUSplitter do
   defguardp idrs_with_idr_pic_id_differ(a, b)
             when a.nal_unit_type == 5 and b.nal_unit_type == 5 and a.idr_pic_id != b.idr_pic_id
 
-  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu) when type not in @vcl_nalus,
-    do: false
+  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu)
+       when not NALuTypes.is_vcl_nalu_type(type),
+       do: false
 
   defp is_new_primary_coded_vcl_nalu(_nalu, nil), do: true
 

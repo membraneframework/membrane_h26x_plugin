@@ -23,6 +23,18 @@ defmodule Membrane.H264.Parser.NALuParser do
   def new(), do: %__MODULE__{}
 
   @doc """
+  Parses a list of binaries, each representing a single NALu.
+
+  See `parse/3` for details.
+  """
+  @spec parse_nalus([binary()], NALu.timestamps(), t()) :: {[NALu.t()], t()}
+  def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, state) do
+    Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
+      parse(nalu_payload, timestamps, state)
+    end)
+  end
+
+  @doc """
   Parses a binary representing a single NALu.
 
   Returns a structure that
@@ -30,8 +42,9 @@ defmodule Membrane.H264.Parser.NALuParser do
   The input binary is expected to contain the prefix, defined as in
   the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
-  @spec parse(binary(), t()) :: {NALu.t(), t()}
-  def parse(nalu_payload, state) do
+  @spec parse(binary(), timestamps :: {pts :: integer() | nil, dts :: integer() | nil}, t()) ::
+          {NALu.t(), t()}
+  def parse(nalu_payload, timestamps \\ {nil, nil}, state) do
     {prefix_length, nalu_payload_without_prefix} =
       case nalu_payload do
         <<0, 0, 1, rest::binary>> -> {3, rest}
@@ -61,7 +74,8 @@ defmodule Membrane.H264.Parser.NALuParser do
            type: type,
            status: :valid,
            prefix_length: prefix_length,
-           payload: nalu_payload
+           payload: nalu_payload,
+           timestamps: timestamps
          }, scheme_parser_state}
       catch
         "Cannot load information from SPS" ->
@@ -70,7 +84,8 @@ defmodule Membrane.H264.Parser.NALuParser do
              type: type,
              status: :error,
              prefix_length: prefix_length,
-             payload: nalu_payload
+             payload: nalu_payload,
+             timestamps: timestamps
            }, scheme_parser_state}
       end
 

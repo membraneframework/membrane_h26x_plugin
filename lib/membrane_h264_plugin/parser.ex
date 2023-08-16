@@ -38,9 +38,15 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{Buffer, H264, RemoteStream}
-  alias Membrane.H264.Parser.{AUSplitter, Format, NALuParser, NALuSplitter}
 
-  alias __MODULE__.DecoderConfigurationRecord
+  alias Membrane.H264.Parser.{
+    AUSplitter,
+    AUTimestampGenerator,
+    DecoderConfigurationRecord,
+    Format,
+    NALuParser,
+    NALuSplitter
+  }
 
   @prefix_code <<0, 0, 0, 1>>
 
@@ -75,15 +81,6 @@ defmodule Membrane.H264.Parser do
                 be provided via this option.
                 """
               ],
-              framerate: [
-                spec: {pos_integer(), pos_integer()} | nil,
-                default: nil,
-                description: """
-                Framerate of the video, represented as a tuple consisting of a numerator and the
-                denominator.
-                Its value will be sent inside the output Membrane.H264 stream format.
-                """
-              ],
               output_alignment: [
                 spec: :au | :nalu,
                 default: :au,
@@ -94,9 +91,9 @@ defmodule Membrane.H264.Parser do
                 Defaults to `:au`.
                 """
               ],
-              skip_until_keyframe?: [
+              skip_until_keyframe: [
                 spec: boolean(),
-                default: false,
+                default: true,
                 description: """
                 Determines whether to drop the stream until the first key frame is received.
 
@@ -115,27 +112,55 @@ defmodule Membrane.H264.Parser do
                   * Decoder Configuration Record, sent as decoder_configuration_record
                   in `Membrane.H264.RemoteStream` stream format
                 """
+              ],
+              generate_best_effort_timestamps: [
+                spec:
+                  false
+                  | %{
+                      :framerate => {pos_integer, pos_integer},
+                      optional(:add_dts_offset) => boolean
+                    },
+                default: false,
+                description: """
+                Generates timestamps based on given `framerate`.
+
+                This option works only when `Membrane.RemoteStream` format arrives.
+
+                Keep in mind that the generated timestamps may be inaccurate and lead
+                to video getting out of sync with other media, therefore h264 should
+                be kept in a container that stores the timestamps alongside.
+
+                By default, the parser adds negative DTS offset to the timestamps,
+                so that in case of frame reorder (which always happens when B frames
+                are present) the DTS was always bigger than PTS. If that is not desired,
+                you can set `add_dts_offset: false`.
+                """
               ]
 
   @impl true
   def handle_init(_ctx, opts) do
-    state = %{
-      nalu_splitter: NALuSplitter.new(maybe_add_prefix(opts.sps) <> maybe_add_prefix(opts.pps)),
-      nalu_parser: NALuParser.new(),
-      au_splitter: AUSplitter.new(),
-      mode: nil,
-      profile: nil,
-      previous_timestamps: {nil, nil},
-      framerate: opts.framerate,
-      au_counter: 0,
-      output_alignment: opts.output_alignment,
-      frame_prefix: <<>>,
-      parameter_sets_present?: byte_size(opts.sps) > 0 or byte_size(opts.pps) > 0,
-      skip_until_keyframe?: opts.skip_until_keyframe?,
-      repeat_parameter_sets?: opts.repeat_parameter_sets,
-      cached_sps: %{},
-      cached_pps: %{}
-    }
+    {sps, opts} = Map.pop!(opts, :sps)
+    {pps, opts} = Map.pop!(opts, :pps)
+    {ts_generation_config, opts} = Map.pop!(opts, :generate_best_effort_timestamps)
+
+    au_timestamp_generator =
+      if ts_generation_config, do: AUTimestampGenerator.new(ts_generation_config), else: nil
+
+    state =
+      %{
+        nalu_splitter: NALuSplitter.new(maybe_add_prefix(sps) <> maybe_add_prefix(pps)),
+        nalu_parser: NALuParser.new(),
+        au_splitter: AUSplitter.new(),
+        au_timestamp_generator: au_timestamp_generator,
+        mode: nil,
+        profile: nil,
+        previous_buffer_timestamps: nil,
+        frame_prefix: <<>>,
+        parameter_sets_present?: byte_size(sps) > 0 or byte_size(pps) > 0,
+        cached_sps: %{},
+        cached_pps: %{}
+      }
+      |> Map.merge(Map.from_struct(opts))
 
     {[], state}
   end
@@ -177,37 +202,17 @@ defmodule Membrane.H264.Parser do
         prefix -> {prefix <> buffer.payload, %{state | frame_prefix: <<>>}}
       end
 
-    {nalus_payloads_list, nalu_splitter} = NALuSplitter.split(payload, state.nalu_splitter)
+    is_nalu_aligned = state.mode != :bytestream
 
-    {nalus_payloads_list, nalu_splitter} =
-      if state.mode != :bytestream do
-        {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(nalu_splitter)
+    {nalus_payloads, nalu_splitter} =
+      NALuSplitter.split(payload, is_nalu_aligned, state.nalu_splitter)
 
-        if last_nalu_payload != <<>> do
-          {nalus_payloads_list ++ [last_nalu_payload], nalu_splitter}
-        else
-          {nalus_payloads_list, nalu_splitter}
-        end
-      else
-        {nalus_payloads_list, nalu_splitter}
-      end
-
-    {nalus, nalu_parser} =
-      Enum.map_reduce(nalus_payloads_list, state.nalu_parser, fn nalu_payload, nalu_parser ->
-        NALuParser.parse(nalu_payload, nalu_parser)
-      end)
-
-    {access_units, au_splitter} = nalus |> AUSplitter.split(state.au_splitter)
-
-    {access_units, au_splitter} =
-      if state.mode == :au_aligned do
-        {last_au, au_splitter} = AUSplitter.flush(au_splitter)
-        {access_units ++ [last_au], au_splitter}
-      else
-        {access_units, au_splitter}
-      end
-
-    {actions, state} = prepare_actions_for_aus(access_units, state, buffer.pts, buffer.dts)
+    timestamps = if state.mode == :bytestream, do: {nil, nil}, else: {buffer.pts, buffer.dts}
+    {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
+    is_au_aligned = state.mode == :au_aligned
+    {access_units, au_splitter} = AUSplitter.split(nalus, is_au_aligned, state.au_splitter)
+    {access_units, state} = skip_improper_aus(access_units, state)
+    {actions, state} = prepare_actions_for_aus(access_units, state)
 
     state = %{
       state
@@ -221,20 +226,12 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
-    {last_nalu_payload, nalu_splitter} = NALuSplitter.flush(state.nalu_splitter)
+    {last_nalu_payload, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
+    {last_nalu, nalu_parser} = NALuParser.parse_nalus(last_nalu_payload, state.nalu_parser)
+    {maybe_improper_aus, au_splitter} = AUSplitter.split(last_nalu, true, state.au_splitter)
+    {aus, state} = skip_improper_aus(maybe_improper_aus, state)
+    {actions, state} = prepare_actions_for_aus(aus, state)
 
-    {{access_units, au_splitter}, nalu_parser} =
-      if last_nalu_payload != <<>> do
-        {last_nalu, nalu_parser} = NALuParser.parse(last_nalu_payload, state.nalu_parser)
-        {AUSplitter.split([last_nalu], state.au_splitter), nalu_parser}
-      else
-        {{[], state.au_splitter}, state.nalu_parser}
-      end
-
-    {remaining_nalus, au_splitter} = AUSplitter.flush(au_splitter)
-    maybe_improper_aus = access_units ++ [remaining_nalus]
-
-    {actions, state} = prepare_actions_for_aus(maybe_improper_aus, state)
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
 
     state = %{
@@ -261,101 +258,67 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp prepare_actions_for_aus(aus, state, buffer_pts \\ nil, buffer_dts \\ nil) do
-    {actions, state} =
-      Enum.flat_map_reduce(aus, state, fn au, state ->
-        cnt = state.au_counter
-        profile = state.profile
-        {sps_actions, profile} = maybe_parse_sps(au, state, profile)
+  defp skip_improper_aus(aus, state) do
+    Enum.flat_map_reduce(aus, state, fn au, state ->
+      has_seen_keyframe? =
+        Enum.all?(au, &(&1.status == :valid)) and Enum.any?(au, &(&1.type == :idr))
 
-        au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
-        state = cache_parameter_sets(state, au)
-
-        {pts, dts} = prepare_timestamps(buffer_pts, buffer_dts, state, profile, cnt)
-
-        state = %{
-          state
-          | profile: profile,
-            au_counter: cnt + 1
-        }
-
-        has_seen_keyframe? =
-          Enum.all?(au, &(&1.status == :valid)) and Enum.any?(au, &(&1.type == :idr))
-
-        state = %{
-          state
-          | skip_until_keyframe?: state.skip_until_keyframe? and not has_seen_keyframe?
-        }
-
-        buffers_actions =
-          if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe? do
-            []
-          else
-            [{:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}]
-          end
-
-        {sps_actions ++ buffers_actions, state}
-      end)
-
-    state =
-      if state.mode == :nalu_aligned and state.previous_timestamps != {buffer_pts, buffer_dts} do
-        %{state | previous_timestamps: {buffer_pts, buffer_dts}}
-      else
+      state = %{
         state
-      end
+        | skip_until_keyframe: state.skip_until_keyframe and not has_seen_keyframe?
+      }
 
-    {actions, state}
+      if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe do
+        {[], state}
+      else
+        {[au], state}
+      end
+    end)
   end
 
-  defp maybe_parse_sps(au, state, profile) do
+  defp prepare_actions_for_aus(aus, state) do
+    Enum.flat_map_reduce(aus, state, fn au, state ->
+      {sps_actions, state} = maybe_parse_sps(au, state)
+
+      au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
+      state = cache_parameter_sets(state, au)
+
+      {{pts, dts}, state} = prepare_timestamps(au, state)
+
+      buffers_actions = [
+        {:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}
+      ]
+
+      {sps_actions ++ buffers_actions, state}
+    end)
+  end
+
+  defp maybe_parse_sps(au, state) do
     case Enum.find(au, &(&1.type == :sps)) do
       nil ->
-        {[], profile}
+        {[], state}
 
       sps_nalu ->
-        fmt =
-          Format.from_sps(sps_nalu,
-            framerate: state.framerate,
-            output_alignment: state.output_alignment
-          )
-
-        {[stream_format: {:output, fmt}], fmt.profile}
+        fmt = Format.from_sps(sps_nalu, output_alignment: state.output_alignment)
+        {[stream_format: {:output, fmt}], %{state | profile: fmt.profile}}
     end
   end
 
-  defp prepare_timestamps(_buffer_pts, _buffer_dts, state, profile, frame_order_number)
-       when state.mode == :bytestream do
-    cond do
-      state.framerate == nil or profile == nil ->
-        {nil, nil}
-
-      h264_profile_tsgen_supported?(profile) ->
-        generate_ts_with_constant_framerate(
-          state.framerate,
-          frame_order_number,
-          frame_order_number
+  defp prepare_timestamps(au, state) do
+    if state.mode == :bytestream and state.au_timestamp_generator do
+      {timestamps, timestamp_generator} =
+        AUTimestampGenerator.generate_ts_with_constant_framerate(
+          au,
+          state.au_timestamp_generator
         )
 
-      true ->
-        raise("Timestamp generation for H264 profile `#{inspect(profile)}` is unsupported")
-    end
-  end
-
-  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _frame_order_number)
-       when state.mode == :nalu_aligned do
-    if state.previous_timestamps == {nil, nil} do
-      {buffer_pts, buffer_dts}
+      {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
-      state.previous_timestamps
+      {hd(au).timestamps, state}
     end
   end
 
-  defp prepare_timestamps(buffer_pts, buffer_dts, state, _profile, _frame_order_number)
-       when state.mode == :au_aligned do
-    {buffer_pts, buffer_dts}
-  end
-
-  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do
     if idr_au?(au),
@@ -367,7 +330,7 @@ defmodule Membrane.H264.Parser do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
+  defp cache_parameter_sets(%{repeat_parameter_sets: false} = state, _au), do: state
 
   defp cache_parameter_sets(state, au) do
     sps =
@@ -467,19 +430,6 @@ defmodule Membrane.H264.Parser do
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
   defp stream_format_sent?(_actions, _ctx), do: true
-
-  defp h264_profile_tsgen_supported?(profile),
-    do: profile in [:baseline, :constrained_baseline]
-
-  defp generate_ts_with_constant_framerate(
-         {frames, seconds} = _framerate,
-         presentation_order_number,
-         decoding_order_number
-       ) do
-    pts = div(presentation_order_number * seconds * Membrane.Time.second(), frames)
-    dts = div(decoding_order_number * seconds * Membrane.Time.second(), frames)
-    {pts, dts}
-  end
 
   defp get_frame_prefix!(dcr, state) do
     cond do
