@@ -5,16 +5,28 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
 
   alias Membrane.H264.Parser.NALu
 
+  @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}
+
   @type t :: %{
+          framerate: framerate,
+          max_frame_reorder: 0..15,
           au_counter: non_neg_integer(),
           key_frame_au_idx: non_neg_integer(),
           prev_pic_first_vcl_nalu: NALu.t() | nil,
           prev_pic_order_cnt_msb: integer()
         }
 
-  @spec new() :: t
-  def new() do
+  @spec new(config :: %{:framerate => framerate, optional(:add_dts_offset) => boolean()}) :: t
+  def new(config) do
+    # To make sure that PTS >= DTS at all times, we take maximal possible
+    # frame reorder (which is 15 according to the spec) and subtract
+    # `max_frame_reorder * frame_duration` from each frame's DTS.
+    # This behaviour can be disabled by setting `add_dts_offset: false`.
+    max_frame_reorder = if Map.get(config, :add_dts_offset, true), do: 15, else: 0
+
     %{
+      framerate: config.framerate,
+      max_frame_reorder: max_frame_reorder,
       au_counter: 0,
       key_frame_au_idx: 0,
       prev_pic_first_vcl_nalu: nil,
@@ -22,21 +34,20 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     }
   end
 
-  @spec generate_ts_with_constant_framerate(
-          [NALu.t()],
-          config :: %{
-            :framerate => {frames :: pos_integer(), seconds :: pos_integer()},
-            optional(:add_dts_offset) => boolean()
-          },
-          t
-        ) :: {{pts :: non_neg_integer(), dts :: non_neg_integer()}, t}
-  def generate_ts_with_constant_framerate(au, %{framerate: {frames, seconds}} = config, state) do
-    %{au_counter: au_counter, key_frame_au_idx: key_frame_au_idx} = state
+  @spec generate_ts_with_constant_framerate([NALu.t()], t) ::
+          {{pts :: non_neg_integer(), dts :: non_neg_integer()}, t}
+  def generate_ts_with_constant_framerate(au, state) do
+    %{
+      au_counter: au_counter,
+      key_frame_au_idx: key_frame_au_idx,
+      max_frame_reorder: max_frame_reorder,
+      framerate: {frames, seconds}
+    } = state
+
     first_vcl_nalu = Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
     {poc, state} = calculate_poc(first_vcl_nalu, state)
     key_frame_au_idx = if poc == 0, do: au_counter, else: key_frame_au_idx
     pts = div((key_frame_au_idx + poc) * seconds * Membrane.Time.second(), frames)
-    max_frame_reorder = if Map.get(config, :add_dts_offset, true), do: 15, else: 0
     dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
 
     state = %{

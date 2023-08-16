@@ -141,13 +141,17 @@ defmodule Membrane.H264.Parser do
   def handle_init(_ctx, opts) do
     {sps, opts} = Map.pop!(opts, :sps)
     {pps, opts} = Map.pop!(opts, :pps)
+    {ts_generation_config, opts} = Map.pop!(opts, :generate_best_effort_timestamps)
+
+    au_timestamp_generator =
+      if ts_generation_config, do: AUTimestampGenerator.new(ts_generation_config), else: nil
 
     state =
       %{
         nalu_splitter: NALuSplitter.new(maybe_add_prefix(sps) <> maybe_add_prefix(pps)),
         nalu_parser: NALuParser.new(),
         au_splitter: AUSplitter.new(),
-        au_timestamp_generator: AUTimestampGenerator.new(),
+        au_timestamp_generator: au_timestamp_generator,
         mode: nil,
         profile: nil,
         previous_buffer_timestamps: nil,
@@ -301,11 +305,10 @@ defmodule Membrane.H264.Parser do
   end
 
   defp prepare_timestamps(au, state) do
-    if state.mode == :bytestream and state.generate_best_effort_timestamps do
+    if state.mode == :bytestream and state.au_timestamp_generator do
       {timestamps, timestamp_generator} =
         AUTimestampGenerator.generate_ts_with_constant_framerate(
           au,
-          state.generate_best_effort_timestamps,
           state.au_timestamp_generator
         )
 
