@@ -1,5 +1,5 @@
 defmodule Membrane.H264.ModesTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
@@ -91,10 +91,10 @@ defmodule Membrane.H264.ModesTest do
     output_buffers = input_buffers
 
     Enum.each(output_buffers, fn buf ->
-      payload = buf.payload
-      pts = buf.pts
-      dts = buf.dts
-      assert_sink_buffer(pid, :sink, %Buffer{payload: ^payload, pts: ^pts, dts: ^dts})
+      assert_sink_buffer(pid, :sink, %Buffer{payload: payload, pts: pts, dts: dts})
+      assert payload == buf.payload
+      assert pts == buf.pts
+      assert dts == buf.dts
     end)
 
     Pipeline.terminate(pid, blocking?: true)

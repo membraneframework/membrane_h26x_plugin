@@ -1,7 +1,7 @@
-defmodule Membrane.H264.TODO.Mixfile do
+defmodule Membrane.H264.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.4.1"
+  @version "0.6.0"
   @github_url "https://github.com/membraneframework-labs/membrane_h264_plugin"
 
   def project do
@@ -37,7 +37,7 @@ defmodule Membrane.H264.TODO.Mixfile do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.12.0"},
+      {:membrane_core, "~> 0.12.7"},
       {:membrane_h264_format,
        git: "https://github.com/membraneframework/membrane_h264_format.git",
        branch: "avc-support-remove-remote-stream",
@@ -47,7 +47,9 @@ defmodule Membrane.H264.TODO.Mixfile do
       {:membrane_file_plugin, "~> 0.14.0", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false}
+      {:credo, ">= 0.0.0", only: :dev, runtime: false},
+      {:membrane_file_plugin, "~> 0.13.0", only: :test},
+      {:membrane_h264_ffmpeg_plugin, "~> 0.27.0", only: :test}
     ]
   end
 

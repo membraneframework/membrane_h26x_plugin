@@ -40,27 +40,37 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   Takes a binary h264 stream as an input
   and produces a list of binaries, where each binary is
   a complete NALu that can be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
+
+  If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
+  of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned
+  until another NALu starts, as it's the only way to prove that the NALu is complete.
   """
-  @spec split(payload :: binary(), state :: t()) ::
+  @spec split(payload :: binary(), assume_nalu_aligned :: boolean, state :: t()) ::
           {[binary()], t()}
-  def split(payload, state) do
+  def split(payload, assume_nalu_aligned \\ false, state) do
     total_payload = state.unparsed_payload <> payload
 
     nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_stream_structure)
 
-    total_nalus_payloads_size = Enum.reduce(nalus_payloads_list, 0, &(byte_size(&1) + &2))
+    total_nalus_payloads_size = IO.iodata_length(nalus_payloads_list)
 
-    state = %{
-      state
-      | unparsed_payload:
-          :binary.part(
-            total_payload,
-            total_nalus_payloads_size,
-            byte_size(total_payload) - total_nalus_payloads_size
-          )
-    }
+    unparsed_payload =
+      :binary.part(
+        total_payload,
+        total_nalus_payloads_size,
+        byte_size(total_payload) - total_nalus_payloads_size
+      )
 
-    {nalus_payloads_list, state}
+    cond do
+      unparsed_payload == <<>> ->
+        {nalus_payloads_list, %{state | unparsed_payload: <<>>}}
+
+      assume_nalu_aligned ->
+        {nalus_payloads_list ++ [unparsed_payload], %{state | unparsed_payload: <<>>}}
+
+      true ->
+        {nalus_payloads_list, %{state | unparsed_payload: unparsed_payload}}
+    end
   end
 
   defp get_complete_nalus_list(payload, :annexb) do
@@ -88,17 +98,5 @@ defmodule Membrane.H264.Parser.NALuSplitter do
       <<nalu::binary-size(nalu_length + nalu_length_size), rest::binary>> = payload
       [nalu | get_complete_nalus_list(rest, {:avcc, nalu_length_size})]
     end
-  end
-
-  @doc """
-  Flushes the payload out of the splitter state.
-
-  That function gets the payload from the inner state
-  of the splitter and sets the payload in the inner state
-  clean.
-  """
-  @spec flush(t()) :: {binary(), t()}
-  def flush(state) do
-    {state.unparsed_payload, %{state | unparsed_payload: <<>>}}
   end
 end

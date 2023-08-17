@@ -48,6 +48,18 @@ defmodule Membrane.H264.Parser.NALuParser do
   end
 
   @doc """
+  Parses a list of binaries, each representing a single NALu.
+
+  See `parse/3` for details.
+  """
+  @spec parse_nalus([binary()], NALu.timestamps(), t()) :: {[NALu.t()], t()}
+  def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, state) do
+    Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
+      parse(nalu_payload, timestamps, state)
+    end)
+  end
+
+  @doc """
   Parses a binary representing a single NALu and changes it's prefix to the one specified in
   `output_stream_structure`. In
 
@@ -57,8 +69,9 @@ defmodule Membrane.H264.Parser.NALuParser do
   * prefix defined as the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
-  @spec parse(binary(), t(), boolean()) :: {NALu.t(), t()}
-  def parse(nalu_payload, state, payload_prefixed? \\ true) do
+  @spec parse(binary(), t(), {pts :: integer() | nil, dts :: integer() | nil}, boolean()) ::
+          {NALu.t(), t()}
+  def parse(nalu_payload, state, timestamps \\ {nil, nil}, payload_prefixed? \\ true) do
     {initial_prefix_length, unprefixed_nalu_payload} =
       if payload_prefixed? do
         unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
@@ -103,7 +116,8 @@ defmodule Membrane.H264.Parser.NALuParser do
            type: type,
            status: :valid,
            prefix_length: prefix_length,
-           payload: reprefixed_nalu_payload
+           payload: reprefixed_nalu_payload,
+           timestamps: timestamps
          }, scheme_parser_state}
       catch
         "Cannot load information from SPS" ->
@@ -112,7 +126,8 @@ defmodule Membrane.H264.Parser.NALuParser do
              type: type,
              status: :error,
              prefix_length: prefix_length,
-             payload: reprefixed_nalu_payload
+             payload: reprefixed_nalu_payload,
+             timestamps: timestamps
            }, scheme_parser_state}
       end
 

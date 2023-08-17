@@ -30,25 +30,11 @@ defmodule Membrane.H264.Support.Common do
         output_stream_structure,
         stable_reprefixing?
       ) do
-    {nalus_payloads, nalu_splitter} = NALuSplitter.split(binary, NALuSplitter.new(:annexb))
+    {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
 
-    {last_nalu_payload, _nalu_splitter} = NALuSplitter.flush(nalu_splitter)
-    nalus_payloads = nalus_payloads ++ [last_nalu_payload]
+    {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new(:annexb, output_stream_structure, stable_reprefixing?))
 
-    {nalus, _nalu_parser} =
-      Enum.map_reduce(
-        nalus_payloads,
-        NALuParser.new(
-          :annexb,
-          output_stream_structure,
-          stable_reprefixing?
-        ),
-        &NALuParser.parse(&1, &2)
-      )
-
-    {aus, au_splitter} = nalus |> AUSplitter.split(AUSplitter.new())
-    {last_au, _au_splitter} = AUSplitter.flush(au_splitter)
-    aus = aus ++ [last_au]
+    {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
 
     case mode do
       :nalu_aligned ->
