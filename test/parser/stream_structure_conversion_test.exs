@@ -1,4 +1,4 @@
-defmodule Membrane.H264.StreamTypeConversionTest do
+defmodule Membrane.H264.StreamStructureConversionTest do
   @moduledoc false
 
   use ExUnit.Case
