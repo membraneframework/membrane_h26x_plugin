@@ -77,7 +77,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   is not returned until another access unit starts, as it's the only way to prove that
   the access unit is complete.
   """
-  @spec split([NALu.t()], assume_au_aligned :: boolean(), t()) :: {[access_unit()], t()}
+  @spec split([NALu.t()], boolean(), t()) :: {[access_unit()], t()}
   def split(nalus, assume_au_aligned \\ false, state) do
     state = do_split(nalus, state)
 
@@ -112,7 +112,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition")
+        Membrane.Logger.warning("AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}")
         state
     end
   end
@@ -157,7 +157,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition")
+        Membrane.Logger.warning("AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}")
         state
     end
   end

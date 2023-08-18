@@ -62,7 +62,7 @@ defmodule MP4ToH264Filter do
         _ctx,
         %{output_stream_structure: {avc, nalu_length_size}} = state
       ) do
-    {:ok, %{nalu_length_size: dcr_nalu_length_size}} = DecoderConfigurationRecord.parse(dcr)
+    %{nalu_length_size: dcr_nalu_length_size} = DecoderConfigurationRecord.parse(dcr)
 
     if dcr_nalu_length_size != nalu_length_size do
       raise "incoming NALu length size must be equal to the one provided via options"
@@ -74,6 +74,7 @@ defmodule MP4ToH264Filter do
           %Membrane.H264{
             width: width,
             height: height,
+            alignment: state.output_alignment,
             stream_structure: {avc, dcr}
           }}
      ], state}

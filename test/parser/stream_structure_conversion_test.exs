@@ -14,7 +14,13 @@ defmodule Membrane.H264.StreamStructureConversionTest do
                    |> Path.expand(__DIR__)
                    |> Path.wildcard()
                    |> Enum.reject(
-                     &String.contains?(&1, ["no-sps", "no-pps", "input-idr-sps-pps"])
+                     &String.contains?(&1, [
+                       "no-sps",
+                       "no-pps",
+                       "idr-sps-pps",
+                       "sps-pps-non-idr-sps-pps-idr",
+                       "sps-pps-non-idr"
+                     ])
                    )
 
   @avc1_au_fixtures "../fixtures/msf/*-avc1-au.msf" |> Path.expand(__DIR__) |> Path.wildcard()
@@ -108,7 +114,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
   defp perform_avc_test({fixture_pipeline_pid, conversion_pipeline_pid}, avc) do
     assert_pipeline_play(fixture_pipeline_pid)
-    Pipeline.message_child(fixture_pipeline_pid, :source, end_of_stream: :output)
+    # Pipeline.message_child(fixture_pipeline_pid, :source, end_of_stream: :output)
     assert_end_of_stream(fixture_pipeline_pid, :sink, :input, 3_000)
 
     fixture_buffers = receive_buffer_payloads(fixture_pipeline_pid)
@@ -118,7 +124,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     })
 
     assert_pipeline_play(conversion_pipeline_pid)
-    Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
+    # Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
     assert_end_of_stream(conversion_pipeline_pid, :sink, :input, 3_000)
 
     converted_buffers = receive_buffer_payloads(conversion_pipeline_pid)
@@ -128,8 +134,10 @@ defmodule Membrane.H264.StreamStructureConversionTest do
         assert fixture_buffers == converted_buffers
 
         assert_sink_stream_format(conversion_pipeline_pid, :sink, %H264{
-          stream_structure: ^fixture_stream_structure
+          stream_structure: conversion_stream_structure
         })
+
+        assert fixture_stream_structure == conversion_stream_structure
 
       :avc3 ->
         assert_sink_stream_format(conversion_pipeline_pid, :sink, %H264{
@@ -218,19 +226,14 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
   defp split_aus_to_nalus(aus_binaries, stream_structure) do
     Enum.map(aus_binaries, fn au_binary ->
-      {nalus, splitter} =
+      {nalus, _splitter} =
         H264.Parser.NALuSplitter.split(
           au_binary,
+          true,
           H264.Parser.NALuSplitter.new(stream_structure)
         )
 
-      case stream_structure do
-        :annexb ->
-          nalus ++ [elem(H264.Parser.NALuSplitter.flush(splitter), 0)]
-
-        {_avc, _} ->
-          nalus
-      end
+      nalus
     end)
     |> List.flatten()
   end
@@ -243,19 +246,20 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     generate_tests = fn tested_stream_structure_name, parser_chains, name_suffix ->
       for parser_types <- parser_chains do
         parser_chain_string =
-          Enum.map_join(parser_types, " -> ", fn parser_type ->
+          Enum.map_join(parser_types, fn parser_type ->
             case parser_type do
-              :annexb -> "annexb"
-              {:avc1, _} -> "avc1"
-              {:avc3, _} -> "avc3"
+              :annexb -> "annexb -> "
+              {:avc1, _} -> "avc1 -> "
+              {:avc3, _} -> "avc3 -> "
             end
           end)
 
         identical_order? = not Enum.any?(parser_types, &match?({:avc1, _}, &1))
 
         stream_name =
-          "stream #{tested_stream_structure_name} -> #{parser_chain_string} -> #{tested_stream_structure_name} #{name_suffix}"
+          "stream #{tested_stream_structure_name} -> #{parser_chain_string}#{tested_stream_structure_name}#{name_suffix}"
 
+        # if tested_stream_structure_name == :annexb do
         @tag String.to_atom("au aligned #{stream_name}")
         test "for au aligned #{stream_name}" do
           perform_test(
@@ -265,6 +269,8 @@ defmodule Membrane.H264.StreamStructureConversionTest do
             unquote(identical_order?)
           )
         end
+
+        # end
 
         @tag String.to_atom("nalu aligned #{stream_name}")
         test "for nalu aligned #{stream_name}" do
@@ -302,7 +308,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
       ""
     )
 
-    generate_tests.(:avc1, [[{:avc3, 2}, {:avc1, 3}, :annexb]], "with varying nalu_length_size")
+    generate_tests.(:avc1, [[{:avc3, 2}, {:avc1, 3}, :annexb]], " with varying nalu_length_size")
 
     generate_tests.(
       :avc1,

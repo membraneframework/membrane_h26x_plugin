@@ -45,8 +45,10 @@ defmodule Membrane.H264.Parser do
 
   use Membrane.Filter
 
+  require Membrane.Logger
   alias __MODULE__.{
     AUSplitter,
+    AUTimestampGenerator,
     DecoderConfigurationRecord,
     Format,
     NALu,
@@ -87,15 +89,15 @@ defmodule Membrane.H264.Parser do
       %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
   def_options sps: [
-                spec: [binary()],
+                spec: binary() | [binary()],
                 default: [],
                 description: """
                 Sequence Parameter Set NAL unit binary payloads - if absent in the stream, should
                 be provided via this option (only available for `:annexb` output stream structure).
                 """
               ],
-              ppss: [
-                spec: [binary()],
+              pps: [
+                spec: binary() | [binary()],
                 default: [],
                 description: """
                 Picture Parameter Set NAL unit binary payloads - if absent in the stream, should
@@ -184,11 +186,10 @@ defmodule Membrane.H264.Parser do
         stream_structure -> stream_structure
       end
 
-      au_timestamp_generator =
-        if opts.generate_best_effort_timestamps,
-          do: AUTimestampGenerator.new(ts_generation_config),
-          else: nil
-
+    au_timestamp_generator =
+      if opts.generate_best_effort_timestamps,
+        do: AUTimestampGenerator.new(opts.generate_best_effort_timestamps),
+        else: nil
 
     state = %{
       nalu_splitter: nil,
@@ -200,12 +201,12 @@ defmodule Membrane.H264.Parser do
       previous_buffer_timestamps: nil,
       output_alignment: opts.output_alignment,
       frame_prefix: <<>>,
-      skip_until_keyframe?: opts.skip_until_keyframe?,
-      repeat_parameter_sets?: opts.repeat_parameter_sets,
+      skip_until_keyframe: opts.skip_until_keyframe,
+      repeat_parameter_sets: opts.repeat_parameter_sets,
       cached_spss: %{},
       cached_ppss: %{},
-      initial_spss: opts.spss,
-      initial_ppss: opts.ppss,
+      initial_spss: initial_parameters_to_list(opts.sps),
+      initial_ppss: initial_parameters_to_list(opts.pps),
       input_stream_structure: nil,
       output_stream_structure: output_stream_structure
     }
@@ -341,12 +342,6 @@ defmodule Membrane.H264.Parser do
 
   @spec get_stream_format_parameter_sets(raw_stream_structure(), boolean(), state()) ::
           {[binary()], [binary()]}
-  defp get_stream_format_parameter_sets(:annexb, first_received_stream_format?, state) do
-    if first_received_stream_format?,
-      do: {state.initial_spss, state.initial_ppss},
-      else: {[], []}
-  end
-
   defp get_stream_format_parameter_sets({_avc, dcr}, _first_received_stream_format?, state) do
     %{spss: dcr_spss, ppss: dcr_ppss} = DecoderConfigurationRecord.parse(dcr)
 
@@ -354,6 +349,12 @@ defmodule Membrane.H264.Parser do
     new_uncached_ppss = dcr_ppss -- Enum.map(state.cached_ppss, fn {_id, ps} -> ps.payload end)
 
     {new_uncached_spss, new_uncached_ppss}
+  end
+
+  defp get_stream_format_parameter_sets(:annexb, first_received_stream_format?, state) do
+    if first_received_stream_format?,
+      do: {state.initial_spss, state.initial_ppss},
+      else: {[], []}
   end
 
   @spec process_stream_format_parameter_sets([binary()], [binary()], CallbackContext.t(), state()) ::
@@ -364,8 +365,8 @@ defmodule Membrane.H264.Parser do
          ctx,
          %{output_stream_structure: {:avc1, _}} = state
        ) do
-    {parsed_new_uncached_spss, nalu_parser} = parse_nalus(new_spss, state.nalu_parser)
-    {parsed_new_uncached_ppss, nalu_parser} = parse_nalus(new_ppss, nalu_parser)
+    {parsed_new_uncached_spss, nalu_parser} = NALuParser.parse_nalus(new_spss, {nil, nil}, false, state.nalu_parser)
+    {parsed_new_uncached_ppss, nalu_parser} = NALuParser.parse_nalus(new_ppss, {nil, nil}, false, nalu_parser)
 
     state = %{state | nalu_parser: nalu_parser}
 
@@ -373,15 +374,9 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process_stream_format_parameter_sets(spss, ppss, _ctx, state) do
-    frame_prefix = generate_frame_prefix(spss ++ ppss, state.input_stream_structure)
-    {[], %{state | frame_prefix: frame_prefix}}
-  end
+    frame_prefix = prefix_nalus(spss ++ ppss, state.input_stream_structure)
 
-  @spec parse_nalus([binary()], NALuParser.t()) :: {[NALu.t()], NALuParser.t()}
-  defp parse_nalus(nalus, nalu_parser) do
-    Enum.map_reduce(nalus, nalu_parser, fn nalu, nalu_parser ->
-      NALuParser.parse(nalu, nalu_parser, false)
-    end)
+    {[], %{state | frame_prefix: frame_prefix}}
   end
 
   @spec is_input_stream_structure_change_allowed?(
@@ -402,12 +397,12 @@ defmodule Membrane.H264.Parser do
     {avc, nalu_length_size}
   end
 
-  @spec generate_frame_prefix([binary()], stream_structure()) :: binary()
-  defp generate_frame_prefix(nalus, :annexb) do
+  @spec prefix_nalus([binary()], stream_structure()) :: binary()
+  defp prefix_nalus(nalus, :annexb) do
     Enum.join([<<>> | nalus], @annexb_prefix_code)
   end
 
-  defp generate_frame_prefix(nalus, {_avc, nalu_length_size}) do
+  defp prefix_nalus(nalus, {_avc, nalu_length_size}) do
     Enum.map_join(nalus, fn nalu ->
       <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
     end)
@@ -424,6 +419,7 @@ defmodule Membrane.H264.Parser do
       }
 
       if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe do
+        Membrane.Logger.debug("skipping")
         {[], state}
       else
         {[au], state}
@@ -442,9 +438,9 @@ defmodule Membrane.H264.Parser do
 
       {{pts, dts}, state} = prepare_timestamps(au, state)
 
-      buffers_actions =
-          [buffer: {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}]
-
+      buffers_actions = [
+        buffer: {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}
+      ]
 
       {stream_format_actions ++ buffers_actions, state}
     end)
@@ -499,7 +495,6 @@ defmodule Membrane.H264.Parser do
 
         {latest_sps, _last_sent_stream_format} ->
           Format.from_sps(latest_sps, output_raw_stream_structure,
-            framerate: state.framerate,
             output_alignment: state.output_alignment
           )
       end
@@ -552,7 +547,7 @@ defmodule Membrane.H264.Parser do
   end
 
   @spec maybe_add_parameter_sets(AUSplitter.access_unit(), state()) :: AUSplitter.access_unit()
-  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets?: false}), do: au
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do
     if idr_au?(au),
@@ -565,22 +560,9 @@ defmodule Membrane.H264.Parser do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  defp cache_parameter_sets(%{repeat_parameter_sets?: false} = state, _au), do: state
-
-  defp cache_parameter_sets(state, au) do
-    sps =
-      Enum.filter(au, &(&1.type == :sps))
-      |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
-      |> Map.new()
-      |> Map.merge(state.cached_sps)
-
-    pps =
-      Enum.filter(au, &(&1.type == :pps))
-      |> Enum.map(&{&1.parsed_fields.pic_parameter_set_id, &1})
-      |> Map.new()
-      |> Map.merge(state.cached_pps)
-
-    %{state | cached_sps: sps, cached_pps: pps}
+  @spec remove_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
+  defp remove_parameter_sets(au) do
+    Enum.reject(au, &(&1.type in [:sps, :pps]))
   end
 
   @spec idr_au?(AUSplitter.access_unit()) :: boolean()
@@ -679,17 +661,4 @@ defmodule Membrane.H264.Parser do
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
   defp stream_format_sent?(_actions, _ctx), do: true
-
-  defp h264_profile_tsgen_supported?(profile),
-    do: profile in [:baseline, :constrained_baseline]
-
-  defp generate_ts_with_constant_framerate(
-         {frames, seconds} = _framerate,
-         presentation_order_number,
-         decoding_order_number
-       ) do
-    pts = div(presentation_order_number * seconds * Membrane.Time.second(), frames)
-    dts = div(decoding_order_number * seconds * Membrane.Time.second(), frames)
-    {pts, dts}
-  end
 end

@@ -47,9 +47,7 @@ defmodule Membrane.H264.Plugin.Mixfile do
       {:membrane_file_plugin, "~> 0.14.0", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false},
-      {:membrane_file_plugin, "~> 0.13.0", only: :test},
-      {:membrane_h264_ffmpeg_plugin, "~> 0.27.0", only: :test}
+      {:credo, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 
