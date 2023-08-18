@@ -112,7 +112,10 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}")
+        Membrane.Logger.warning(
+          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
+        )
+
         state
     end
   end
@@ -157,7 +160,10 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}")
+        Membrane.Logger.warning(
+          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
+        )
+
         state
     end
   end

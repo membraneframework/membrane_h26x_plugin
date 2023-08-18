@@ -46,6 +46,7 @@ defmodule Membrane.H264.Parser do
   use Membrane.Filter
 
   require Membrane.Logger
+
   alias __MODULE__.{
     AUSplitter,
     AUTimestampGenerator,
@@ -365,8 +366,11 @@ defmodule Membrane.H264.Parser do
          ctx,
          %{output_stream_structure: {:avc1, _}} = state
        ) do
-    {parsed_new_uncached_spss, nalu_parser} = NALuParser.parse_nalus(new_spss, {nil, nil}, false, state.nalu_parser)
-    {parsed_new_uncached_ppss, nalu_parser} = NALuParser.parse_nalus(new_ppss, {nil, nil}, false, nalu_parser)
+    {parsed_new_uncached_spss, nalu_parser} =
+      NALuParser.parse_nalus(new_spss, {nil, nil}, false, state.nalu_parser)
+
+    {parsed_new_uncached_ppss, nalu_parser} =
+      NALuParser.parse_nalus(new_ppss, {nil, nil}, false, nalu_parser)
 
     state = %{state | nalu_parser: nalu_parser}
 

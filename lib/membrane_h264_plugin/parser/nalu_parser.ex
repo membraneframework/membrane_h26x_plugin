@@ -96,7 +96,8 @@ defmodule Membrane.H264.Parser.NALuParser do
         {:annexb, :annexb} when state.stable_reprefixing? and payload_prefixed? ->
           {initial_prefix_length, nalu_payload}
 
-        {{_input_avc, nalu_length_size}, {_output_avc, nalu_length_size}} when payload_prefixed? ->
+        {{_input_avc, nalu_length_size}, {_output_avc, nalu_length_size}}
+        when payload_prefixed? ->
           {initial_prefix_length, nalu_payload}
 
         {_, :annexb} ->

@@ -32,7 +32,11 @@ defmodule Membrane.H264.Support.Common do
       ) do
     {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
 
-    {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new(:annexb, output_stream_structure, stable_reprefixing?))
+    {nalus, _nalu_parser} =
+      NALuParser.parse_nalus(
+        nalus_payloads,
+        NALuParser.new(:annexb, output_stream_structure, stable_reprefixing?)
+      )
 
     {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
 
