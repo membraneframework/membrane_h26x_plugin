@@ -146,12 +146,12 @@ defmodule Membrane.H264.Parser do
                 default: nil,
                 description: """
                 format of the outgoing H264 stream, if set to `:annexb` NALUs will be separated by
-                a start code (0x00000001) or if set to `:avc3` or `:avc1` they will be prefixed by their size.
+                a start code (0x(00)000001) or if set to `:avc3` or `:avc1` they will be prefixed by their size.
                 Additionally for `:avc1` and `:avc3` a tuple can be passed containing the atom and
                 `nalu_length_size` that determines the size in bytes of each NALU's field
                 describing their length (by default 4). In avc1 output streams the PPSs and SPSs will be
                 transported in the DCR, when in avc3 they will be present only in the stream (in-band).
-                If not provided or set to nil the stream's structure will remain unchaged.
+                If not provided or set to nil the stream's structure will remain unchanged.
                 """
               ],
               generate_best_effort_timestamps: [
@@ -249,7 +249,7 @@ defmodule Membrane.H264.Parser do
             state
             | mode: mode,
               nalu_splitter: NALuSplitter.new(input_stream_structure),
-              nalu_parser: NALuParser.new(input_stream_structure, output_stream_structure),
+              nalu_parser: NALuParser.new(input_stream_structure),
               input_stream_structure: input_stream_structure,
               output_stream_structure: output_stream_structure
           }
@@ -258,10 +258,10 @@ defmodule Membrane.H264.Parser do
           input_raw_stream_structure,
           state.input_stream_structure
         ) ->
-          raise("stream structure cannot be fundamentally changed during stream")
+          raise "stream structure cannot be fundamentally changed during stream"
 
         mode != state.mode ->
-          raise("mode cannot be changed during stream")
+          raise "mode cannot be changed during stream"
 
         true ->
           state
@@ -443,7 +443,9 @@ defmodule Membrane.H264.Parser do
       {{pts, dts}, state} = prepare_timestamps(au, state)
 
       buffers_actions = [
-        buffer: {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}
+        buffer:
+          {:output,
+           wrap_into_buffer(au, pts, dts, state.output_alignment, state.output_stream_structure)}
       ]
 
       {stream_format_actions ++ buffers_actions, state}
@@ -479,12 +481,8 @@ defmodule Membrane.H264.Parser do
         {avc, _nalu_length_size} = output_stream_structure ->
           {avc,
            DecoderConfigurationRecord.generate(
-             Enum.map(updated_cached_spss, fn {_id, nalu} ->
-               NALuParser.unprefix_nalu_payload(nalu.payload, output_stream_structure) |> elem(1)
-             end),
-             Enum.map(updated_cached_ppss, fn {_id, nalu} ->
-               NALuParser.unprefix_nalu_payload(nalu.payload, output_stream_structure) |> elem(1)
-             end),
+             Enum.map(updated_cached_spss, fn {_id, sps} -> sps.payload end),
+             Enum.map(updated_cached_ppss, fn {_id, pps} -> pps.payload end),
              output_stream_structure
            )}
       end
@@ -576,14 +574,15 @@ defmodule Membrane.H264.Parser do
           AUSplitter.access_unit(),
           Membrane.Time.t(),
           Membrane.Time.t(),
-          :au | :nalu
+          :au | :nalu,
+          stream_structure()
         ) :: Buffer.t()
-  defp wrap_into_buffer(access_unit, pts, dts, :au) do
+  defp wrap_into_buffer(access_unit, pts, dts, :au, output_stream_structure) do
     metadata = prepare_au_metadata(access_unit)
 
     buffer =
       Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-        acc <> nalu.payload
+        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure, true)
       end)
       |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
@@ -592,12 +591,12 @@ defmodule Membrane.H264.Parser do
     buffer
   end
 
-  defp wrap_into_buffer(access_unit, pts, dts, :nalu) do
+  defp wrap_into_buffer(access_unit, pts, dts, :nalu, output_stream_structure) do
     access_unit
     |> Enum.zip(prepare_nalus_metadata(access_unit))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: nalu.payload,
+        payload: NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure, true),
         metadata: metadata,
         pts: pts,
         dts: dts

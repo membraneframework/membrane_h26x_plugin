@@ -24,18 +24,13 @@ defmodule Membrane.H264.Support.Common do
     Enum.map(buffers, &%Membrane.Buffer{payload: &1})
   end
 
-  def prepare_buffers(
-        binary,
-        mode,
-        output_stream_structure,
-        stable_reprefixing?
-      ) do
+  def prepare_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
     {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
 
     {nalus, _nalu_parser} =
       NALuParser.parse_nalus(
         nalus_payloads,
-        NALuParser.new(:annexb, output_stream_structure, stable_reprefixing?)
+        NALuParser.new(:annexb)
       )
 
     {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
@@ -43,14 +38,34 @@ defmodule Membrane.H264.Support.Common do
     case mode do
       :nalu_aligned ->
         Enum.map_reduce(aus, 0, fn au, ts ->
-          {for(nalu <- au, do: %Membrane.Buffer{payload: nalu.payload, pts: ts, dts: ts}), ts + 1}
+          {Enum.map(au, fn nalu ->
+             nalu_payload =
+               NALuParser.get_prefixed_nalu_payload(
+                 nalu,
+                 output_stream_structure,
+                 stable_reprefixing?
+               )
+
+             %Membrane.Buffer{payload: nalu_payload, pts: ts, dts: ts}
+           end), ts + 1}
         end)
         |> elem(0)
         |> List.flatten()
 
       :au_aligned ->
         Enum.map_reduce(aus, 0, fn au, ts ->
-          {%Membrane.Buffer{payload: Enum.map_join(au, & &1.payload), pts: ts, dts: ts}, ts + 1}
+          {%Membrane.Buffer{
+             payload:
+               Enum.map_join(au, fn nalu ->
+                 NALuParser.get_prefixed_nalu_payload(
+                   nalu,
+                   output_stream_structure,
+                   stable_reprefixing?
+                 )
+               end),
+             pts: ts,
+             dts: ts
+           }, ts + 1}
         end)
         |> elem(0)
     end
