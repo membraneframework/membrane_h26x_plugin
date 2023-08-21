@@ -582,7 +582,7 @@ defmodule Membrane.H264.Parser do
 
     buffer =
       Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure, true)
+        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
       end)
       |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
@@ -596,7 +596,7 @@ defmodule Membrane.H264.Parser do
     |> Enum.zip(prepare_nalus_metadata(access_unit))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure, true),
+        payload: NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure),
         metadata: metadata,
         pts: pts,
         dts: dts
@@ -617,10 +617,7 @@ defmodule Membrane.H264.Parser do
             h264: %{
               type: nalu.type
             }
-          },
-          prefixed_poslen: {nalu_start, byte_size(nalu.payload)},
-          unprefixed_poslen:
-            {nalu_start + nalu.prefix_length, byte_size(nalu.payload) - nalu.prefix_length}
+          }
         }
 
         metadata =

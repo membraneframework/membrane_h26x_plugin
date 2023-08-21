@@ -19,8 +19,8 @@ defmodule Membrane.H264.Parser.NALu do
   """
   @type t :: %__MODULE__{
           parsed_fields: %{atom() => any()},
-          prefix_length: pos_integer(),
           type: Membrane.H264.Parser.NALuTypes.nalu_type(),
+          stripped_prefix: binary(),
           payload: binary(),
           status: :valid | :error,
           timestamps: timestamps()
@@ -28,6 +28,6 @@ defmodule Membrane.H264.Parser.NALu do
 
   @type timestamps :: {pts :: integer() | nil, dts :: integer() | nil}
 
-  @enforce_keys [:parsed_fields, :prefix_length, :type, :payload, :status]
+  @enforce_keys [:parsed_fields, :type, :stripped_prefix, :payload, :status]
   defstruct @enforce_keys ++ [timestamps: {nil, nil}]
 end

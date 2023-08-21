@@ -39,8 +39,8 @@ defmodule AUSplitterTest do
       au_lengths =
         for au <- aus,
             do:
-              Enum.reduce(au, 0, fn %{payload: payload, prefix_length: prefix_length}, acc ->
-                byte_size(payload) + prefix_length + acc
+              Enum.reduce(au, 0, fn %{payload: payload, stripped_prefix: prefix}, acc ->
+                byte_size(payload) + byte_size(prefix) + acc
               end)
 
       assert au_lengths == @au_lengths_ffmpeg[name]
@@ -80,7 +80,7 @@ defmodule AUSplitterTest do
 
     assert [au] = FullBinaryParser.parse(fixture)
 
-    assert au |> Enum.map(&(byte_size(&1.payload) + &1.prefix_length)) |> Enum.sum() ==
+    assert au |> Enum.map(&(byte_size(&1.payload) + byte_size(&1.stripped_prefix))) |> Enum.sum() ==
              byte_size(fixture)
   end
 end
