@@ -39,7 +39,7 @@ defmodule Membrane.H264.Plugin.Mixfile do
     [
       {:membrane_core, "~> 0.12.7"},
       {:membrane_h264_format,
-       git: "https://github.com/membraneframework/membrane_h264_format.git",
+       github: "membraneframework/membrane_h264_format",
        branch: "avc-support-remove-remote-stream",
        override: true},
       {:bunch, "~> 1.4"},

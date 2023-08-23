@@ -21,11 +21,8 @@ defmodule Membrane.H264.Parser.NALuParser do
   defstruct @enforce_keys ++ [scheme_parser_state: SchemeParser.new()]
 
   @doc """
-  Returns a structure holding a clear NALu parser state. `input_stream_structure` and
-  `output_stream_structure` determine the prefixes of input and output NALU payloads.
-  If `stable_prefixing?` is set to true, then if input and output stream structures are the same
-  the prefix will not change. If `stable_prefixing?` is set to false, then an Annex B prefix code
-  0x000001 will be replaced by 0x00000001.
+  Returns a structure holding a clear NALu parser state. `input_stream_structure`
+  determines the prefixes of input NALU payloads.
   """
   @spec new(Parser.stream_structure()) :: t()
   def new(input_stream_structure \\ :annexb) do
@@ -45,7 +42,7 @@ defmodule Membrane.H264.Parser.NALuParser do
   end
 
   @doc """
-  Parses a binary representing a single NALu and removes it's prefix.
+  Parses a binary representing a single NALu and removes it's prefix (if it exists).
 
   Returns a structure that
   contains parsed fields fetched from that NALu.
@@ -127,7 +124,8 @@ defmodule Membrane.H264.Parser.NALuParser do
     end
   end
 
-  @spec unprefix_nalu_payload(binary(), Parser.stream_structure()) :: {binary(), binary()}
+  @spec unprefix_nalu_payload(binary(), Parser.stream_structure()) ::
+          {stripped_prefix :: binary(), payload :: binary()}
   defp unprefix_nalu_payload(nalu_payload, :annexb) do
     case nalu_payload do
       <<0, 0, 1, rest::binary>> -> {<<0, 0, 1>>, rest}

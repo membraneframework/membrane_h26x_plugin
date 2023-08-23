@@ -10,8 +10,8 @@ defmodule Membrane.H264.Parser.NALu do
   In the structure there ardqde following fields:
   * `parsed_fields` - the map with keys being the NALu field names and the values being the value fetched from the NALu binary.
   They correspond to the NALu schemes defined in the section *7.3.* of the *"ITU-T Rec. H.264 (01/2012)"*.
-  * `prefix_length` - number of bytes of the prefix to split the NAL units in the bytestream.
-  The prefix is defined as in: *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"* or in "ISO/IEC 14496-15".
+  * `stripped_prefix` - prefix that used to split the NAL units in the bytestream and was stripped from the payload.
+  The prefix is defined as in: *"Annex B"* of the *"ISO/IEC 14496-10"* or in "ISO/IEC 14496-15".
   * `type` - an atom representing the type of the NALu. Atom's name is based on the
   *"Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * `payload` - the binary, which parsing resulted in that structure being produced stripped of it's prefix

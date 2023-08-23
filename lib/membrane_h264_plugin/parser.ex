@@ -228,12 +228,7 @@ defmodule Membrane.H264.Parser do
 
     first_received_stream_format? = is_nil(ctx.pads.input.stream_format)
 
-    mode =
-      case alignment do
-        :au -> :au_aligned
-        :nalu -> :nalu_aligned
-        :bytestream -> :bytestream
-      end
+    mode = get_mode_from_alignment(alignment)
 
     state =
       cond do
@@ -341,6 +336,16 @@ defmodule Membrane.H264.Parser do
     end
   end
 
+  @spec get_mode_from_alignment(:au | :nalu | :bytestream) ::
+          :au_aligned | :nalu_aligned | :bytestream
+  defp get_mode_from_alignment(alignment) do
+    case alignment do
+      :au -> :au_aligned
+      :nalu -> :nalu_aligned
+      :bytestream -> :bytestream
+    end
+  end
+
   @spec get_stream_format_parameter_sets(raw_stream_structure(), boolean(), state()) ::
           {[binary()], [binary()]}
   defp get_stream_format_parameter_sets({_avc, dcr}, _first_received_stream_format?, state) do
@@ -423,7 +428,6 @@ defmodule Membrane.H264.Parser do
       }
 
       if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe do
-        Membrane.Logger.debug("skipping")
         {[], state}
       else
         {[au], state}
@@ -455,17 +459,8 @@ defmodule Membrane.H264.Parser do
   @spec process_new_parameter_sets([NALu.t()], [NALu.t()], CallbackContext.t(), state()) ::
           {[Action.t()], state()}
   defp process_new_parameter_sets(new_spss, new_ppss, context, state) do
-    updated_cached_spss =
-      new_spss
-      |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
-      |> Map.new()
-      |> then(&Map.merge(state.cached_spss, &1))
-
-    updated_cached_ppss =
-      new_ppss
-      |> Enum.map(&{&1.parsed_fields.pic_parameter_set_id, &1})
-      |> Map.new()
-      |> then(&Map.merge(state.cached_ppss, &1))
+    updated_cached_spss = merge_parameter_sets(new_spss, state.cached_spss, :seq_parameter_set_id)
+    updated_cached_ppss = merge_parameter_sets(new_ppss, state.cached_ppss, :pic_parameter_set_id)
 
     state = %{state | cached_spss: updated_cached_spss, cached_ppss: updated_cached_ppss}
 
@@ -509,6 +504,15 @@ defmodule Membrane.H264.Parser do
         %{state | profile: stream_format_candidate.profile}
       }
     end
+  end
+
+  @spec merge_parameter_sets([NALu.t()], %{non_neg_integer() => NALu.t()}, atom()) ::
+          %{non_neg_integer() => NALu.t()}
+  defp merge_parameter_sets(new_parameter_sets, cached_parameter_sets, id_key) do
+    new_parameter_sets
+    |> Enum.map(&{&1.parsed_fields[id_key], &1})
+    |> Map.new()
+    |> then(&Map.merge(cached_parameter_sets, &1))
   end
 
   @spec process_au_parameter_sets(AUSplitter.access_unit(), CallbackContext.t(), state()) ::

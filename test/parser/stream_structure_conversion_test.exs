@@ -23,11 +23,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   defp make_annexb_pipeline(alignment, parsers) do
     parser_chain = make_parser_chain(parsers)
 
-    mode =
-      case alignment do
-        :au -> :au_aligned
-        :nalu -> :nalu_aligned
-      end
+    mode = get_mode_from_alignment(alignment)
 
     structure =
       child(:source, %H264.Support.TestSource{
@@ -106,7 +102,6 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
   defp perform_avc_test({fixture_pipeline_pid, conversion_pipeline_pid}, avc) do
     assert_pipeline_play(fixture_pipeline_pid)
-    # Pipeline.message_child(fixture_pipeline_pid, :source, end_of_stream: :output)
     assert_end_of_stream(fixture_pipeline_pid, :sink, :input, 3_000)
 
     fixture_buffers = receive_buffer_payloads(fixture_pipeline_pid)
@@ -116,7 +111,6 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     })
 
     assert_pipeline_play(conversion_pipeline_pid)
-    # Pipeline.message_child(conversion_pipeline_pid, :source, end_of_stream: :output)
     assert_end_of_stream(conversion_pipeline_pid, :sink, :input, 3_000)
 
     converted_buffers = receive_buffer_payloads(conversion_pipeline_pid)
@@ -170,11 +164,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
     case stream_structure do
       :annexb ->
-        mode =
-          case alignment do
-            :au -> :au_aligned
-            :nalu -> :nalu_aligned
-          end
+        mode = get_mode_from_alignment(alignment)
 
         Enum.each(@annexb_fixtures, fn path ->
           pid = make_annexb_pipeline(alignment, parsers)
@@ -209,11 +199,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   end
 
   defp make_parser_chain(parsers) do
-    parsers
-    |> Enum.with_index(fn elem, index -> {elem, String.to_atom("parser#{index}")} end)
-    |> Enum.reduce(& &1, fn {parser, name}, builder ->
-      &child(builder.(&1), name, parser)
-    end)
+    Enum.reduce(parsers, & &1, fn parser, builder -> &child(builder.(&1), parser) end)
   end
 
   defp split_aus_to_nalus(aus_binaries, stream_structure) do
@@ -234,6 +220,13 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     <<byte_size(nalu_payload)::integer-size(nalu_length_size)-unit(8), nalu_payload::binary>>
   end
 
+  defp get_mode_from_alignment(alignment) do
+    case alignment do
+      :au -> :au_aligned
+      :nalu -> :nalu_aligned
+    end
+  end
+
   describe "The output stream should be the same as the input stream" do
     generate_tests = fn tested_stream_structure_name, parser_chains, name_suffix ->
       for parser_types <- parser_chains do
@@ -251,7 +244,6 @@ defmodule Membrane.H264.StreamStructureConversionTest do
         stream_name =
           "stream #{tested_stream_structure_name} -> #{parser_chain_string}#{tested_stream_structure_name}#{name_suffix}"
 
-        # if tested_stream_structure_name == :annexb do
         @tag String.to_atom("au aligned #{stream_name}")
         test "for au aligned #{stream_name}" do
           perform_test(
@@ -261,8 +253,6 @@ defmodule Membrane.H264.StreamStructureConversionTest do
             unquote(identical_order?)
           )
         end
-
-        # end
 
         @tag String.to_atom("nalu aligned #{stream_name}")
         test "for nalu aligned #{stream_name}" do

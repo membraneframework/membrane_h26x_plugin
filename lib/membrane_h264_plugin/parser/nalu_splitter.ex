@@ -89,14 +89,14 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     []
   end
 
-  defp get_complete_nalus_list(payload, {_avc, nalu_length_size}) do
+  defp get_complete_nalus_list(payload, {avc, nalu_length_size}) do
     <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = payload
 
     if nalu_length > byte_size(rest) do
       []
     else
       <<nalu::binary-size(nalu_length + nalu_length_size), rest::binary>> = payload
-      [nalu | get_complete_nalus_list(rest, {:avcc, nalu_length_size})]
+      [nalu | get_complete_nalus_list(rest, {avc, nalu_length_size})]
     end
   end
 end
