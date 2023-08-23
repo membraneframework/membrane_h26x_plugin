@@ -171,10 +171,10 @@ defmodule AVCFixtureGenerator do
     output_location =
       input_location
       |> Path.split()
-      |> List.replace_at(-2, "msf")
+      |> List.replace_at(-2, "ms")
       |> List.update_at(-1, fn file ->
         [name, "mp4"] = String.split(file, ".")
-        "#{name}-#{avc}-#{output_alignment}.msf"
+        "#{name}-#{avc}-#{output_alignment}.ms"
       end)
       |> Path.join()
 

@@ -13,20 +13,12 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   @annexb_fixtures "../fixtures/*.h264"
                    |> Path.expand(__DIR__)
                    |> Path.wildcard()
-                   |> Enum.reject(
-                     &String.contains?(&1, [
-                       "no-sps",
-                       "no-pps",
-                       "idr-sps-pps",
-                       "sps-pps-non-idr-sps-pps-idr",
-                       "sps-pps-non-idr"
-                     ])
-                   )
+                   |> Enum.reject(&String.contains?(&1, ["no-sps", "no-pps", "sps-pps-non-idr"]))
 
-  @avc1_au_fixtures "../fixtures/msf/*-avc1-au.msf" |> Path.expand(__DIR__) |> Path.wildcard()
-  @avc1_nalu_fixtures "../fixtures/msf/*-avc1-nalu.msf" |> Path.expand(__DIR__) |> Path.wildcard()
-  @avc3_au_fixtures "../fixtures/msf/*-avc3-au.msf" |> Path.expand(__DIR__) |> Path.wildcard()
-  @avc3_nalu_fixtures "../fixtures/msf/*-avc3-nalu.msf" |> Path.expand(__DIR__) |> Path.wildcard()
+  @avc1_au_fixtures "../fixtures/msf/*-avc1-au.ms" |> Path.expand(__DIR__) |> Path.wildcard()
+  @avc1_nalu_fixtures "../fixtures/msf/*-avc1-nalu.ms" |> Path.expand(__DIR__) |> Path.wildcard()
+  @avc3_au_fixtures "../fixtures/msf/*-avc3-au.ms" |> Path.expand(__DIR__) |> Path.wildcard()
+  @avc3_nalu_fixtures "../fixtures/msf/*-avc3-nalu.ms" |> Path.expand(__DIR__) |> Path.wildcard()
 
   defp make_annexb_pipeline(alignment, parsers) do
     parser_chain = make_parser_chain(parsers)
