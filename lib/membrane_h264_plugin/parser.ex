@@ -226,13 +226,13 @@ defmodule Membrane.H264.Parser do
           {alignment, stream_structure}
       end
 
-    first_received_stream_format? = is_nil(ctx.pads.input.stream_format)
+    is_first_received_stream_format = is_nil(ctx.pads.input.stream_format)
 
     mode = get_mode_from_alignment(alignment)
 
     state =
       cond do
-        first_received_stream_format? ->
+        is_first_received_stream_format ->
           input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
 
           output_stream_structure =
@@ -265,7 +265,7 @@ defmodule Membrane.H264.Parser do
     {incoming_spss, incoming_ppss} =
       get_stream_format_parameter_sets(
         input_raw_stream_structure,
-        first_received_stream_format?,
+        is_first_received_stream_format,
         state
       )
 
@@ -348,7 +348,7 @@ defmodule Membrane.H264.Parser do
 
   @spec get_stream_format_parameter_sets(raw_stream_structure(), boolean(), state()) ::
           {[binary()], [binary()]}
-  defp get_stream_format_parameter_sets({_avc, dcr}, _first_received_stream_format?, state) do
+  defp get_stream_format_parameter_sets({_avc, dcr}, _is_first_received_stream_format, state) do
     %{spss: dcr_spss, ppss: dcr_ppss} = DecoderConfigurationRecord.parse(dcr)
 
     new_uncached_spss = dcr_spss -- Enum.map(state.cached_spss, fn {_id, ps} -> ps.payload end)
@@ -357,8 +357,8 @@ defmodule Membrane.H264.Parser do
     {new_uncached_spss, new_uncached_ppss}
   end
 
-  defp get_stream_format_parameter_sets(:annexb, first_received_stream_format?, state) do
-    if first_received_stream_format?,
+  defp get_stream_format_parameter_sets(:annexb, is_first_received_stream_format, state) do
+    if is_first_received_stream_format,
       do: {state.initial_spss, state.initial_ppss},
       else: {[], []}
   end

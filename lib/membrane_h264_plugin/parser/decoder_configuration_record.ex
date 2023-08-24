@@ -1,6 +1,6 @@
 defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   @moduledoc """
-  Utility functions for parsing AVC Configuration Record.
+  Utility functions for parsing and generating AVC Configuration Record.
 
   The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
   """
