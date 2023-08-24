@@ -21,12 +21,12 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          5, 4, 64, 0, 0, 3, 0, 64, 0, 0, 15, 3, 197, 139, 101, 128, 1, 0, 6, 104, 235, 227, 203,
          34, 192>>
 
-  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>, output_stream_structure \\ :annexb) do
+  defp make_pipeline(source, spss \\ [], ppss \\ [], output_stream_structure \\ :annexb) do
     structure =
       child(:source, source)
       |> child(:parser, %H264.Parser{
-        sps: sps,
-        pps: pps,
+        spss: spss,
+        ppss: ppss,
         repeat_parameter_sets: true,
         output_stream_structure: output_stream_structure
       })
@@ -72,7 +72,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   describe "Parameter sets should be reapeated on each IDR access unit" do
     test "when provided by parser options" do
       source = %H264.Support.TestSource{mode: :bytestream}
-      pid = make_pipeline(source, @sps, @pps)
+      pid = make_pipeline(source, [@sps], [@pps])
       perform_test(pid, File.read!(@in_path))
     end
 
@@ -90,7 +90,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
         output_raw_stream_structure: {:avc3, @dcr}
       }
 
-      pid = make_pipeline(source, <<>>, <<>>, {:avc3, 4})
+      pid = make_pipeline(source, [], [], {:avc3, 4})
       perform_test(pid, File.read!(@in_path), :au_aligned, {:avc3, 4}, {:avc3, 4})
     end
 

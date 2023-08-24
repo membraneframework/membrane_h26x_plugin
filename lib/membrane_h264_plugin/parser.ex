@@ -35,7 +35,7 @@ defmodule Membrane.H264.Parser do
   The parser also allows for conversion between stream structures. The available structures are:
   * Annex B, `:annexb` - In a stream with this structure each NAL unit is prefixed by three or
   four-byte start code (`0x(00)000001`) that allows to identify boundaries between them.
-  * avc1, `:avc1` - In such stream a DCR (Decoder Configuration Record) is included as metadata
+  * avc1, `:avc1` - In such stream a DCR (Decoder Configuration Record) is included in `stream_format`
   and NALUs lack the start codes, but are prefixed with their length. The length of these prefixes
   is contained in the stream's DCR. PPSs and SPSs (Picture Parameter Sets and Sequence Parameter Sets) are
   transported in the DCR.
@@ -76,32 +76,27 @@ defmodule Membrane.H264.Parser do
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    accepted_format:
-      any_of(
-        %RemoteStream{type: :bytestream},
-        %H264{alignment: alignment} when alignment in [:nalu, :au],
-        %H264{}
-      )
+    accepted_format: any_of(%RemoteStream{type: :bytestream}, H264)
 
   def_output_pad :output,
     demand_mode: :auto,
     accepted_format:
       %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
-  def_options sps: [
-                spec: binary() | [binary()],
+  def_options spss: [
+                spec: [binary()],
                 default: [],
                 description: """
                 Sequence Parameter Set NAL unit binary payloads - if absent in the stream, should
                 be provided via this option (only available for `:annexb` output stream structure).
                 """
               ],
-              pps: [
-                spec: binary() | [binary()],
+              ppss: [
+                spec: [binary()],
                 default: [],
                 description: """
                 Picture Parameter Set NAL unit binary payloads - if absent in the stream, should
-                be provided via this option.
+                be provided via this option (only available for `:annexb` output stream structure).
                 """
               ],
               output_alignment: [
@@ -205,8 +200,8 @@ defmodule Membrane.H264.Parser do
       repeat_parameter_sets: opts.repeat_parameter_sets,
       cached_spss: %{},
       cached_ppss: %{},
-      initial_spss: initial_parameters_to_list(opts.sps),
-      initial_ppss: initial_parameters_to_list(opts.pps),
+      initial_spss: opts.spss,
+      initial_ppss: opts.ppss,
       input_stream_structure: nil,
       output_stream_structure: output_stream_structure
     }
@@ -324,15 +319,6 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
-  end
-
-  @spec initial_parameters_to_list(binary() | [binary()]) :: [binary()]
-  defp initial_parameters_to_list(pss) do
-    case pss do
-      <<>> -> []
-      ps when is_binary(ps) -> [ps]
-      pss -> pss
-    end
   end
 
   @spec get_mode_from_alignment(:au | :nalu | :bytestream) ::
