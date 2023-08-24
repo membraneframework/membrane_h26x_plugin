@@ -71,7 +71,6 @@ defmodule Membrane.H264.Parser do
   @typep state :: Membrane.Element.state()
   @typep callback_return :: Membrane.Element.Base.callback_return()
 
-  @annexb_prefix_code <<0, 0, 0, 1>>
   @nalu_length_size 4
 
   def_input_pad :input,
@@ -383,7 +382,7 @@ defmodule Membrane.H264.Parser do
   end
 
   defp process_stream_format_parameter_sets(spss, ppss, _ctx, state) do
-    frame_prefix = prefix_nalus(spss ++ ppss, state.input_stream_structure)
+    frame_prefix = NALuParser.prefix_nalus_payloads(spss ++ ppss, state.input_stream_structure)
 
     {[], %{state | frame_prefix: frame_prefix}}
   end
@@ -404,17 +403,6 @@ defmodule Membrane.H264.Parser do
   defp parse_raw_stream_structure({avc, dcr}) do
     %{nalu_length_size: nalu_length_size} = DecoderConfigurationRecord.parse(dcr)
     {avc, nalu_length_size}
-  end
-
-  @spec prefix_nalus([binary()], stream_structure()) :: binary()
-  defp prefix_nalus(nalus, :annexb) do
-    Enum.join([<<>> | nalus], @annexb_prefix_code)
-  end
-
-  defp prefix_nalus(nalus, {_avc, nalu_length_size}) do
-    Enum.map_join(nalus, fn nalu ->
-      <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
-    end)
   end
 
   defp skip_improper_aus(aus, state) do

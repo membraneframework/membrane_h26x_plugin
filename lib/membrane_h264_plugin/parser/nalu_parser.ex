@@ -139,6 +139,17 @@ defmodule Membrane.H264.Parser.NALuParser do
     {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
   end
 
+  @spec prefix_nalus_payloads([binary()], Parser.stream_structure()) :: binary()
+  def prefix_nalus_payloads(nalus, :annexb) do
+    Enum.join([<<>> | nalus], @annexb_prefix_code)
+  end
+
+  def prefix_nalus_payloads(nalus, {_avc, nalu_length_size}) do
+    Enum.map_join(nalus, fn nalu ->
+      <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
+    end)
+  end
+
   defp parse_proper_nalu_type(payload, state, type) do
     case type do
       :sps ->
