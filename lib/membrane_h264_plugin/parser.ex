@@ -5,9 +5,10 @@ defmodule Membrane.H264.Parser do
   The parser:
   * prepares and sends the appropriate stream format, based on information provided in the stream and via the element's options
   * splits the incoming stream into h264 access units - each buffer being output is a `Membrane.Buffer` struct with a
-  binary payload of a single access unit
+  binary payload of a single access unit or network abstraction layer unit.
   * enriches the output buffers with the metadata describing the way the access unit is split into NAL units, type of each NAL unit
   making up the access unit and the information if the access unit hold a keyframe.
+  * converts the stream's structure (Annex B, avc1 or avc3) to the one provided via the element's options.
 
   The parser works in one of three possible modes, depending on the structure of the input buffers:
   * `:bytestream` - each input buffer contains some part of h264 stream's payload, but not necessary a logical
@@ -17,10 +18,10 @@ defmodule Membrane.H264.Parser do
 
   The parser's mode is set automatically, based on the input stream format received by that element:
   * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.H264.RemoteStream{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
-  * Receiving `%Membrane.H264.RemoteStream{alignment: :au}` results in the parser mode being set to `:au_aligned`
+  * Receiving `%Membrane.H264{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
+  * Receiving `%Membrane.H264{alignment: :au}` results in the parser mode being set to `:au_aligned`
 
-  The distinguishment between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
+  The distinction between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
   for rewriting of timestamps:
   * in the `:bytestream` mode:
     * if option `:framerate` is set to nil, the output buffers have their `:pts` and `:dts` set to nil
@@ -31,54 +32,71 @@ defmodule Membrane.H264.Parser do
   * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
   (holding the whole access unit being output)
 
+  The parser also allows for conversion between stream structures. The available structures are:
+  * Annex B, `:annexb` - In a stream with this structure each NAL unit is prefixed by three or
+  four-byte start code (`0x(00)000001`) that allows to identify boundaries between them.
+  * avc1, `:avc1` - In such stream a DCR (Decoder Configuration Record) is included in `stream_format`
+  and NALUs lack the start codes, but are prefixed with their length. The length of these prefixes
+  is contained in the stream's DCR. PPSs and SPSs (Picture Parameter Sets and Sequence Parameter Sets) are
+  transported in the DCR.
+  * avc3, `:avc3` - The same as avc1, only that parameter sets may be also present in the stream
+  (in-band).
   """
 
   use Membrane.Filter
 
   require Membrane.Logger
 
-  alias Membrane.{Buffer, H264, RemoteStream}
-
-  alias Membrane.H264.Parser.{
+  alias __MODULE__.{
     AUSplitter,
     AUTimestampGenerator,
     DecoderConfigurationRecord,
     Format,
+    NALu,
     NALuParser,
     NALuSplitter
   }
 
-  @prefix_code <<0, 0, 0, 1>>
+  alias Membrane.{Buffer, H264, RemoteStream}
+  alias Membrane.Element.{Action, CallbackContext}
+
+  @typedoc """
+  Type referencing `Membrane.H264.stream_structure` type, in case of `:avc1` and `:avc3`
+  stream structure, it contains an information about the size of each NALU's prefix describing
+  their length.
+  """
+  @type stream_structure :: :annexb | {:avc1 | :avc3, nalu_length_size :: pos_integer()}
+
+  @typep raw_stream_structure :: H264.stream_structure()
+  @typep state :: Membrane.Element.state()
+  @typep callback_return :: Membrane.Element.Base.callback_return()
+
+  @nalu_length_size 4
 
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    accepted_format:
-      any_of(
-        %RemoteStream{type: :bytestream},
-        %H264{alignment: alignment} when alignment in [:nalu, :au],
-        %H264.RemoteStream{alignment: alignment} when alignment in [:nalu, :au]
-      )
+    accepted_format: any_of(%RemoteStream{type: :bytestream}, H264)
 
   def_output_pad :output,
     demand_mode: :auto,
     accepted_format:
       %H264{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
-  def_options sps: [
-                spec: binary(),
-                default: <<>>,
+  def_options spss: [
+                spec: [binary()],
+                default: [],
                 description: """
-                Sequence Parameter Set NAL unit binary payload - if absent in the stream, should
-                be provided via this option.
+                Sequence Parameter Set NAL unit binary payloads - if absent in the stream, should
+                be provided via this option (only available for `:annexb` output stream structure).
                 """
               ],
-              pps: [
-                spec: binary(),
-                default: <<>>,
+              ppss: [
+                spec: [binary()],
+                default: [],
                 description: """
-                Picture Parameter Set NAL unit binary payload - if absent in the stream, should
-                be provided via this option.
+                Picture Parameter Set NAL unit binary payloads - if absent in the stream, should
+                be provided via this option (only available for `:annexb` output stream structure).
                 """
               ],
               output_alignment: [
@@ -107,10 +125,27 @@ defmodule Membrane.H264.Parser do
                 Repeat all parameter sets (`sps` and `pps`) on each IDR picture.
 
                 Parameter sets may be retrieved from:
-                  * The bytestream
+                  * The stream
                   * `Parser` options.
-                  * Decoder Configuration Record, sent as decoder_configuration_record
-                  in `Membrane.H264.RemoteStream` stream format
+                  * Decoder Configuration Record, sent in `:acv1` and `:avc3` stream types
+                """
+              ],
+              output_stream_structure: [
+                spec:
+                  nil
+                  | :annexb
+                  | :avc1
+                  | :avc3
+                  | {:avc1 | :avc3, nalu_length_size :: pos_integer()},
+                default: nil,
+                description: """
+                format of the outgoing H264 stream, if set to `:annexb` NALUs will be separated by
+                a start code (0x(00)000001) or if set to `:avc3` or `:avc1` they will be prefixed by their size.
+                Additionally for `:avc1` and `:avc3` a tuple can be passed containing the atom and
+                `nalu_length_size` that determines the size in bytes of each NALU's field
+                describing their length (by default 4). In avc1 output streams the PPSs and SPSs will be
+                transported in the DCR, when in avc3 they will be present only in the stream (in-band).
+                If not provided or set to nil the stream's structure will remain unchanged.
                 """
               ],
               generate_best_effort_timestamps: [
@@ -139,63 +174,100 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {sps, opts} = Map.pop!(opts, :sps)
-    {pps, opts} = Map.pop!(opts, :pps)
-    {ts_generation_config, opts} = Map.pop!(opts, :generate_best_effort_timestamps)
-
-    au_timestamp_generator =
-      if ts_generation_config, do: AUTimestampGenerator.new(ts_generation_config), else: nil
-
-    state =
-      %{
-        nalu_splitter: NALuSplitter.new(maybe_add_prefix(sps) <> maybe_add_prefix(pps)),
-        nalu_parser: NALuParser.new(),
-        au_splitter: AUSplitter.new(),
-        au_timestamp_generator: au_timestamp_generator,
-        mode: nil,
-        profile: nil,
-        previous_buffer_timestamps: nil,
-        frame_prefix: <<>>,
-        parameter_sets_present?: byte_size(sps) > 0 or byte_size(pps) > 0,
-        cached_sps: %{},
-        cached_pps: %{}
-      }
-      |> Map.merge(Map.from_struct(opts))
-
-    {[], state}
-  end
-
-  @impl true
-  def handle_stream_format(:input, stream_format, _ctx, state) do
-    state =
-      case stream_format do
-        %H264{alignment: alignment} ->
-          mode =
-            case alignment do
-              :nalu -> :nalu_aligned
-              :au -> :au_aligned
-            end
-
-          %{state | mode: mode}
-
-        %RemoteStream{type: :bytestream} ->
-          %{state | mode: :bytestream}
-
-        %H264.RemoteStream{alignment: alignment, decoder_configuration_record: dcr} ->
-          mode =
-            case alignment do
-              :nalu -> :nalu_aligned
-              :au -> :au_aligned
-            end
-
-          %{state | mode: mode, frame_prefix: get_frame_prefix!(dcr, state)}
+    output_stream_structure =
+      case opts.output_stream_structure do
+        :avc3 -> {:avc3, @nalu_length_size}
+        :avc1 -> {:avc1, @nalu_length_size}
+        stream_structure -> stream_structure
       end
 
+    au_timestamp_generator =
+      if opts.generate_best_effort_timestamps,
+        do: AUTimestampGenerator.new(opts.generate_best_effort_timestamps),
+        else: nil
+
+    state = %{
+      nalu_splitter: nil,
+      nalu_parser: nil,
+      au_splitter: AUSplitter.new(),
+      au_timestamp_generator: au_timestamp_generator,
+      mode: nil,
+      profile: nil,
+      previous_buffer_timestamps: nil,
+      output_alignment: opts.output_alignment,
+      frame_prefix: <<>>,
+      skip_until_keyframe: opts.skip_until_keyframe,
+      repeat_parameter_sets: opts.repeat_parameter_sets,
+      cached_spss: %{},
+      cached_ppss: %{},
+      initial_spss: opts.spss,
+      initial_ppss: opts.ppss,
+      input_stream_structure: nil,
+      output_stream_structure: output_stream_structure
+    }
+
     {[], state}
   end
 
   @impl true
-  def handle_process(:input, %Membrane.Buffer{} = buffer, _ctx, state) do
+  def handle_stream_format(:input, stream_format, ctx, state) do
+    {alignment, input_raw_stream_structure} =
+      case stream_format do
+        %RemoteStream{type: :bytestream} ->
+          {:bytestream, :annexb}
+
+        %H264{alignment: alignment, stream_structure: stream_structure} ->
+          {alignment, stream_structure}
+      end
+
+    is_first_received_stream_format = is_nil(ctx.pads.input.stream_format)
+
+    mode = get_mode_from_alignment(alignment)
+
+    input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
+
+    state =
+      cond do
+        is_first_received_stream_format ->
+          output_stream_structure =
+            if is_nil(state.output_stream_structure),
+              do: input_stream_structure,
+              else: state.output_stream_structure
+
+          %{
+            state
+            | mode: mode,
+              nalu_splitter: NALuSplitter.new(input_stream_structure),
+              nalu_parser: NALuParser.new(input_stream_structure),
+              input_stream_structure: input_stream_structure,
+              output_stream_structure: output_stream_structure
+          }
+
+        not is_input_stream_structure_change_allowed?(
+          input_stream_structure,
+          state.input_stream_structure
+        ) ->
+          raise "stream structure cannot be fundamentally changed during stream"
+
+        mode != state.mode ->
+          raise "mode cannot be changed during stream"
+
+        true ->
+          state
+      end
+
+    {incoming_spss, incoming_ppss} =
+      get_stream_format_parameter_sets(
+        input_raw_stream_structure,
+        is_first_received_stream_format,
+        state
+      )
+
+    process_stream_format_parameter_sets(incoming_spss, incoming_ppss, ctx, state)
+  end
+
+  @impl true
+  def handle_process(:input, %Membrane.Buffer{} = buffer, ctx, state) do
     {payload, state} =
       case state.frame_prefix do
         <<>> -> {buffer.payload, state}
@@ -212,7 +284,7 @@ defmodule Membrane.H264.Parser do
     is_au_aligned = state.mode == :au_aligned
     {access_units, au_splitter} = AUSplitter.split(nalus, is_au_aligned, state.au_splitter)
     {access_units, state} = skip_improper_aus(access_units, state)
-    {actions, state} = prepare_actions_for_aus(access_units, state)
+    {actions, state} = prepare_actions_for_aus(access_units, ctx, state)
 
     state = %{
       state
@@ -230,7 +302,7 @@ defmodule Membrane.H264.Parser do
     {last_nalu, nalu_parser} = NALuParser.parse_nalus(last_nalu_payload, state.nalu_parser)
     {maybe_improper_aus, au_splitter} = AUSplitter.split(last_nalu, true, state.au_splitter)
     {aus, state} = skip_improper_aus(maybe_improper_aus, state)
-    {actions, state} = prepare_actions_for_aus(aus, state)
+    {actions, state} = prepare_actions_for_aus(aus, ctx, state)
 
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
 
@@ -249,13 +321,74 @@ defmodule Membrane.H264.Parser do
     {[end_of_stream: :output], state}
   end
 
-  defp maybe_add_prefix(parameter_set) do
-    case parameter_set do
-      <<>> -> <<>>
-      <<0, 0, 1, _rest::binary>> -> parameter_set
-      <<0, 0, 0, 1, _rest::binary>> -> parameter_set
-      parameter_set -> @prefix_code <> parameter_set
+  @spec get_mode_from_alignment(:au | :nalu | :bytestream) ::
+          :au_aligned | :nalu_aligned | :bytestream
+  defp get_mode_from_alignment(alignment) do
+    case alignment do
+      :au -> :au_aligned
+      :nalu -> :nalu_aligned
+      :bytestream -> :bytestream
     end
+  end
+
+  @spec get_stream_format_parameter_sets(raw_stream_structure(), boolean(), state()) ::
+          {[binary()], [binary()]}
+  defp get_stream_format_parameter_sets({_avc, dcr}, _is_first_received_stream_format, state) do
+    %{spss: dcr_spss, ppss: dcr_ppss} = DecoderConfigurationRecord.parse(dcr)
+
+    new_uncached_spss = dcr_spss -- Enum.map(state.cached_spss, fn {_id, ps} -> ps.payload end)
+    new_uncached_ppss = dcr_ppss -- Enum.map(state.cached_ppss, fn {_id, ps} -> ps.payload end)
+
+    {new_uncached_spss, new_uncached_ppss}
+  end
+
+  defp get_stream_format_parameter_sets(:annexb, is_first_received_stream_format, state) do
+    if is_first_received_stream_format,
+      do: {state.initial_spss, state.initial_ppss},
+      else: {[], []}
+  end
+
+  @spec process_stream_format_parameter_sets([binary()], [binary()], CallbackContext.t(), state()) ::
+          {[Action.t()], state()}
+  defp process_stream_format_parameter_sets(
+         new_spss,
+         new_ppss,
+         ctx,
+         %{output_stream_structure: {:avc1, _}} = state
+       ) do
+    {parsed_new_uncached_spss, nalu_parser} =
+      NALuParser.parse_nalus(new_spss, {nil, nil}, false, state.nalu_parser)
+
+    {parsed_new_uncached_ppss, nalu_parser} =
+      NALuParser.parse_nalus(new_ppss, {nil, nil}, false, nalu_parser)
+
+    state = %{state | nalu_parser: nalu_parser}
+
+    process_new_parameter_sets(parsed_new_uncached_spss, parsed_new_uncached_ppss, ctx, state)
+  end
+
+  defp process_stream_format_parameter_sets(spss, ppss, _ctx, state) do
+    frame_prefix = NALuParser.prefix_nalus_payloads(spss ++ ppss, state.input_stream_structure)
+
+    {[], %{state | frame_prefix: frame_prefix}}
+  end
+
+  @spec is_input_stream_structure_change_allowed?(
+          raw_stream_structure() | stream_structure(),
+          raw_stream_structure() | stream_structure()
+        ) :: boolean()
+  defp is_input_stream_structure_change_allowed?(:annexb, :annexb), do: true
+  defp is_input_stream_structure_change_allowed?({avc, _}, {avc, _}), do: true
+
+  defp is_input_stream_structure_change_allowed?(_stream_structure1, _stream_structure2),
+    do: false
+
+  @spec parse_raw_stream_structure(raw_stream_structure()) :: stream_structure()
+  defp parse_raw_stream_structure(:annexb), do: :annexb
+
+  defp parse_raw_stream_structure({avc, dcr}) do
+    %{nalu_length_size: nalu_length_size} = DecoderConfigurationRecord.parse(dcr)
+    {avc, nalu_length_size}
   end
 
   defp skip_improper_aus(aus, state) do
@@ -276,34 +409,109 @@ defmodule Membrane.H264.Parser do
     end)
   end
 
-  defp prepare_actions_for_aus(aus, state) do
+  @spec prepare_actions_for_aus(
+          [AUSplitter.access_unit()],
+          CallbackContext.t(),
+          state()
+        ) :: callback_return()
+  defp prepare_actions_for_aus(aus, ctx, state) do
     Enum.flat_map_reduce(aus, state, fn au, state ->
-      {sps_actions, state} = maybe_parse_sps(au, state)
-
-      au = maybe_add_parameter_sets(au, state) |> delete_duplicate_parameter_sets()
-      state = cache_parameter_sets(state, au)
+      {au, stream_format_actions, state} = process_au_parameter_sets(au, ctx, state)
 
       {{pts, dts}, state} = prepare_timestamps(au, state)
 
       buffers_actions = [
-        {:buffer, {:output, wrap_into_buffer(au, pts, dts, state.output_alignment)}}
+        buffer:
+          {:output,
+           wrap_into_buffer(au, pts, dts, state.output_alignment, state.output_stream_structure)}
       ]
 
-      {sps_actions ++ buffers_actions, state}
+      {stream_format_actions ++ buffers_actions, state}
     end)
   end
 
-  defp maybe_parse_sps(au, state) do
-    case Enum.find(au, &(&1.type == :sps)) do
-      nil ->
-        {[], state}
+  @spec process_new_parameter_sets([NALu.t()], [NALu.t()], CallbackContext.t(), state()) ::
+          {[Action.t()], state()}
+  defp process_new_parameter_sets(new_spss, new_ppss, context, state) do
+    updated_cached_spss = merge_parameter_sets(new_spss, state.cached_spss, :seq_parameter_set_id)
+    updated_cached_ppss = merge_parameter_sets(new_ppss, state.cached_ppss, :pic_parameter_set_id)
 
-      sps_nalu ->
-        fmt = Format.from_sps(sps_nalu, output_alignment: state.output_alignment)
-        {[stream_format: {:output, fmt}], %{state | profile: fmt.profile}}
+    state = %{state | cached_spss: updated_cached_spss, cached_ppss: updated_cached_ppss}
+
+    latest_sps = List.last(new_spss)
+
+    last_sent_stream_format = context.pads.output.stream_format
+
+    output_raw_stream_structure =
+      case state.output_stream_structure do
+        :annexb ->
+          :annexb
+
+        {avc, _nalu_length_size} = output_stream_structure ->
+          {avc,
+           DecoderConfigurationRecord.generate(
+             Enum.map(updated_cached_spss, fn {_id, sps} -> sps.payload end),
+             Enum.map(updated_cached_ppss, fn {_id, pps} -> pps.payload end),
+             output_stream_structure
+           )}
+      end
+
+    stream_format_candidate =
+      case {latest_sps, last_sent_stream_format} do
+        {nil, nil} ->
+          nil
+
+        {nil, last_sent_stream_format} ->
+          %{last_sent_stream_format | stream_structure: output_raw_stream_structure}
+
+        {latest_sps, _last_sent_stream_format} ->
+          Format.from_sps(latest_sps, output_raw_stream_structure,
+            output_alignment: state.output_alignment
+          )
+      end
+
+    if stream_format_candidate in [last_sent_stream_format, nil] do
+      {[], state}
+    else
+      {
+        [stream_format: {:output, stream_format_candidate}],
+        %{state | profile: stream_format_candidate.profile}
+      }
     end
   end
 
+  @spec merge_parameter_sets([NALu.t()], %{non_neg_integer() => NALu.t()}, atom()) ::
+          %{non_neg_integer() => NALu.t()}
+  defp merge_parameter_sets(new_parameter_sets, cached_parameter_sets, id_key) do
+    new_parameter_sets
+    |> Enum.map(&{&1.parsed_fields[id_key], &1})
+    |> Map.new()
+    |> then(&Map.merge(cached_parameter_sets, &1))
+  end
+
+  @spec process_au_parameter_sets(AUSplitter.access_unit(), CallbackContext.t(), state()) ::
+          {AUSplitter.access_unit(), [Action.t()], state()}
+  defp process_au_parameter_sets(au, context, state) do
+    au_spss = Enum.filter(au, &(&1.type == :sps))
+    au_ppss = Enum.filter(au, &(&1.type == :pps))
+
+    {stream_format_actions, state} = process_new_parameter_sets(au_spss, au_ppss, context, state)
+
+    au =
+      case state.output_stream_structure do
+        {:avc1, _nalu_length_size} ->
+          remove_parameter_sets(au)
+
+        _stream_structure ->
+          maybe_add_parameter_sets(au, state)
+          |> delete_duplicate_parameter_sets()
+      end
+
+    {au, stream_format_actions, state}
+  end
+
+  @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
+          {{Membrane.Time.t(), Membrane.Time.t()}, state()}
   defp prepare_timestamps(au, state) do
     if state.mode == :bytestream and state.au_timestamp_generator do
       {timestamps, timestamp_generator} =
@@ -318,45 +526,41 @@ defmodule Membrane.H264.Parser do
     end
   end
 
+  @spec maybe_add_parameter_sets(AUSplitter.access_unit(), state()) :: AUSplitter.access_unit()
   defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
 
   defp maybe_add_parameter_sets(au, state) do
     if idr_au?(au),
-      do: Map.values(state.cached_sps) ++ Map.values(state.cached_pps) ++ au,
+      do: Map.values(state.cached_spss) ++ Map.values(state.cached_ppss) ++ au,
       else: au
   end
 
+  @spec delete_duplicate_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
   defp delete_duplicate_parameter_sets(au) do
     if idr_au?(au), do: Enum.uniq(au), else: au
   end
 
-  defp cache_parameter_sets(%{repeat_parameter_sets: false} = state, _au), do: state
-
-  defp cache_parameter_sets(state, au) do
-    sps =
-      Enum.filter(au, &(&1.type == :sps))
-      |> Enum.map(&{&1.parsed_fields.seq_parameter_set_id, &1})
-      |> Map.new()
-      |> Map.merge(state.cached_sps)
-
-    pps =
-      Enum.filter(au, &(&1.type == :pps))
-      |> Enum.map(&{&1.parsed_fields.pic_parameter_set_id, &1})
-      |> Map.new()
-      |> Map.merge(state.cached_pps)
-
-    %{state | cached_sps: sps, cached_pps: pps}
+  @spec remove_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
+  defp remove_parameter_sets(au) do
+    Enum.reject(au, &(&1.type in [:sps, :pps]))
   end
 
+  @spec idr_au?(AUSplitter.access_unit()) :: boolean()
   defp idr_au?(au), do: :idr in Enum.map(au, & &1.type)
 
-  defp wrap_into_buffer(access_unit, pts, dts, :au) do
+  @spec wrap_into_buffer(
+          AUSplitter.access_unit(),
+          Membrane.Time.t(),
+          Membrane.Time.t(),
+          :au | :nalu,
+          stream_structure()
+        ) :: Buffer.t()
+  defp wrap_into_buffer(access_unit, pts, dts, :au, output_stream_structure) do
     metadata = prepare_au_metadata(access_unit)
 
     buffer =
-      access_unit
-      |> Enum.reduce(<<>>, fn nalu, acc ->
-        acc <> nalu.payload
+      Enum.reduce(access_unit, <<>>, fn nalu, acc ->
+        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
       end)
       |> then(fn payload ->
         %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
@@ -365,14 +569,20 @@ defmodule Membrane.H264.Parser do
     buffer
   end
 
-  defp wrap_into_buffer(access_unit, pts, dts, :nalu) do
+  defp wrap_into_buffer(access_unit, pts, dts, :nalu, output_stream_structure) do
     access_unit
     |> Enum.zip(prepare_nalus_metadata(access_unit))
     |> Enum.map(fn {nalu, metadata} ->
-      %Buffer{payload: nalu.payload, metadata: metadata, pts: pts, dts: dts}
+      %Buffer{
+        payload: NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure),
+        metadata: metadata,
+        pts: pts,
+        dts: dts
+      }
     end)
   end
 
+  @spec prepare_au_metadata(AUSplitter.access_unit()) :: Buffer.metadata()
   defp prepare_au_metadata(nalus) do
     is_keyframe? = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
 
@@ -385,10 +595,7 @@ defmodule Membrane.H264.Parser do
             h264: %{
               type: nalu.type
             }
-          },
-          prefixed_poslen: {nalu_start, byte_size(nalu.payload)},
-          unprefixed_poslen:
-            {nalu_start + nalu.prefix_length, byte_size(nalu.payload) - nalu.prefix_length}
+          }
         }
 
         metadata =
@@ -412,6 +619,7 @@ defmodule Membrane.H264.Parser do
     %{h264: %{key_frame?: is_keyframe?, nalus: nalus}}
   end
 
+  @spec prepare_nalus_metadata(AUSplitter.access_unit()) :: [Buffer.metadata()]
   defp prepare_nalus_metadata(nalus) do
     is_keyframe? = Enum.any?(nalus, fn nalu -> nalu.type == :idr end)
 
@@ -426,22 +634,9 @@ defmodule Membrane.H264.Parser do
     end)
   end
 
+  @spec stream_format_sent?([Action.t()], CallbackContext.t()) :: boolean()
   defp stream_format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
   defp stream_format_sent?(_actions, _ctx), do: true
-
-  defp get_frame_prefix!(dcr, state) do
-    cond do
-      dcr == nil ->
-        <<>>
-
-      state.parameter_sets_present? ->
-        raise "Parameter sets were already provided as the options to the parser and parameter sets from the decoder configuration record could overwrite them."
-
-      true ->
-        {:ok, %{sps: sps, pps: pps}} = DecoderConfigurationRecord.parse(dcr)
-        Enum.concat([[<<>>], sps, pps]) |> Enum.join(@prefix_code)
-    end
-  end
 end

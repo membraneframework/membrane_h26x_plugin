@@ -28,7 +28,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
             nalus_acc: [NALu.t()],
             fsm_state: :first | :second,
             previous_primary_coded_picture_nalu: NALu.t() | nil,
-            access_units_to_output: access_unit_t()
+            access_units_to_output: access_unit()
           }
   @enforce_keys [
     :nalus_acc,
@@ -58,7 +58,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   @typedoc """
   A type representing an access unit - a list of logically associated NAL units.
   """
-  @type access_unit_t() :: list(NALu.t())
+  @type access_unit() :: list(NALu.t())
 
   @doc """
   Splits the given list of NAL units into the access units.
@@ -77,7 +77,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   is not returned until another access unit starts, as it's the only way to prove that
   the access unit is complete.
   """
-  @spec split([NALu.t()], assume_au_aligned :: boolean(), t()) :: {[access_unit_t()], t()}
+  @spec split([NALu.t()], boolean(), t()) :: {[access_unit()], t()}
   def split(nalus, assume_au_aligned \\ false, state) do
     state = do_split(nalus, state)
 
@@ -112,7 +112,10 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition")
+        Membrane.Logger.warning(
+          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
+        )
+
         state
     end
   end
@@ -157,7 +160,10 @@ defmodule Membrane.H264.Parser.AUSplitter do
         )
 
       true ->
-        Membrane.Logger.warning("AUSplitter: Improper transition")
+        Membrane.Logger.warning(
+          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
+        )
+
         state
     end
   end

@@ -20,7 +20,7 @@ defmodule AUSplitterTest do
       NALuSplitter
     }
 
-    @spec parse(binary()) :: AUSplitter.access_unit_t()
+    @spec parse(binary()) :: AUSplitter.access_unit()
     def parse(payload) do
       {nalus_payloads, _nalu_splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
       {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
@@ -39,8 +39,8 @@ defmodule AUSplitterTest do
       au_lengths =
         for au <- aus,
             do:
-              Enum.reduce(au, 0, fn %{payload: payload}, acc ->
-                byte_size(payload) + acc
+              Enum.reduce(au, 0, fn %{payload: payload, stripped_prefix: prefix}, acc ->
+                byte_size(payload) + byte_size(prefix) + acc
               end)
 
       assert au_lengths == @au_lengths_ffmpeg[name]
@@ -79,6 +79,8 @@ defmodule AUSplitterTest do
         224>>
 
     assert [au] = FullBinaryParser.parse(fixture)
-    assert au |> Enum.map(&byte_size(&1.payload)) |> Enum.sum() == byte_size(fixture)
+
+    assert au |> Enum.map(&(byte_size(&1.payload) + byte_size(&1.stripped_prefix))) |> Enum.sum() ==
+             byte_size(fixture)
   end
 end

@@ -21,28 +21,39 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          5, 4, 64, 0, 0, 3, 0, 64, 0, 0, 15, 3, 197, 139, 101, 128, 1, 0, 6, 104, 235, 227, 203,
          34, 192>>
 
-  defp make_pipeline(source, sps \\ <<>>, pps \\ <<>>) do
-    structure = [
+  defp make_pipeline(source, spss \\ [], ppss \\ [], output_stream_structure \\ :annexb) do
+    structure =
       child(:source, source)
       |> child(:parser, %H264.Parser{
-        sps: sps,
-        pps: pps,
-        repeat_parameter_sets: true
+        spss: spss,
+        ppss: ppss,
+        repeat_parameter_sets: true,
+        output_stream_structure: output_stream_structure
       })
       |> child(:sink, Sink)
-    ]
 
     Pipeline.start_link_supervised!(structure: structure)
   end
 
-  defp perform_test(pipeline_pid, data, mode \\ :bytestream) do
-    buffers = prepare_buffers(data, mode)
+  defp perform_test(
+         pipeline_pid,
+         data,
+         mode \\ :bytestream,
+         parser_input_stream_structure \\ :annexb,
+         parser_output_stream_structure \\ :annexb
+       ) do
+    buffers = prepare_buffers(data, mode, parser_input_stream_structure)
 
     assert_pipeline_play(pipeline_pid)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(File.read!(@ref_path), :au_aligned)
+    output_buffers =
+      prepare_buffers(
+        File.read!(@ref_path),
+        :au_aligned,
+        parser_output_stream_structure
+      )
 
     Enum.each(output_buffers, fn output_buffer ->
       assert_sink_buffer(pipeline_pid, :sink, buffer)
@@ -61,7 +72,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   describe "Parameter sets should be reapeated on each IDR access unit" do
     test "when provided by parser options" do
       source = %H264.Support.TestSource{mode: :bytestream}
-      pid = make_pipeline(source, @sps, @pps)
+      pid = make_pipeline(source, [@sps], [@pps])
       perform_test(pid, File.read!(@in_path))
     end
 
@@ -74,9 +85,13 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{mode: :au_aligned, dcr: @dcr}
-      pid = make_pipeline(source)
-      perform_test(pid, File.read!(@in_path), :au_aligned)
+      source = %H264.Support.TestSource{
+        mode: :au_aligned,
+        output_raw_stream_structure: {:avc3, @dcr}
+      }
+
+      pid = make_pipeline(source, [], [], {:avc3, 4})
+      perform_test(pid, File.read!(@in_path), :au_aligned, {:avc3, 4}, {:avc3, 4})
     end
 
     test "when bytestream has variable parameter sets" do

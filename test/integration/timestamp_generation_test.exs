@@ -5,14 +5,16 @@ defmodule Membrane.H264.TimestampGenerationTest do
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
+  import Membrane.H264.Support.Common
 
   alias Membrane.Buffer
   alias Membrane.H264.Parser
-  alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
   alias Membrane.H264.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
   defmodule EnhancedPipeline do
+    @moduledoc false
+
     use Membrane.Pipeline
 
     @impl true
@@ -43,23 +45,6 @@ defmodule Membrane.H264.TimestampGenerationTest do
   @h264_input_file_baseline "test/fixtures/input-10-720p-baseline.h264"
   @h264_input_timestamps_baseline [0, 33, 67, 100, 133, 167, 200, 233, 267, 300]
                                   |> Enum.map(&{&1, &1 - 500})
-  defp prepare_buffers(binary, :bytestream) do
-    buffers =
-      :binary.bin_to_list(binary) |> Enum.chunk_every(400) |> Enum.map(&:binary.list_to_bin(&1))
-
-    Enum.map(buffers, &%Membrane.Buffer{payload: &1})
-  end
-
-  defp prepare_buffers(binary, :au_aligned) do
-    {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new())
-    {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
-    {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
-
-    Enum.map_reduce(aus, 0, fn au, ts ->
-      {%Membrane.Buffer{payload: Enum.map_join(au, & &1.payload), pts: ts, dts: ts}, ts + 1}
-    end)
-    |> elem(0)
-  end
 
   test "if the pts and dts are set to nil in :bytestream mode when framerate isn't given" do
     binary = File.read!(@h264_input_file_baseline)
