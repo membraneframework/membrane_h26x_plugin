@@ -224,11 +224,11 @@ defmodule Membrane.H264.Parser do
 
     mode = get_mode_from_alignment(alignment)
 
+    input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
+
     state =
       cond do
         is_first_received_stream_format ->
-          input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
-
           output_stream_structure =
             if is_nil(state.output_stream_structure),
               do: input_stream_structure,
@@ -244,7 +244,7 @@ defmodule Membrane.H264.Parser do
           }
 
         not is_input_stream_structure_change_allowed?(
-          input_raw_stream_structure,
+          input_stream_structure,
           state.input_stream_structure
         ) ->
           raise "stream structure cannot be fundamentally changed during stream"

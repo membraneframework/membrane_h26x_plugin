@@ -1,7 +1,7 @@
 defmodule Membrane.H264.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @github_url "https://github.com/membraneframework-labs/membrane_h264_plugin"
 
   def project do
@@ -38,10 +38,7 @@ defmodule Membrane.H264.Plugin.Mixfile do
   defp deps do
     [
       {:membrane_core, "~> 0.12.7"},
-      {:membrane_h264_format,
-       github: "membraneframework/membrane_h264_format",
-       branch: "avc-support-remove-remote-stream",
-       override: true},
+      {:membrane_h264_format, "~> 0.6.0"},
       {:bunch, "~> 1.4"},
       {:membrane_stream_plugin, "~> 0.3.1", only: :test},
       {:membrane_file_plugin, "~> 0.14.0", only: :test},
