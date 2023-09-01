@@ -6,7 +6,7 @@
 
 Membrane H264 parser.
 It is the Membrane element responsible for parsing the incoming h264 stream. The parsing is done as a sequence of the following steps:
-* splitting the h264 stream into stream NAL units, based on the "Annex B" of the "ITU-T Rec. H.264 (01/2012)"
+* splitting the h264 stream into stream NAL units, based on the "ITU-T Rec. H.264 (01/2012)"
 * Parsing the NAL unit headers, so that to read the type of the NAL unit
 * Parsing the NAL unit body with the appropriate scheme, based on the NAL unit type read in the step before
 * Aggregating the NAL units into a stream of *access units*
@@ -22,7 +22,7 @@ The package can be installed by adding `membrane_h264_plugin` to your list of de
 ```elixir
 def deps do
   [
-	  {:membrane_h264_plugin, "~> 0.7.0"}
+	  {:membrane_h264_plugin, "~> 0.7.1"}
   ]
 end
 ```
