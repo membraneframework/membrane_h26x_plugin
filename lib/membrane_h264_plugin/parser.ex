@@ -152,8 +152,8 @@ defmodule Membrane.H264.Parser do
                 spec:
                   false
                   | %{
-                      :framerate => {pos_integer, pos_integer},
-                      optional(:add_dts_offset) => boolean
+                      :framerate => {pos_integer(), pos_integer()},
+                      optional(:add_dts_offset) => boolean()
                     },
                 default: false,
                 description: """
@@ -181,16 +181,20 @@ defmodule Membrane.H264.Parser do
         stream_structure -> stream_structure
       end
 
-    au_timestamp_generator =
-      if opts.generate_best_effort_timestamps,
-        do: AUTimestampGenerator.new(opts.generate_best_effort_timestamps),
-        else: nil
+    {au_timestamp_generator, framerate} =
+      if opts.generate_best_effort_timestamps do
+        {AUTimestampGenerator.new(opts.generate_best_effort_timestamps),
+         opts.generate_best_effort_timestamps.framerate}
+      else
+        {nil, nil}
+      end
 
     state = %{
       nalu_splitter: nil,
       nalu_parser: nil,
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
+      framerate: framerate,
       mode: nil,
       profile: nil,
       previous_buffer_timestamps: nil,
@@ -240,7 +244,8 @@ defmodule Membrane.H264.Parser do
               nalu_splitter: NALuSplitter.new(input_stream_structure),
               nalu_parser: NALuParser.new(input_stream_structure),
               input_stream_structure: input_stream_structure,
-              output_stream_structure: output_stream_structure
+              output_stream_structure: output_stream_structure,
+              framerate: Map.get(stream_format, :framerate) || state.framerate
           }
 
         not is_input_stream_structure_change_allowed?(
@@ -466,6 +471,7 @@ defmodule Membrane.H264.Parser do
 
         {latest_sps, _last_sent_stream_format} ->
           Format.from_sps(latest_sps, output_raw_stream_structure,
+            framerate: state.framerate,
             output_alignment: state.output_alignment
           )
       end
@@ -589,32 +595,17 @@ defmodule Membrane.H264.Parser do
     nalus =
       nalus
       |> Enum.with_index()
-      |> Enum.map_reduce(0, fn {nalu, i}, nalu_start ->
-        metadata = %{
-          metadata: %{
-            h264: %{
-              type: nalu.type
-            }
-          }
-        }
-
-        metadata =
-          if i == length(nalus) - 1 do
-            put_in(metadata, [:metadata, :h264, :end_access_unit], true)
-          else
-            metadata
-          end
-
-        metadata =
-          if i == 0 do
-            put_in(metadata, [:metadata, :h264, :new_access_unit], %{key_frame?: is_keyframe?})
-          else
-            metadata
-          end
-
-        {metadata, nalu_start + byte_size(nalu.payload)}
+      |> Enum.map(fn {nalu, i} ->
+        %{metadata: %{h264: %{type: nalu.type}}}
+        |> Bunch.then_if(
+          i == 0,
+          &put_in(&1, [:metadata, :h264, :new_access_unit], %{key_frame?: is_keyframe?})
+        )
+        |> Bunch.then_if(
+          i == length(nalus) - 1,
+          &put_in(&1, [:metadata, :h264, :end_access_unit], true)
+        )
       end)
-      |> elem(0)
 
     %{h264: %{key_frame?: is_keyframe?, nalus: nalus}}
   end
