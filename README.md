@@ -5,8 +5,8 @@
 [![CircleCI](https://circleci.com/gh/membraneframework/membrane_h264_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_h264_plugin)
 
 Membrane H264 parser.
-It is the Membrane element responsible for parsing the incoming h264 stream. The parsing is done as a sequence of the following steps:
-* splitting the h264 stream into stream NAL units, based on the "ITU-T Rec. H.264 (01/2012)"
+It is the Membrane element responsible for parsing the incoming H264 stream. The parsing is done as a sequence of the following steps:
+* splitting the H264 stream into stream NAL units, based on the "Annex B" of the "ITU-T Rec. H.264 (01/2012)" or length prefix defined in "ISO/IEC 14496-10"
 * Parsing the NAL unit headers, so that to read the type of the NAL unit
 * Parsing the NAL unit body with the appropriate scheme, based on the NAL unit type read in the step before
 * Aggregating the NAL units into a stream of *access units*

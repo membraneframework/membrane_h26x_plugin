@@ -4,15 +4,15 @@ defmodule Membrane.H264.Parser do
 
   The parser:
   * prepares and sends the appropriate stream format, based on information provided in the stream and via the element's options
-  * splits the incoming stream into h264 access units - each buffer being output is a `Membrane.Buffer` struct with a
+  * splits the incoming stream into H264 access units - each buffer being output is a `Membrane.Buffer` struct with a
   binary payload of a single access unit or network abstraction layer unit.
   * enriches the output buffers with the metadata describing the way the access unit is split into NAL units, type of each NAL unit
   making up the access unit and the information if the access unit hold a keyframe.
   * converts the stream's structure (Annex B, avc1 or avc3) to the one provided via the element's options.
 
   The parser works in one of three possible modes, depending on the structure of the input buffers:
-  * `:bytestream` - each input buffer contains some part of h264 stream's payload, but not necessary a logical
-  h264 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
+  * `:bytestream` - each input buffer contains some part of H264 stream's payload, but not necessary a logical
+  H264 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
   * `:nalu_aligned` - each input buffer contains a single NAL unit's payload
   * `:au_aligned` - each input buffer contains a single access unit's payload
 
@@ -26,7 +26,7 @@ defmodule Membrane.H264.Parser do
   * in the `:bytestream` mode:
     * if option `:framerate` is set to nil, the output buffers have their `:pts` and `:dts` set to nil
     * if framerate is specified, `:pts` and `:dts` will be generated automatically, based on that framerate, starting from 0
-     This may only be used with h264 profiles `:baseline` and `:constrained_baseline`, where `PTS==DTS`.
+     This may only be used with H264 profiles `:baseline` and `:constrained_baseline`, where `PTS==DTS`.
   * in the `:nalu_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the
    input buffer that was holding the first NAL unit making up given access unit (that is being sent inside that output buffer).
   * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
