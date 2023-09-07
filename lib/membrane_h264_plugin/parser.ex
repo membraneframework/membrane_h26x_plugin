@@ -46,6 +46,7 @@ defmodule Membrane.H264.Parser do
   use Membrane.Filter
 
   require Membrane.Logger
+  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
 
   alias __MODULE__.{
     AUSplitter,
@@ -114,8 +115,6 @@ defmodule Membrane.H264.Parser do
                 default: true,
                 description: """
                 Determines whether to drop the stream until the first key frame is received.
-
-                Defaults to true.
                 """
               ],
               repeat_parameter_sets: [
@@ -519,9 +518,6 @@ defmodule Membrane.H264.Parser do
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
           {{Membrane.Time.t(), Membrane.Time.t()}, state()}
   defp prepare_timestamps(au, state) do
-    alias Membrane.H264.Parser.NALuTypes
-    require Membrane.H264.Parser.NALuTypes
-
     if state.mode == :bytestream and state.au_timestamp_generator do
       {timestamps, timestamp_generator} =
         AUTimestampGenerator.generate_ts_with_constant_framerate(
