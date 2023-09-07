@@ -519,6 +519,9 @@ defmodule Membrane.H264.Parser do
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
           {{Membrane.Time.t(), Membrane.Time.t()}, state()}
   defp prepare_timestamps(au, state) do
+    alias Membrane.H264.Parser.NALuTypes
+    require Membrane.H264.Parser.NALuTypes
+
     if state.mode == :bytestream and state.au_timestamp_generator do
       {timestamps, timestamp_generator} =
         AUTimestampGenerator.generate_ts_with_constant_framerate(
@@ -528,7 +531,7 @@ defmodule Membrane.H264.Parser do
 
       {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
-      {hd(au).timestamps, state}
+      {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
     end
   end
 
