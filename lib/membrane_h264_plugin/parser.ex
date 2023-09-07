@@ -46,6 +46,7 @@ defmodule Membrane.H264.Parser do
   use Membrane.Filter
 
   require Membrane.Logger
+  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
 
   alias __MODULE__.{
     AUSplitter,
@@ -114,8 +115,6 @@ defmodule Membrane.H264.Parser do
                 default: true,
                 description: """
                 Determines whether to drop the stream until the first key frame is received.
-
-                Defaults to false.
                 """
               ],
               repeat_parameter_sets: [
@@ -528,7 +527,7 @@ defmodule Membrane.H264.Parser do
 
       {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
-      {hd(au).timestamps, state}
+      {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
     end
   end
 
