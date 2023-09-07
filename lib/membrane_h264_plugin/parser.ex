@@ -115,7 +115,7 @@ defmodule Membrane.H264.Parser do
                 description: """
                 Determines whether to drop the stream until the first key frame is received.
 
-                Defaults to false.
+                Defaults to true.
                 """
               ],
               repeat_parameter_sets: [
