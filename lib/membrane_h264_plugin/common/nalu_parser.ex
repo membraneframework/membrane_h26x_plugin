@@ -1,12 +1,13 @@
-defmodule Membrane.H264.Parser.NALuParser do
+defmodule Membrane.H26x.Common.NALuParser do
   @moduledoc """
   A module providing functionality of parsing a stream of binaries, out of which each
   is a payload of a single NAL unit.
   """
 
-  alias Membrane.H264.Parser
-  alias Membrane.H264.Parser.{NALu, NALuTypes}
-  alias Membrane.H264.Parser.NALuParser.{SchemeParser, Schemes}
+  alias Membrane.H264.Parser.NALuParser.Schemes
+  alias Membrane.H26x.Common.NALu
+  alias Membrane.H26x.Common.Parser
+  alias Membrane.H26x.Common.Parser.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -15,18 +16,46 @@ defmodule Membrane.H264.Parser.NALuParser do
   """
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
-            input_stream_structure: Parser.stream_structure()
+            input_stream_structure: Parser.stream_structure(),
+            encoding: Parser.encoding(),
+            nal_header_size: non_neg_integer(),
+            nalu_types_module: module(),
+            schemes_module: module()
           }
-  @enforce_keys [:input_stream_structure]
-  defstruct @enforce_keys ++ [scheme_parser_state: SchemeParser.new()]
+  @enforce_keys [:input_stream_structure, :encoding]
+  defstruct @enforce_keys ++
+              [
+                scheme_parser_state: SchemeParser.new(),
+                nal_header_size: 1,
+                nalu_types_module: nil,
+                schemes_module: nil
+              ]
 
   @doc """
   Returns a structure holding a clear NALu parser state. `input_stream_structure`
   determines the prefixes of input NALU payloads.
   """
-  @spec new(Parser.stream_structure()) :: t()
-  def new(input_stream_structure \\ :annexb) do
-    %__MODULE__{input_stream_structure: input_stream_structure}
+  @spec new(Parser.encoding(), Parser.stream_structure()) :: t()
+  def new(encoding \\ :h264, input_stream_structure \\ :annexb)
+
+  def new(:h264, input_stream_structure) do
+    %__MODULE__{
+      encoding: :h264,
+      input_stream_structure: input_stream_structure,
+      nal_header_size: 1,
+      nalu_types_module: Membrane.H264.Parser.NALuTypes,
+      schemes_module: Membrane.H264.Parser.NALuParser.Schemes
+    }
+  end
+
+  def new(:h265, input_stream_structure) do
+    %__MODULE__{
+      encoding: :h265,
+      input_stream_structure: input_stream_structure,
+      nal_header_size: 2,
+      nalu_types_module: Membrane.H265.Parser.NALuTypes,
+      schemes_module: Membrane.H265.Parser.NALuParser.Schemes
+    }
   end
 
   @doc """
@@ -59,23 +88,24 @@ defmodule Membrane.H264.Parser.NALuParser do
         {0, nalu_payload}
       end
 
-    <<nalu_header::binary-size(1), nalu_body::binary>> = unprefixed_nalu_payload
+    <<nalu_header::binary-size(state.nal_header_size), nalu_body::binary>> =
+      unprefixed_nalu_payload
 
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 
     {parsed_fields, scheme_parser_state} =
       SchemeParser.parse_with_scheme(
         nalu_header,
-        Schemes.NALuHeader,
+        Module.concat(state.schemes_module, NALuHeader),
         new_scheme_parser_state
       )
 
-    type = NALuTypes.get_type(parsed_fields.nal_unit_type)
+    type = state.nalu_types_module.get_type(parsed_fields.nal_unit_type)
 
     {nalu, scheme_parser_state} =
       try do
         {parsed_fields, scheme_parser_state} =
-          parse_proper_nalu_type(nalu_body, scheme_parser_state, type)
+          parse_proper_nalu_type(state.encoding, nalu_body, scheme_parser_state, type)
 
         {%NALu{
            parsed_fields: parsed_fields,
@@ -150,7 +180,7 @@ defmodule Membrane.H264.Parser.NALuParser do
     end)
   end
 
-  defp parse_proper_nalu_type(payload, state, type) do
+  defp parse_proper_nalu_type(:h264, payload, state, type) do
     case type do
       :sps ->
         SchemeParser.parse_with_scheme(payload, Schemes.SPS, state)
@@ -167,5 +197,9 @@ defmodule Membrane.H264.Parser.NALuParser do
       _unknown_nalu_type ->
         {%{}, state}
     end
+  end
+
+  defp parse_proper_nalu_type(:h265, _payload, state, _type) do
+    {%{}, state}
   end
 end

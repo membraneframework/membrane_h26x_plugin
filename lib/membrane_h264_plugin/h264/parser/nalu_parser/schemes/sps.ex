@@ -1,9 +1,9 @@
 defmodule Membrane.H264.Parser.NALuParser.Schemes.SPS do
   @moduledoc false
-  @behaviour Membrane.H264.Parser.NALuParser.Scheme
+  @behaviour Membrane.H26x.Common.Parser.NALuParser.Scheme
 
-  alias Membrane.H264.Common.ExpGolombConverter
   alias Membrane.H264.Parser.NALuParser.Scheme
+  alias Membrane.H26x.Common.ExpGolombConverter
 
   @impl true
   def defaults(), do: [chroma_format_idc: 1, separate_colour_plane_flag: 0]

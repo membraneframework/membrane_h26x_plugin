@@ -58,6 +58,7 @@ defmodule Membrane.H264.Parser do
     NALuSplitter
   }
 
+  alias Membrane.H26x.Common.{NALu, NALuParser, Parser.NALuSplitter}
   alias Membrane.{Buffer, H264, RemoteStream}
   alias Membrane.Element.{Action, CallbackContext}
 
@@ -241,7 +242,7 @@ defmodule Membrane.H264.Parser do
             state
             | mode: mode,
               nalu_splitter: NALuSplitter.new(input_stream_structure),
-              nalu_parser: NALuParser.new(input_stream_structure),
+              nalu_parser: NALuParser.new(:h264, input_stream_structure),
               input_stream_structure: input_stream_structure,
               output_stream_structure: output_stream_structure,
               framerate: Map.get(stream_format, :framerate) || state.framerate

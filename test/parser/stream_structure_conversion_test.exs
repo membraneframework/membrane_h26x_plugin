@@ -7,7 +7,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   import Membrane.Testing.Assertions
   import Membrane.H264.Support.Common
 
-  alias Membrane.H264
+  alias Membrane.{H264, H26x}
   alias Membrane.Testing.{Pipeline, Sink}
 
   @annexb_fixtures "../fixtures/*.h264"
@@ -205,10 +205,10 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   defp split_aus_to_nalus(aus_binaries, stream_structure) do
     Enum.map(aus_binaries, fn au_binary ->
       {nalus, _splitter} =
-        H264.Parser.NALuSplitter.split(
+        H26x.Common.Parser.NALuSplitter.split(
           au_binary,
           true,
-          H264.Parser.NALuSplitter.new(stream_structure)
+          H26x.Common.Parser.NALuSplitter.new(stream_structure)
         )
 
       nalus

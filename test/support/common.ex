@@ -1,7 +1,9 @@
 defmodule Membrane.H264.Support.Common do
   @moduledoc false
 
-  alias Membrane.H264.Parser.{AUSplitter, NALuParser, NALuSplitter}
+  alias Membrane.H264.Parser.AUSplitter
+  alias Membrane.H26x.Common.NALuParser
+  alias Membrane.H26x.Common.Parser.NALuSplitter
 
   @spec prepare_buffers(
           binary,
@@ -28,10 +30,7 @@ defmodule Membrane.H264.Support.Common do
     {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
 
     {nalus, _nalu_parser} =
-      NALuParser.parse_nalus(
-        nalus_payloads,
-        NALuParser.new(:annexb)
-      )
+      NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
 
     {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
 

@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Parser.NALu do
+defmodule Membrane.H26x.Common.NALu do
   @moduledoc """
   A module defining a struct representing a single NAL unit.
   """

@@ -1,7 +1,7 @@
-defmodule Membrane.H264.Parser.NALuSplitter do
+defmodule Membrane.H26x.Common.Parser.NALuSplitter do
   @moduledoc """
   A module with functions responsible for splitting
-  the h264 stream into the NAL units.
+  the h264 or h265 stream into the NAL units.
 
   The splitting is based on
   *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.

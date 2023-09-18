@@ -1,12 +1,12 @@
-defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
+defmodule Membrane.H26x.Common.Parser.NALuParser.SchemeParser do
   @moduledoc false
   # The module providing functions to parse the binary,
   # based on the given Scheme.
 
   use Bunch.Access
 
-  alias Membrane.H264.Common
-  alias Membrane.H264.Parser.NALuParser.Scheme
+  alias Membrane.H26x.Common
+  alias Membrane.H26x.Common.Parser.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.

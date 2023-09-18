@@ -4,7 +4,8 @@ Mix.install([
   {:membrane_stream_plugin, "~> 0.3.1"}
 ])
 
-alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}
+alias Membrane.H264.Parser.DecoderConfigurationRecord
+alias Membrane.H26x.Common.Parser.NALuSplitter
 
 defmodule Aligner do
   @moduledoc false
