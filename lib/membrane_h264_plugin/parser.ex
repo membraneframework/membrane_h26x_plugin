@@ -560,17 +560,12 @@ defmodule Membrane.H264.Parser do
           stream_structure()
         ) :: Buffer.t() | [Buffer.t()]
   defp wrap_into_buffer(access_unit, pts, dts, :au, output_stream_structure) do
-    metadata = prepare_au_metadata(access_unit)
-
-    buffer =
-      Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
-      end)
-      |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
-      end)
-
-    buffer
+    Enum.reduce(access_unit, <<>>, fn nalu, acc ->
+      acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
+    end)
+    |> then(fn payload ->
+      %Buffer{payload: payload, metadata: prepare_au_metadata(access_unit), pts: pts, dts: dts}
+    end)
   end
 
   defp wrap_into_buffer(access_unit, pts, dts, :nalu, output_stream_structure) do
