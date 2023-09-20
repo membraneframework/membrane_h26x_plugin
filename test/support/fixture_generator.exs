@@ -1,27 +1,12 @@
 Mix.install([
-  {:membrane_file_plugin, "~> 0.14.0"},
-  {:membrane_hackney_plugin, "~> 0.10.0"},
-  {:membrane_mp4_plugin, "~> 0.25.0"},
-  {:membrane_mp4_format, ">= 0.0.0"},
-  {:membrane_stream_plugin, "~> 0.3.1"},
-  {:membrane_aac_plugin, ">= 0.0.0"},
-  {:membrane_h264_format,
-   github: "membraneframework/membrane_h264_format", ref: "ea5a3d2", override: true},
-  {:membrane_h264_plugin,
-   github: "membraneframework/membrane_h264_plugin",
-   branch: "stream-type-conversion",
-   override: true}
+  {:membrane_file_plugin, "~> 0.15.0"},
+  {:membrane_mp4_plugin, "~> 0.29.0"},
+  {:membrane_stream_plugin, "~> 0.3.1"}
 ])
 
 alias Membrane.H264.Parser.{NALuSplitter, DecoderConfigurationRecord}
 
-defmodule Membrane.H264.RemoteStream do
-  @moduledoc false
-
-  defstruct []
-end
-
-defmodule MP4ToH264Filter do
+defmodule Aligner do
   @moduledoc false
 
   use Membrane.Filter
@@ -29,7 +14,7 @@ defmodule MP4ToH264Filter do
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    accepted_format: Membrane.MP4.Payload
+    accepted_format: Membrane.H264
 
   def_output_pad :output,
     demand_mode: :auto,
@@ -44,22 +29,9 @@ defmodule MP4ToH264Filter do
               ]
 
   @impl true
-  def handle_init(_ctx, opts) do
-    {[],
-     %{
-       output_alignment: opts.output_alignment,
-       output_stream_structure: opts.output_stream_structure
-     }}
-  end
-
-  @impl true
   def handle_stream_format(
         :input,
-        %Membrane.MP4.Payload{
-          width: width,
-          height: height,
-          content: %Membrane.MP4.Payload.AVC1{avcc: dcr}
-        },
+        %Membrane.H264{stream_structure: {:avc1, dcr}} = stream_format,
         _ctx,
         %{output_stream_structure: {avc, nalu_length_size}} = state
       ) do
@@ -73,10 +45,9 @@ defmodule MP4ToH264Filter do
        stream_format:
          {:output,
           %Membrane.H264{
-            width: width,
-            height: height,
-            alignment: state.output_alignment,
-            stream_structure: {avc, dcr}
+            stream_format
+            | alignment: state.output_alignment,
+              stream_structure: {avc, dcr}
           }}
      ], state}
   end
@@ -117,7 +88,7 @@ defmodule FixtureGeneratorPipeline do
       child(:video_source, %Membrane.File.Source{location: options.input_location})
       |> child(:demuxer, Membrane.MP4.Demuxer.ISOM)
       |> via_out(Pad.ref(:output, 1))
-      |> child(:filter, %MP4ToH264Filter{
+      |> child(:filter, %Aligner{
         output_alignment: options.output_alignment,
         output_stream_structure: options.stream_structure
       })
@@ -172,10 +143,10 @@ defmodule AVCFixtureGenerator do
     output_location =
       input_location
       |> Path.split()
-      |> List.replace_at(-2, "ms")
+      |> List.replace_at(-2, "msr")
       |> List.update_at(-1, fn file ->
         [name, "mp4"] = String.split(file, ".")
-        "#{name}-#{avc}-#{output_alignment}.ms"
+        "#{name}-#{avc}-#{output_alignment}.msr"
       end)
       |> Path.join()
 
