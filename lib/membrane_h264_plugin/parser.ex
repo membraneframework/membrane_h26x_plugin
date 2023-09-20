@@ -287,7 +287,6 @@ defmodule Membrane.H264.Parser do
     {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
     is_au_aligned = state.mode == :au_aligned
     {access_units, au_splitter} = AUSplitter.split(nalus, is_au_aligned, state.au_splitter)
-    {access_units, state} = skip_improper_aus(access_units, state)
     {actions, state} = prepare_actions_for_aus(access_units, ctx, state)
 
     state = %{
@@ -305,8 +304,7 @@ defmodule Membrane.H264.Parser do
     {last_nalu_payload, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {last_nalu, nalu_parser} = NALuParser.parse_nalus(last_nalu_payload, state.nalu_parser)
     {maybe_improper_aus, au_splitter} = AUSplitter.split(last_nalu, true, state.au_splitter)
-    {aus, state} = skip_improper_aus(maybe_improper_aus, state)
-    {actions, state} = prepare_actions_for_aus(aus, ctx, state)
+    {actions, state} = prepare_actions_for_aus(maybe_improper_aus, ctx, state)
 
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
 
@@ -395,22 +393,17 @@ defmodule Membrane.H264.Parser do
     {avc, nalu_length_size}
   end
 
-  defp skip_improper_aus(aus, state) do
-    Enum.flat_map_reduce(aus, state, fn au, state ->
-      has_seen_keyframe? =
-        Enum.all?(au, &(&1.status == :valid)) and Enum.any?(au, &(&1.type == :idr))
+  @spec skip_au?(AUSplitter.access_unit(), state()) :: {boolean(), state()}
+  defp skip_au?(au, state) do
+    has_seen_keyframe? =
+      Enum.all?(au, &(&1.status == :valid)) and Enum.any?(au, &(&1.type == :idr))
 
-      state = %{
-        state
-        | skip_until_keyframe: state.skip_until_keyframe and not has_seen_keyframe?
-      }
+    state = %{
+      state
+      | skip_until_keyframe: state.skip_until_keyframe and not has_seen_keyframe?
+    }
 
-      if Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe do
-        {[], state}
-      else
-        {[au], state}
-      end
-    end)
+    {Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe, state}
   end
 
   @spec prepare_actions_for_aus(
@@ -424,11 +417,17 @@ defmodule Membrane.H264.Parser do
 
       {{pts, dts}, state} = prepare_timestamps(au, state)
 
-      buffers_actions = [
-        buffer:
-          {:output,
-           wrap_into_buffer(au, pts, dts, state.output_alignment, state.output_stream_structure)}
-      ]
+      {should_skip_au, state} = skip_au?(au, state)
+
+      buffers_actions =
+        if should_skip_au do
+          []
+        else
+          buffers =
+            wrap_into_buffer(au, pts, dts, state.output_alignment, state.output_stream_structure)
+
+          [buffer: {:output, buffers}]
+        end
 
       {stream_format_actions ++ buffers_actions, state}
     end)
@@ -559,19 +558,14 @@ defmodule Membrane.H264.Parser do
           Membrane.Time.t(),
           :au | :nalu,
           stream_structure()
-        ) :: Buffer.t()
+        ) :: Buffer.t() | [Buffer.t()]
   defp wrap_into_buffer(access_unit, pts, dts, :au, output_stream_structure) do
-    metadata = prepare_au_metadata(access_unit)
-
-    buffer =
-      Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
-      end)
-      |> then(fn payload ->
-        %Buffer{payload: payload, metadata: metadata, pts: pts, dts: dts}
-      end)
-
-    buffer
+    Enum.reduce(access_unit, <<>>, fn nalu, acc ->
+      acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
+    end)
+    |> then(fn payload ->
+      %Buffer{payload: payload, metadata: prepare_au_metadata(access_unit), pts: pts, dts: dts}
+    end)
   end
 
   defp wrap_into_buffer(access_unit, pts, dts, :nalu, output_stream_structure) do
