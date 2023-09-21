@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.Common.Parser.NALuParser.Scheme do
+defmodule Membrane.H26x.Common.NALuParser.Scheme do
   @moduledoc false
   # A module defining the behaviour which should be implemented
   # by each NALu scheme.

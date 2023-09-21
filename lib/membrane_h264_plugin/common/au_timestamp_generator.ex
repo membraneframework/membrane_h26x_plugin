@@ -1,13 +1,15 @@
-defmodule Membrane.H264.Parser.AUTimestampGenerator do
+defmodule Membrane.H26x.Common.AUTimestampGenerator do
   @moduledoc false
 
   require Membrane.H264.Parser.NALuTypes, as: NALuTypes
 
-  alias Membrane.H264.Parser.NALu
+  alias Membrane.H26x.Common.NALu
 
+  @type encoding :: :h264 | :h265
   @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}
 
   @type t :: %{
+          encoding: :h264 | :h265,
           framerate: framerate,
           max_frame_reorder: 0..15,
           au_counter: non_neg_integer(),
@@ -16,8 +18,11 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
           prev_pic_order_cnt_msb: integer()
         }
 
-  @spec new(config :: %{:framerate => framerate, optional(:add_dts_offset) => boolean()}) :: t
-  def new(config) do
+  @spec new(
+          encoding(),
+          config :: %{:framerate => framerate, optional(:add_dts_offset) => boolean()}
+        ) :: t
+  def new(encoding, config) do
     # To make sure that PTS >= DTS at all times, we take maximal possible
     # frame reorder (which is 15 according to the spec) and subtract
     # `max_frame_reorder * frame_duration` from each frame's DTS.
@@ -25,6 +30,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     max_frame_reorder = if Map.get(config, :add_dts_offset, true), do: 15, else: 0
 
     %{
+      encoding: encoding,
       framerate: config.framerate,
       max_frame_reorder: max_frame_reorder,
       au_counter: 0,
@@ -45,7 +51,7 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     } = state
 
     first_vcl_nalu = Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
-    {poc, state} = calculate_poc(first_vcl_nalu, state)
+    {poc, state} = calculate_poc(state.encoding, first_vcl_nalu, state)
     key_frame_au_idx = if poc == 0, do: au_counter, else: key_frame_au_idx
     pts = div((key_frame_au_idx + poc) * seconds * Membrane.Time.second(), frames)
     dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
@@ -53,15 +59,14 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
     state = %{
       state
       | au_counter: au_counter + 1,
-        key_frame_au_idx: key_frame_au_idx,
-        prev_pic_first_vcl_nalu: first_vcl_nalu
+        key_frame_au_idx: key_frame_au_idx
     }
 
     {{pts, dts}, state}
   end
 
   # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification
-  defp calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 0}} = vcl_nalu, state) do
+  defp calculate_poc(:h264, %{parsed_fields: %{pic_order_cnt_type: 0}} = vcl_nalu, state) do
     max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)
 
     {prev_pic_order_cnt_msb, prev_pic_order_cnt_lsb} =
@@ -109,15 +114,69 @@ defmodule Membrane.H264.Parser.AUTimestampGenerator do
         pic_order_cnt_msb + pic_order_cnt_lsb
       end
 
-    {div(pic_order_cnt, 2), %{state | prev_pic_order_cnt_msb: pic_order_cnt_msb}}
+    {div(pic_order_cnt, 2),
+     %{state | prev_pic_order_cnt_msb: pic_order_cnt_msb, prev_pic_first_vcl_nalu: vcl_nalu}}
   end
 
-  defp calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 1}}, _state) do
+  defp calculate_poc(:h264, %{parsed_fields: %{pic_order_cnt_type: 1}}, _state) do
     raise "Timestamp generation error: unsupported stream. Unsupported field value pic_order_cnt_type=1"
   end
 
-  defp calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 2, frame_num: frame_num}}, state) do
-    {frame_num, state}
+  defp calculate_poc(
+         :h264,
+         %{parsed_fields: %{pic_order_cnt_type: 2, frame_num: frame_num}} = vcl_nalu,
+         state
+       ) do
+    {frame_num, %{state | prev_pic_first_vcl_nalu: vcl_nalu}}
+  end
+
+  # Calculate picture order count according to section 8.3.1 of the ITU-T H265 specification
+  defp calculate_poc(:h265, vcl_nalu, state) do
+    max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)
+
+    # We exclude CRA pictures from IRAP pictures since we have no way
+    # to assert the value of the flag NoRaslOutputFlag.
+    # If the CRA is the first access unit in the bytestream, the flag would be
+    # equal to 1 which reset the POC counter, and that condition is
+    # satisfied here since the initial value for prev_pic_order_cnt_msb and
+    # prev_pic_order_cnt_lsb are 0
+    {prev_pic_order_cnt_msb, prev_pic_order_cnt_lsb} =
+      if vcl_nalu.parsed_fields.nal_unit_type in 16..20 do
+        {0, 0}
+      else
+        {state.prev_pic_order_cnt_msb, state.prev_pic_first_vcl_nalu.pic_order_cnt_lsb}
+      end
+
+    pic_order_cnt_lsb = vcl_nalu.parsed_fields.pic_order_cnt_lsb
+
+    pic_order_cnt_msb =
+      cond do
+        pic_order_cnt_lsb < prev_pic_order_cnt_lsb and
+            prev_pic_order_cnt_lsb - pic_order_cnt_lsb >= div(max_pic_order_cnt_lsb, 2) ->
+          prev_pic_order_cnt_msb + max_pic_order_cnt_lsb
+
+        pic_order_cnt_lsb > prev_pic_order_cnt_lsb and
+            pic_order_cnt_lsb - prev_pic_order_cnt_lsb > div(max_pic_order_cnt_lsb, 2) ->
+          prev_pic_order_cnt_msb - max_pic_order_cnt_lsb
+
+        true ->
+          prev_pic_order_cnt_msb
+      end
+
+    {prev_pic_first_vcl_nalu, prev_pic_order_cnt_msb} =
+      if vcl_nalu.type in [:radl_r, :radl_n, :rasl_r, :rasl_n] or
+           vcl_nalu.parsed_fields.nal_unit_type in 0..15//2 do
+        {state.prev_pic_first_vcl_nalu, prev_pic_order_cnt_msb}
+      else
+        {vcl_nalu, pic_order_cnt_msb}
+      end
+
+    {pic_order_cnt_msb + pic_order_cnt_lsb,
+     %{
+       state
+       | prev_pic_order_cnt_msb: prev_pic_order_cnt_msb,
+         prev_pic_first_vcl_nalu: prev_pic_first_vcl_nalu
+     }}
   end
 
   defp get_slice_type(vcl_nalu) do

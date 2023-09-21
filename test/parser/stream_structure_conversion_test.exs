@@ -205,10 +205,10 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   defp split_aus_to_nalus(aus_binaries, stream_structure) do
     Enum.map(aus_binaries, fn au_binary ->
       {nalus, _splitter} =
-        H26x.Common.Parser.NALuSplitter.split(
+        H26x.Common.NALuSplitter.split(
           au_binary,
           true,
-          H26x.Common.Parser.NALuSplitter.new(stream_structure)
+          H26x.Common.NALuSplitter.new(stream_structure)
         )
 
       nalus

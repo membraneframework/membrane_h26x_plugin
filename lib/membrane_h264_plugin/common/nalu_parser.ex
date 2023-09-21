@@ -4,10 +4,14 @@ defmodule Membrane.H26x.Common.NALuParser do
   is a payload of a single NAL unit.
   """
 
-  alias Membrane.H264.Parser.NALuParser.Schemes
-  alias Membrane.H26x.Common.NALu
-  alias Membrane.H26x.Common.Parser
-  alias Membrane.H26x.Common.Parser.NALuParser.SchemeParser
+  alias Membrane.H264.Parser.NALuParser.Schemes, as: AVCSchemes
+  alias Membrane.H265.Parser.NALuParser.Schemes, as: HEVCSchemes
+
+  alias Membrane.H264.Parser.NALuTypes, as: AVCNALuTypes
+  alias Membrane.H265.Parser.NALuTypes, as: HEVCNALuTypes
+
+  alias Membrane.H26x.Common.{NALu, Parser}
+  alias Membrane.H26x.Common.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -94,13 +98,9 @@ defmodule Membrane.H26x.Common.NALuParser do
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 
     {parsed_fields, scheme_parser_state} =
-      SchemeParser.parse_with_scheme(
-        nalu_header,
-        Module.concat(state.schemes_module, NALuHeader),
-        new_scheme_parser_state
-      )
+      parse_nalu_header(state.encoding, nalu_header, new_scheme_parser_state)
 
-    type = state.nalu_types_module.get_type(parsed_fields.nal_unit_type)
+    type = get_nalu_type(state.encoding, parsed_fields.nal_unit_type)
 
     {nalu, scheme_parser_state} =
       try do
@@ -180,26 +180,56 @@ defmodule Membrane.H26x.Common.NALuParser do
     end)
   end
 
+  defp parse_nalu_header(:h264, nalu_header, state) do
+    SchemeParser.parse_with_scheme(nalu_header, AVCSchemes.NALuHeader, state)
+  end
+
+  defp parse_nalu_header(:h265, nalu_header, state) do
+    SchemeParser.parse_with_scheme(nalu_header, HEVCSchemes.NALuHeader, state)
+  end
+
+  defp get_nalu_type(:h264, nal_unit_type), do: AVCNALuTypes.get_type(nal_unit_type)
+  defp get_nalu_type(:h265, nal_unit_type), do: HEVCNALuTypes.get_type(nal_unit_type)
+
   defp parse_proper_nalu_type(:h264, payload, state, type) do
     case type do
       :sps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.SPS, state)
+        SchemeParser.parse_with_scheme(payload, AVCSchemes.SPS, state)
 
       :pps ->
-        SchemeParser.parse_with_scheme(payload, Schemes.PPS, state)
+        SchemeParser.parse_with_scheme(payload, AVCSchemes.PPS, state)
 
       :idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice, state)
+        SchemeParser.parse_with_scheme(payload, AVCSchemes.Slice, state)
 
       :non_idr ->
-        SchemeParser.parse_with_scheme(payload, Schemes.Slice, state)
+        SchemeParser.parse_with_scheme(payload, AVCSchemes.Slice, state)
 
       _unknown_nalu_type ->
         {%{}, state}
     end
   end
 
-  defp parse_proper_nalu_type(:h265, _payload, state, _type) do
-    {%{}, state}
+  defp parse_proper_nalu_type(:h265, payload, state, type) do
+    # delete prevention emulation 3 bytes
+    payload = :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
+
+    case type do
+      :vps ->
+        SchemeParser.parse_with_scheme(payload, HEVCSchemes.VPS, state)
+
+      :sps ->
+        SchemeParser.parse_with_scheme(payload, HEVCSchemes.SPS, state)
+
+      :pps ->
+        SchemeParser.parse_with_scheme(payload, HEVCSchemes.PPS, state)
+
+      type ->
+        if type in HEVCNALuTypes.vcl_nalu_types() do
+          SchemeParser.parse_with_scheme(payload, HEVCSchemes.Slice, state)
+        else
+          {SchemeParser.get_local_state(state), state}
+        end
+    end
   end
 end

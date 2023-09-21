@@ -5,7 +5,7 @@ Mix.install([
 ])
 
 alias Membrane.H264.Parser.DecoderConfigurationRecord
-alias Membrane.H26x.Common.Parser.NALuSplitter
+alias Membrane.H26x.Common.NALuSplitter
 
 defmodule Aligner do
   @moduledoc false

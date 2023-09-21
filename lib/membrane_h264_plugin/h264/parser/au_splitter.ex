@@ -15,11 +15,13 @@ defmodule Membrane.H264.Parser.AUSplitter do
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
+  @behaviour Membrane.H26x.Common.AUSplitter
+
   require Membrane.Logger
 
   require Membrane.H264.Parser.NALuTypes, as: NALuTypes
 
-  alias Membrane.H264.Parser.NALu
+  alias Membrane.H26x.Common.{AUSplitter, NALu}
 
   @typedoc """
   A structure holding a state of the access unit splitter.
@@ -28,7 +30,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
             nalus_acc: [NALu.t()],
             fsm_state: :first | :second,
             previous_primary_coded_picture_nalu: NALu.t() | nil,
-            access_units_to_output: access_unit()
+            access_units_to_output: AUSplitter.access_unit()
           }
   @enforce_keys [
     :nalus_acc,
@@ -55,11 +57,6 @@ defmodule Membrane.H264.Parser.AUSplitter do
   @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
   @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]
 
-  @typedoc """
-  A type representing an access unit - a list of logically associated NAL units.
-  """
-  @type access_unit() :: list(NALu.t())
-
   @doc """
   Splits the given list of NAL units into the access units.
 
@@ -77,7 +74,7 @@ defmodule Membrane.H264.Parser.AUSplitter do
   is not returned until another access unit starts, as it's the only way to prove that
   the access unit is complete.
   """
-  @spec split([NALu.t()], boolean(), t()) :: {[access_unit()], t()}
+  @spec split([NALu.t()], boolean(), t()) :: {[AUSplitter.access_unit()], t()}
   def split(nalus, assume_au_aligned \\ false, state) do
     state = do_split(nalus, state)
 
