@@ -1,8 +1,8 @@
 defmodule Membrane.H264.Support.Common do
   @moduledoc false
 
-  alias Membrane.H264.Parser.AUSplitter
-  alias Membrane.H26x.Common.{NALuParser, NALuSplitter}
+  alias Membrane.H264.AUSplitter
+  alias Membrane.H2645.{NALuParser, NALuSplitter}
 
   @spec prepare_buffers(
           binary,

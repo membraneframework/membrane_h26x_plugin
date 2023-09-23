@@ -1,12 +1,12 @@
-defmodule Membrane.H26x.Common.NALuParser.SchemeParser do
+defmodule Membrane.H2645.NALuParser.SchemeParser do
   @moduledoc false
   # The module providing functions to parse the binary,
   # based on the given Scheme.
 
   use Bunch.Access
 
-  alias Membrane.H26x.Common
-  alias Membrane.H26x.Common.NALuParser.Scheme
+  alias Membrane.H2645.ExpGolombConverter
+  alias Membrane.H2645.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.
@@ -201,10 +201,10 @@ defmodule Membrane.H26x.Common.NALuParser.SchemeParser do
         {value, rest}
 
       :ue ->
-        Common.ExpGolombConverter.to_integer(payload)
+        ExpGolombConverter.to_integer(payload)
 
       :se ->
-        Common.ExpGolombConverter.to_integer(payload, negatives: true)
+        ExpGolombConverter.to_integer(payload, negatives: true)
 
       unsigned_int ->
         how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()

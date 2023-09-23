@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Parser.AUSplitter do
+defmodule Membrane.H264.AUSplitter do
   @moduledoc """
   Module providing functionalities to divide the binary
   h264 stream into access units.
@@ -15,13 +15,14 @@ defmodule Membrane.H264.Parser.AUSplitter do
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
-  @behaviour Membrane.H26x.Common.AUSplitter
+  @behaviour Membrane.H2645.AUSplitter
 
   require Membrane.Logger
 
-  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+  require Membrane.H264.NALuTypes, as: NALuTypes
 
-  alias Membrane.H26x.Common.{AUSplitter, NALu}
+  alias Membrane.H2645.NALu
+  alias Membrane.H26x.Common.AUSplitter
 
   @typedoc """
   A structure holding a state of the access unit splitter.

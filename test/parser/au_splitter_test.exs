@@ -14,9 +14,9 @@ defmodule AUSplitterTest do
 
   defmodule FullBinaryParser do
     @moduledoc false
-    alias Membrane.H264.Parser.AUSplitter
+    alias Membrane.H264.AUSplitter
 
-    alias Membrane.H26x.Common.{NALuParser, NALuSplitter}
+    alias Membrane.H2645.{NALuParser, NALuSplitter}
 
     @spec parse(binary()) :: AUSplitter.access_unit()
     def parse(payload) do

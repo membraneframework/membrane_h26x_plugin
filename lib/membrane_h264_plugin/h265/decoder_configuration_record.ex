@@ -1,11 +1,12 @@
-defmodule Membrane.H265.Parser.DecoderConfigurationRecord do
+defmodule Membrane.H265.DecoderConfigurationRecord do
   @moduledoc """
   Utility functions for parsing and generating HEVC Configuration Record.
 
   The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
   """
 
-  alias Membrane.H26x.Common.{NALu, Parser}
+  alias Membrane.H2645.NALu
+  alias Membrane.H265.Parser
 
   @enforce_keys [
     :vpss,

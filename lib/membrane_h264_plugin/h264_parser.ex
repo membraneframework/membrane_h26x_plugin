@@ -158,7 +158,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_init(_ctx, opts) do
-    {[], Parser.new(:h264, opts, Membrane.H264.Parser.AUSplitter)}
+    {[], Parser.new(:h264, opts, Membrane.H264.AUSplitter)}
   end
 
   @impl true

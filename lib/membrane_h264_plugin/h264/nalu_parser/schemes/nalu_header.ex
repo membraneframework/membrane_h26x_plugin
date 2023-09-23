@@ -1,6 +1,6 @@
-defmodule Membrane.H264.Parser.NALuParser.Schemes.NALuHeader do
+defmodule Membrane.H264.NALuParser.Schemes.NALuHeader do
   @moduledoc false
-  @behaviour Membrane.H26x.Common.Parser.NALuParser.Scheme
+  @behaviour Membrane.H2645.NALuParser.Scheme
 
   @impl true
   def defaults(), do: []

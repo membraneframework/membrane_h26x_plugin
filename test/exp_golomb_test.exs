@@ -2,7 +2,7 @@ defmodule ExpGolombTest do
   @moduledoc false
 
   use ExUnit.Case, async: true
-  alias Membrane.H26x.Common.ExpGolombConverter
+  alias Membrane.H2645.ExpGolombConverter
   @integers [0, 1, -3, 5, 12, 51, -13_413, 25_542, 2137]
 
   test "if the decoding the encoded integer results in the original integer" do

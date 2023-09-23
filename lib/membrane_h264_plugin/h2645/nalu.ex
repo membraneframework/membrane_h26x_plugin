@@ -1,7 +1,9 @@
-defmodule Membrane.H26x.Common.NALu do
+defmodule Membrane.H2645.NALu do
   @moduledoc """
   A module defining a struct representing a single NAL unit.
   """
+
+  alias Membrane.{H264, H265}
 
   @typedoc """
   A type defining the structure of a single NAL unit produced
@@ -19,7 +21,7 @@ defmodule Membrane.H26x.Common.NALu do
   """
   @type t :: %__MODULE__{
           parsed_fields: %{atom() => any()},
-          type: Membrane.H264.Parser.NALuTypes.nalu_type(),
+          type: H264.NALuTypes.nalu_type() | H265.NALuTypes.nalu_type(),
           stripped_prefix: binary(),
           payload: binary(),
           status: :valid | :error,

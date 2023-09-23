@@ -1,12 +1,12 @@
-defmodule Membrane.H265.Parser.NALuParser.Schemes.SPS do
+defmodule Membrane.H265.NALuParser.Schemes.SPS do
   @moduledoc false
 
-  @behaviour Membrane.H26x.Common.Parser.NALuParser.Scheme
+  @behaviour Membrane.H2645.NALuParser.Scheme
 
   import Bitwise
 
-  alias Membrane.H265.Parser.NALuParser.Schemes.Common
-  alias Membrane.H26x.Common.ExpGolombConverter
+  alias Membrane.H2645.ExpGolombConverter
+  alias Membrane.H265.NALuParser.Schemes.Common
 
   @profiles_description [
     main: [profile_idc: 1],

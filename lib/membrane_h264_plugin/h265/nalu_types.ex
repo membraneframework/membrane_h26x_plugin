@@ -1,4 +1,4 @@
-defmodule Membrane.H265.Parser.NALuTypes do
+defmodule Membrane.H265.NALuTypes do
   @moduledoc """
   The module aggregating the mapping of `nal_unit_type` fields
   of the NAL unit to the human-friendly name of a NALu type.

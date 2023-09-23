@@ -1,9 +1,9 @@
-defmodule Membrane.H265.Parser.NALuParser.Schemes.VPS do
+defmodule Membrane.H265.NALuParser.Schemes.VPS do
   @moduledoc false
 
-  @behaviour Membrane.H26x.Common.Parser.NALuParser.Scheme
+  @behaviour Membrane.H2645.NALuParser.Scheme
 
-  alias Membrane.H265.Parser.NALuParser.Schemes.Common
+  alias Membrane.H265.NALuParser.Schemes.Common
 
   @impl true
   def defaults(), do: []

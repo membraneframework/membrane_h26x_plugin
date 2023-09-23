@@ -1,4 +1,4 @@
-defmodule Membrane.H265.Parser.AUSplitter do
+defmodule Membrane.H265.AUSplitter do
   @moduledoc """
   Module providing functionalities to group H265 NAL units
   into access units.
@@ -7,12 +7,12 @@ defmodule Membrane.H265.Parser.AUSplitter do
   *"Order of NAL units and coded pictures and association to access units"*
   of the *"ITU-T Rec. H.265 (08/2021)"* specification.
   """
-  @behaviour Membrane.H26x.Common.AUSplitter
+  @behaviour Membrane.H2645.AUSplitter
 
   require Logger
 
-  alias Membrane.H265.Parser.NALuTypes
-  alias Membrane.H26x.Common.{AUSplitter, NALu}
+  alias Membrane.H2645.{AUSplitter, NALu}
+  alias Membrane.H265.NALuTypes
 
   @typedoc """
   A structure holding a state of the access unit splitter.

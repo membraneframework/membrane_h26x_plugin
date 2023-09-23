@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
+defmodule Membrane.H264.DecoderConfigurationRecord do
   @moduledoc """
   Utility functions for parsing and generating AVC Configuration Record.
 

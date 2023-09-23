@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.Common.NALuSplitter do
+defmodule Membrane.H2645.NALuSplitter do
   @moduledoc """
   A module with functions responsible for splitting
   the h264 or h265 stream into the NAL units.
@@ -7,11 +7,13 @@ defmodule Membrane.H26x.Common.NALuSplitter do
   *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   """
 
+  alias Membrane.{H264, H265}
+
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            input_stream_structure: Membrane.H264.Parser.stream_structure(),
+            input_stream_structure: H264.Parser.stream_structure() | H265.Parser.stream_structure(),
             unparsed_payload: binary()
           }
 

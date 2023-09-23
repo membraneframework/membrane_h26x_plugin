@@ -1,9 +1,9 @@
-defmodule Membrane.H26x.Common.AUTimestampGenerator do
+defmodule Membrane.H2645.AUTimestampGenerator do
   @moduledoc false
 
-  require Membrane.H264.Parser.NALuTypes, as: NALuTypes
+  require Membrane.H264.NALuTypes, as: NALuTypes
 
-  alias Membrane.H26x.Common.NALu
+  alias Membrane.H2645.NALu
 
   @type encoding :: :h264 | :h265
   @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}
@@ -50,7 +50,7 @@ defmodule Membrane.H26x.Common.AUTimestampGenerator do
       framerate: {frames, seconds}
     } = state
 
-    first_vcl_nalu = Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+    first_vcl_nalu = get_first_vcl_nalu(state.encoding, au)
     {poc, state} = calculate_poc(state.encoding, first_vcl_nalu, state)
     key_frame_au_idx = if poc == 0, do: au_counter, else: key_frame_au_idx
     pts = div((key_frame_au_idx + poc) * seconds * Membrane.Time.second(), frames)
@@ -63,6 +63,14 @@ defmodule Membrane.H26x.Common.AUTimestampGenerator do
     }
 
     {{pts, dts}, state}
+  end
+
+  defp get_first_vcl_nalu(:h264, au) do
+    Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+  end
+
+  defp get_first_vcl_nalu(:h265, au) do
+    Enum.find(au, &(&1 in Membrane.H265.NALuTypes.vcl_nalu_types()))
   end
 
   # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification

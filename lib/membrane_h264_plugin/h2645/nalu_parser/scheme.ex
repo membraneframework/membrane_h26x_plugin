@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.Common.NALuParser.Scheme do
+defmodule Membrane.H2645.NALuParser.Scheme do
   @moduledoc false
   # A module defining the behaviour which should be implemented
   # by each NALu scheme.
@@ -26,7 +26,7 @@ defmodule Membrane.H26x.Common.NALuParser.Scheme do
   #
   # Furthermore, `Scheme` behavior defines `defaults/0` callback,
   # which is used to provide the default values of the fields.
-  alias Membrane.H26x.Common.Parser.NALuParser.SchemeParser
+  alias Membrane.H2645.NALuParser.SchemeParser
 
   @type field :: {any(), SchemeParser.field()}
   @type if_clause :: {value_provider(boolean()), t()}
