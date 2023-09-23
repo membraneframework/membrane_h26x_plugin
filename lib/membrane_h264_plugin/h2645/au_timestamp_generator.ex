@@ -70,7 +70,7 @@ defmodule Membrane.H2645.AUTimestampGenerator do
   end
 
   defp get_first_vcl_nalu(:h265, au) do
-    Enum.find(au, &(&1 in Membrane.H265.NALuTypes.vcl_nalu_types()))
+    Enum.find(au, &(&1.type in Membrane.H265.NALuTypes.vcl_nalu_types()))
   end
 
   # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification
@@ -152,7 +152,8 @@ defmodule Membrane.H2645.AUTimestampGenerator do
       if vcl_nalu.parsed_fields.nal_unit_type in 16..20 do
         {0, 0}
       else
-        {state.prev_pic_order_cnt_msb, state.prev_pic_first_vcl_nalu.pic_order_cnt_lsb}
+        {state.prev_pic_order_cnt_msb,
+         state.prev_pic_first_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
       end
 
     pic_order_cnt_lsb = vcl_nalu.parsed_fields.pic_order_cnt_lsb

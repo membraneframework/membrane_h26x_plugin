@@ -34,7 +34,7 @@ defmodule Membrane.H265.Parser do
 
   require Membrane.Logger
 
-  alias Membrane.{H264, RemoteStream}
+  alias Membrane.{H265, RemoteStream}
   alias Membrane.Element.{Action, CallbackContext}
 
   alias Membrane.H26x.Parser
@@ -49,11 +49,11 @@ defmodule Membrane.H265.Parser do
   def_input_pad :input,
     demand_unit: :buffers,
     demand_mode: :auto,
-    accepted_format: any_of(%RemoteStream{type: :bytestream}, H264)
+    accepted_format: any_of(%RemoteStream{type: :bytestream}, H265)
 
   def_output_pad :output,
     demand_mode: :auto,
-    accepted_format: %H264{nalu_in_metadata?: true}
+    accepted_format: %H265{nalu_in_metadata?: true}
 
   def_options vpss: [
                 spec: [binary()],

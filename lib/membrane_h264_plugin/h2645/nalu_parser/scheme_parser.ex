@@ -146,12 +146,14 @@ defmodule Membrane.H2645.NALuParser.SchemeParser do
     {min_value, min_args_list} = make_function(min_value)
     {max_value, max_args_list} = make_function(max_value)
 
+    {min_value, max_value} = {
+      apply(min_value, get_args(min_args_list, state.__local__)),
+      apply(max_value, get_args(max_args_list, state.__local__))
+    }
+
     {payload, state} =
       Enum.reduce(
-        apply(min_value, get_args(min_args_list, state.__local__))..apply(
-          max_value,
-          get_args(max_args_list, state.__local__)
-        ),
+        if(min_value > max_value, do: [], else: min_value..max_value),
         {payload, state},
         fn iterator, {payload, state} ->
           state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)

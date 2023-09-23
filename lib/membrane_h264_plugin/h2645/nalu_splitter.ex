@@ -13,7 +13,8 @@ defmodule Membrane.H2645.NALuSplitter do
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            input_stream_structure: H264.Parser.stream_structure() | H265.Parser.stream_structure(),
+            input_stream_structure:
+              H264.Parser.stream_structure() | H265.Parser.stream_structure(),
             unparsed_payload: binary()
           }
 
