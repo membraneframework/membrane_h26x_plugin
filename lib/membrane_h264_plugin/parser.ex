@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.Parser do
+defmodule Membrane.H2645.Parser do
   @moduledoc false
 
   require Membrane.Logger
@@ -489,7 +489,7 @@ defmodule Membrane.H26x.Parser do
       timestamps =
         case state.encoding do
           :h264 -> Enum.find(au, &AVCNALuTypes.is_vcl_nalu_type(&1.type)).timestamps
-          :h265 -> Enum.find(au, &(&1 in HEVCNALuTypes.vcl_nalu_types())).timestamps
+          :h265 -> Enum.find(au, &(&1.type in HEVCNALuTypes.vcl_nalu_types())).timestamps
         end
 
       {timestamps, state}

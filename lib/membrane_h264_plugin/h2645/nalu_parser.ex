@@ -12,7 +12,7 @@ defmodule Membrane.H2645.NALuParser do
 
   alias Membrane.H2645.NALu
   alias Membrane.H2645.NALuParser.SchemeParser
-  alias Membrane.H26x.Common.Parser
+  alias Membrane.H2645.Parser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -23,17 +23,13 @@ defmodule Membrane.H2645.NALuParser do
             scheme_parser_state: SchemeParser.t(),
             input_stream_structure: Parser.stream_structure(),
             encoding: Parser.encoding(),
-            nal_header_size: non_neg_integer(),
-            nalu_types_module: module(),
-            schemes_module: module()
+            nal_header_size: non_neg_integer()
           }
   @enforce_keys [:input_stream_structure, :encoding]
   defstruct @enforce_keys ++
               [
                 scheme_parser_state: SchemeParser.new(),
-                nal_header_size: 1,
-                nalu_types_module: nil,
-                schemes_module: nil
+                nal_header_size: 1
               ]
 
   @doc """
@@ -41,25 +37,11 @@ defmodule Membrane.H2645.NALuParser do
   determines the prefixes of input NALU payloads.
   """
   @spec new(Parser.encoding(), Parser.stream_structure()) :: t()
-  def new(encoding \\ :h264, input_stream_structure \\ :annexb)
-
-  def new(:h264, input_stream_structure) do
+  def new(encoding \\ :h264, input_stream_structure \\ :annexb) do
     %__MODULE__{
-      encoding: :h264,
+      encoding: encoding,
       input_stream_structure: input_stream_structure,
-      nal_header_size: 1,
-      nalu_types_module: Membrane.H264.Parser.NALuTypes,
-      schemes_module: Membrane.H264.Parser.NALuParser.Schemes
-    }
-  end
-
-  def new(:h265, input_stream_structure) do
-    %__MODULE__{
-      encoding: :h265,
-      input_stream_structure: input_stream_structure,
-      nal_header_size: 2,
-      nalu_types_module: Membrane.H265.Parser.NALuTypes,
-      schemes_module: Membrane.H265.Parser.NALuParser.Schemes
+      nal_header_size: if(encoding == :h264, do: 1, else: 2)
     }
   end
 

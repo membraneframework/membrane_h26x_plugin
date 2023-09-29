@@ -50,7 +50,7 @@ defmodule Membrane.H264.Parser do
   alias Membrane.{H264, RemoteStream}
   alias Membrane.Element.{Action, CallbackContext}
 
-  alias Membrane.H26x.Parser
+  alias Membrane.H2645.Parser
 
   @typedoc """
   Type referencing `Membrane.H264.stream_structure` type, in case of `:avc1` and `:avc3`
