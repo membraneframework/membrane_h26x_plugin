@@ -175,7 +175,7 @@ defmodule Membrane.H2645.Parser do
     {last_nalu_payload, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {last_nalu, nalu_parser} = NALuParser.parse_nalus(last_nalu_payload, state.nalu_parser)
 
-    {maybe_improper_aus, au_splitter} =
+    {aus, au_splitter} =
       state.au_splitter_module.split(last_nalu, true, state.au_splitter)
 
     {actions, state} = prepare_actions_for_aus(aus, old_stream_format, state)
@@ -338,7 +338,7 @@ defmodule Membrane.H2645.Parser do
           []
         else
           buffers =
-            wrap_into_buffer(au, pts, dts, state.output_alignment, state.output_stream_structure)
+            wrap_into_buffer(au, pts, dts, state.output_alignment, state)
 
           [buffer: {:output, buffers}]
         end
@@ -524,14 +524,14 @@ defmodule Membrane.H2645.Parser do
           Membrane.Time.t(),
           Membrane.Time.t(),
           :au | :nalu,
-          stream_structure()
+          state()
         ) :: Buffer.t() | [Buffer.t()]
-  defp wrap_into_buffer(access_unit, pts, dts, :au, output_stream_structure) do
+  defp wrap_into_buffer(access_unit, pts, dts, :au, state) do
     Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-      acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
+      acc <> NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
     end)
     |> then(fn payload ->
-      %Buffer{payload: payload, metadata: prepare_au_metadata(access_unit), pts: pts, dts: dts}
+      %Buffer{payload: payload, metadata: prepare_au_metadata(access_unit, state), pts: pts, dts: dts}
     end)
   end
 
