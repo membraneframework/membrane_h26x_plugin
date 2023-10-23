@@ -283,7 +283,7 @@ defmodule Membrane.H264.Parser do
     {nalus_payloads, nalu_splitter} =
       NALuSplitter.split(payload, is_nalu_aligned, state.nalu_splitter)
 
-    timestamps = if state.mode == :bytestream, do: {nil, nil}, else: {buffer.pts, buffer.dts}
+    timestamps = {buffer.pts, buffer.dts}
     {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
     is_au_aligned = state.mode == :au_aligned
     {access_units, au_splitter} = AUSplitter.split(nalus, is_au_aligned, state.au_splitter)
@@ -517,16 +517,18 @@ defmodule Membrane.H264.Parser do
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
           {{Membrane.Time.t(), Membrane.Time.t()}, state()}
   defp prepare_timestamps(au, state) do
-    if state.mode == :bytestream and state.au_timestamp_generator do
-      {timestamps, timestamp_generator} =
-        AUTimestampGenerator.generate_ts_with_constant_framerate(
-          au,
-          state.au_timestamp_generator
-        )
+    cond do
+      state.mode == :bytestream and state.au_timestamp_generator ->
+        {timestamps, timestamp_generator} =
+          AUTimestampGenerator.generate_ts_with_constant_framerate(
+            au,
+            state.au_timestamp_generator
+          )
 
-      {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
-    else
-      {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
+        {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
+
+      true ->
+        {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
     end
   end
 
