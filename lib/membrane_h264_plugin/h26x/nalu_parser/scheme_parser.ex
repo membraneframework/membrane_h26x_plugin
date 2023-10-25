@@ -1,12 +1,12 @@
-defmodule Membrane.H2645.NALuParser.SchemeParser do
+defmodule Membrane.H26x.NALuParser.SchemeParser do
   @moduledoc false
   # The module providing functions to parse the binary,
   # based on the given Scheme.
 
   use Bunch.Access
 
-  alias Membrane.H2645.ExpGolombConverter
-  alias Membrane.H2645.NALuParser.Scheme
+  alias Membrane.H26x.ExpGolombConverter
+  alias Membrane.H26x.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.

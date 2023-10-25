@@ -15,14 +15,13 @@ defmodule Membrane.H264.AUSplitter do
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
-  @behaviour Membrane.H2645.AUSplitter
+  @behaviour Membrane.H26x.AUSplitter
 
   require Membrane.Logger
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
-  alias Membrane.H2645.NALu
-  alias Membrane.H26x.Common.AUSplitter
+  alias Membrane.H26x.{AUSplitter, NALu}
 
   @typedoc """
   A structure holding a state of the access unit splitter.

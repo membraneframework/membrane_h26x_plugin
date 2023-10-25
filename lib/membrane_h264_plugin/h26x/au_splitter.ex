@@ -1,9 +1,9 @@
-defmodule Membrane.H2645.AUSplitter do
+defmodule Membrane.H26x.AUSplitter do
   @moduledoc """
   A behaviour module to split NALus into access units
   """
 
-  alias Membrane.H2645.NALu
+  alias Membrane.H26x.NALu
 
   @typedoc """
   A type representing an access unit - a list of logically associated NAL units.

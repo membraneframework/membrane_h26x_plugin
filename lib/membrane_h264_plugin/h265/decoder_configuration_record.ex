@@ -5,8 +5,8 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
   """
 
-  alias Membrane.H2645.NALu
   alias Membrane.H265.Parser
+  alias Membrane.H26x.NALu
 
   @enforce_keys [
     :vpss,

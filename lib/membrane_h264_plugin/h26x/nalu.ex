@@ -1,4 +1,4 @@
-defmodule Membrane.H2645.NALu do
+defmodule Membrane.H26x.NALu do
   @moduledoc """
   A module defining a struct representing a single NAL unit.
   """
@@ -6,8 +6,7 @@ defmodule Membrane.H2645.NALu do
   alias Membrane.{H264, H265}
 
   @typedoc """
-  A type defining the structure of a single NAL unit produced
-  by the `Membrane.H264.Parser.NALuParser`.
+  A type defining the structure of a single NAL unit produced by the `Membrane.H26x.NALuParser`.
 
   In the structure there ardqde following fields:
   * `parsed_fields` - the map with keys being the NALu field names and the values being the value fetched from the NALu binary.

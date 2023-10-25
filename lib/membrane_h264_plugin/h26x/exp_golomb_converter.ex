@@ -1,4 +1,4 @@
-defmodule Membrane.H2645.ExpGolombConverter do
+defmodule Membrane.H26x.ExpGolombConverter do
   @moduledoc """
   This module holds function responsible for converting
   from and to Exp-Golomb Notation.

@@ -1,4 +1,4 @@
-defmodule Membrane.H2645.NALuParser do
+defmodule Membrane.H26x.NALuParser do
   @moduledoc """
   A module providing functionality of parsing a stream of binaries, out of which each
   is a payload of a single NAL unit.
@@ -10,9 +10,8 @@ defmodule Membrane.H2645.NALuParser do
   alias Membrane.H264.NALuTypes, as: AVCNALuTypes
   alias Membrane.H265.NALuTypes, as: HEVCNALuTypes
 
-  alias Membrane.H2645.NALu
-  alias Membrane.H2645.NALuParser.SchemeParser
-  alias Membrane.H2645.Parser
+  alias Membrane.H26x.NALu
+  alias Membrane.H26x.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 

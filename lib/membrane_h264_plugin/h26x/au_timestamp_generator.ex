@@ -1,9 +1,9 @@
-defmodule Membrane.H2645.AUTimestampGenerator do
+defmodule Membrane.H26x.AUTimestampGenerator do
   @moduledoc false
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
-  alias Membrane.H2645.NALu
+  alias Membrane.H26x.NALu
 
   @type encoding :: :h264 | :h265
   @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}

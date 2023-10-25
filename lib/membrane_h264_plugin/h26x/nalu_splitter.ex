@@ -1,4 +1,4 @@
-defmodule Membrane.H2645.NALuSplitter do
+defmodule Membrane.H26x.NALuSplitter do
   @moduledoc """
   A module with functions responsible for splitting
   the h264 or h265 stream into the NAL units.
@@ -41,7 +41,7 @@ defmodule Membrane.H2645.NALuSplitter do
 
   Takes a binary h264/h265 stream as an input
   and produces a list of binaries, where each binary is
-  a complete NALu that can be passed to the `Membrane.H26x.Parser.NALuParser.parse/2`.
+  a complete NALu that can be passed to the `Membrane.H26x.NALuParser.parse/2`.
 
   If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
   of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned

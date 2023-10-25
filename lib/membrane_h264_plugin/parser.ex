@@ -9,7 +9,7 @@ defmodule Membrane.H2645.Parser do
   alias Membrane.H265.DecoderConfigurationRecord, as: HEVCDecoderConfigurationRecord
   alias Membrane.H265.NALuTypes, as: HEVCNALuTypes
 
-  alias Membrane.H2645.{AUTimestampGenerator, NALu, NALuParser, NALuSplitter}
+  alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALu, NALuParser, NALuSplitter}
   alias Membrane.{Buffer, H264, H265, RemoteStream}
 
   @typedoc """
