@@ -283,7 +283,7 @@ defmodule Membrane.H264.Parser do
     {nalus_payloads, nalu_splitter} =
       NALuSplitter.split(payload, is_nalu_aligned, state.nalu_splitter)
 
-    timestamps = if state.mode == :bytestream, do: {nil, nil}, else: {buffer.pts, buffer.dts}
+    timestamps = {buffer.pts, buffer.dts}
     {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
     is_au_aligned = state.mode == :au_aligned
     {access_units, au_splitter} = AUSplitter.split(nalus, is_au_aligned, state.au_splitter)
