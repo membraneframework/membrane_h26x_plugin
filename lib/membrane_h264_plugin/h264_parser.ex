@@ -44,9 +44,10 @@ defmodule Membrane.H264.Parser do
   """
 
   use Membrane.H26x.Parser,
-    encoding: :h264,
     au_splitter: Membrane.H264.AUSplitter,
-    nalu_parser: Membrane.H264.NALuParser
+    nalu_parser: Membrane.H264.NALuParser,
+    au_timestamp_generator: Membrane.H264.AUTimestampGenerator,
+    metadata_key: :h264
 
   require Membrane.Logger
 

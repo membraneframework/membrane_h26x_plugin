@@ -5,7 +5,7 @@ defmodule Membrane.H26x.NALuParser.Scheme do
 
   # A NALu scheme is defining the internal structure of the NALu
   # and describes the fields which need to by fetched from the binary.
-  # The `Membrane.H26x.Common.Parser.NALuParser.Scheme` behaviour defines a
+  # The `Membrane.H26x.NALuParser.Scheme` behaviour defines a
   # callback: `scheme/0`, which returns the description of NALu structure.
   # The syntax which can be used to describe the NALu scheme is designed to
   # match the syntax forms used in *7.1.* chapter of the *"ITU-T Rec. H.264 (01/2012)"*.

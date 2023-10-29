@@ -122,7 +122,7 @@ defmodule Membrane.H26x.NALuParser do
       {:annexb, false} ->
         @annexb_prefix_code <> nalu.payload
 
-      {{_atom, nalu_length_size}, _stable_prefixing?} ->
+      {{_codec_tag, nalu_length_size}, _stable_prefixing?} ->
         <<byte_size(nalu.payload)::integer-size(nalu_length_size)-unit(8), nalu.payload::binary>>
     end
   end
@@ -136,7 +136,7 @@ defmodule Membrane.H26x.NALuParser do
     end
   end
 
-  defp unprefix_nalu_payload(nalu_payload, {_atom, nalu_length_size}) do
+  defp unprefix_nalu_payload(nalu_payload, {_codec_tag, nalu_length_size}) do
     <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
 
     {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
@@ -147,7 +147,7 @@ defmodule Membrane.H26x.NALuParser do
     Enum.join([<<>> | nalus], @annexb_prefix_code)
   end
 
-  def prefix_nalus_payloads(nalus, {_atom, nalu_length_size}) do
+  def prefix_nalus_payloads(nalus, {_codec_tag, nalu_length_size}) do
     Enum.map_join(nalus, fn nalu ->
       <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
     end)

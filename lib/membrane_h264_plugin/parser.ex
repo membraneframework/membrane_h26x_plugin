@@ -65,7 +65,8 @@ defmodule Membrane.H26x.Parser do
   defmacro __using__(options) do
     au_splitter = Keyword.fetch!(options, :au_splitter)
     nalu_parser = Keyword.fetch!(options, :nalu_parser)
-    encoding = Keyword.fetch!(options, :encoding)
+    au_timestamp_generator = Keyword.fetch!(options, :au_timestamp_generator)
+    metadata_key = Keyword.fetch!(options, :metadata_key)
 
     quote location: :keep do
       use Membrane.Filter
@@ -77,18 +78,16 @@ defmodule Membrane.H26x.Parser do
       alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALu, NALuParser, NALuSplitter}
 
       @typep stream_format :: Membrane.StreamFormat.t()
-      @typep encoding :: :h264 | :h265
       @typep state :: Membrane.Element.state()
       @typep callback_return :: Membrane.Element.Base.callback_return()
 
       @impl true
       def handle_init(_ctx, opts) do
         {au_timestamp_generator, framerate} =
-          get_timestamp_generator(unquote(encoding), opts.generate_best_effort_timestamps)
+          get_timestamp_generator(opts.generate_best_effort_timestamps)
 
         state =
           %{
-            encoding: unquote(encoding),
             nalu_splitter: nil,
             nalu_parser: nil,
             au_splitter: unquote(au_splitter).new(),
@@ -251,13 +250,13 @@ defmodule Membrane.H26x.Parser do
         raise "keyframe?/1 not implemented"
       end
 
-      @spec get_timestamp_generator(encoding(), false | map()) :: term()
-      defp get_timestamp_generator(_encoding, false), do: {nil, nil}
+      @spec get_timestamp_generator(false | map()) :: term()
+      defp get_timestamp_generator(false), do: {nil, nil}
 
-      defp get_timestamp_generator(encoding, generate_best_effort_timestamps),
-        do:
-          {AUTimestampGenerator.new(encoding, generate_best_effort_timestamps),
-           generate_best_effort_timestamps.framerate}
+      defp get_timestamp_generator(generate_best_effort_timestamps) do
+        {unquote(au_timestamp_generator).new(generate_best_effort_timestamps),
+         generate_best_effort_timestamps.framerate}
+      end
 
       @spec get_mode_from_alignment(:au | :nalu | :bytestream) ::
               :au_aligned | :nalu_aligned | :bytestream
@@ -343,7 +342,8 @@ defmodule Membrane.H26x.Parser do
         updated_parameter_sets = merge_parameter_sets(parameter_sets, state.cached_parameter_sets)
         state = %{state | cached_parameter_sets: updated_parameter_sets}
 
-        stream_format_candidate = generate_stream_format(parameter_sets, last_sent_stream_format, state)
+        stream_format_candidate =
+          generate_stream_format(parameter_sets, last_sent_stream_format, state)
 
         if stream_format_candidate in [last_sent_stream_format, nil] do
           {[], state}
@@ -442,7 +442,7 @@ defmodule Membrane.H26x.Parser do
       defp prepare_timestamps(au, state) do
         if state.mode == :bytestream and state.au_timestamp_generator do
           {timestamps, timestamp_generator} =
-            AUTimestampGenerator.generate_ts_with_constant_framerate(
+            unquote(au_timestamp_generator).generate_ts_with_constant_framerate(
               au,
               state.au_timestamp_generator
             )
@@ -467,7 +467,7 @@ defmodule Membrane.H26x.Parser do
         |> then(fn payload ->
           %Buffer{
             payload: payload,
-            metadata: prepare_au_metadata(access_unit, state),
+            metadata: prepare_au_metadata(access_unit),
             pts: pts,
             dts: dts
           }
@@ -476,7 +476,7 @@ defmodule Membrane.H26x.Parser do
 
       defp wrap_into_buffer(access_unit, pts, dts, :nalu, state) do
         access_unit
-        |> Enum.zip(prepare_nalus_metadata(access_unit, state))
+        |> Enum.zip(prepare_nalus_metadata(access_unit))
         |> Enum.map(fn {nalu, metadata} ->
           %Buffer{
             payload: NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure),
@@ -487,42 +487,44 @@ defmodule Membrane.H26x.Parser do
         end)
       end
 
-      @spec prepare_au_metadata(AUSplitter.access_unit(), state()) :: Buffer.metadata()
-      defp prepare_au_metadata(nalus, %{encoding: encoding}) do
+      @spec prepare_au_metadata(AUSplitter.access_unit()) :: Buffer.metadata()
+      defp prepare_au_metadata(nalus) do
         is_keyframe? = keyframe?(nalus)
 
         nalus =
           nalus
           |> Enum.with_index()
           |> Enum.map(fn {nalu, i} ->
-            %{metadata: Map.put(%{}, encoding, %{type: nalu.type})}
+            %{metadata: Map.put(%{}, unquote(metadata_key), %{type: nalu.type})}
             |> Bunch.then_if(
               i == 0,
-              &put_in(&1, [:metadata, encoding, :new_access_unit], %{key_frame?: is_keyframe?})
+              &put_in(&1, [:metadata, unquote(metadata_key), :new_access_unit], %{
+                key_frame?: is_keyframe?
+              })
             )
             |> Bunch.then_if(
               i == length(nalus) - 1,
-              &put_in(&1, [:metadata, encoding, :end_access_unit], true)
+              &put_in(&1, [:metadata, unquote(metadata_key), :end_access_unit], true)
             )
           end)
 
-        %{encoding => %{key_frame?: is_keyframe?, nalus: nalus}}
+        %{unquote(metadata_key) => %{key_frame?: is_keyframe?, nalus: nalus}}
       end
 
-      @spec prepare_nalus_metadata(AUSplitter.access_unit(), state()) :: [Buffer.metadata()]
-      defp prepare_nalus_metadata(nalus, %{encoding: encoding}) do
+      @spec prepare_nalus_metadata(AUSplitter.access_unit()) :: [Buffer.metadata()]
+      defp prepare_nalus_metadata(nalus) do
         is_keyframe? = keyframe?(nalus)
 
         Enum.with_index(nalus)
         |> Enum.map(fn {nalu, i} ->
-          Map.put(%{}, encoding, %{type: nalu.type})
+          Map.put(%{}, unquote(metadata_key), %{type: nalu.type})
           |> Bunch.then_if(
             i == 0,
-            &put_in(&1, [encoding, :new_access_unit], %{key_frame?: is_keyframe?})
+            &put_in(&1, [unquote(metadata_key), :new_access_unit], %{key_frame?: is_keyframe?})
           )
           |> Bunch.then_if(
             i == length(nalus) - 1,
-            &put_in(&1, [encoding, :end_access_unit], true)
+            &put_in(&1, [unquote(metadata_key), :end_access_unit], true)
           )
         end)
       end

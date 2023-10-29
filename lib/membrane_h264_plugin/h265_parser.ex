@@ -30,9 +30,10 @@ defmodule Membrane.H265.Parser do
   * hev1, `:hev1` - The same as hvc1, only that parameter sets may be also present in the stream (in-band).
   """
   use Membrane.H26x.Parser,
-    encoding: :h265,
     au_splitter: Membrane.H265.AUSplitter,
-    nalu_parser: Membrane.H265.NALuParser
+    nalu_parser: Membrane.H265.NALuParser,
+    au_timestamp_generator: Membrane.H265.AUTimestampGenerator,
+    metadata_key: :h265
 
   require Membrane.H265.NALuTypes, as: NALuTypes
 
