@@ -4,13 +4,7 @@ defmodule Membrane.H26x.NALuParser do
   is a payload of a single NAL unit.
   """
 
-  alias Membrane.H264.NALuParser.Schemes, as: AVCSchemes
-  alias Membrane.H265.NALuParser.Schemes, as: HEVCSchemes
-
-  alias Membrane.H264.NALuTypes, as: AVCNALuTypes
-  alias Membrane.H265.NALuTypes, as: HEVCNALuTypes
-
-  alias Membrane.H26x.NALu
+  alias Membrane.H26x.{NALu, Parser}
   alias Membrane.H26x.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
@@ -21,26 +15,23 @@ defmodule Membrane.H26x.NALuParser do
   @opaque t :: %__MODULE__{
             scheme_parser_state: SchemeParser.t(),
             input_stream_structure: Parser.stream_structure(),
-            encoding: Parser.encoding(),
-            nal_header_size: non_neg_integer()
+            codec_parser: module()
           }
-  @enforce_keys [:input_stream_structure, :encoding]
+  @enforce_keys [:input_stream_structure, :codec_parser]
   defstruct @enforce_keys ++
               [
-                scheme_parser_state: SchemeParser.new(),
-                nal_header_size: 1
+                scheme_parser_state: SchemeParser.new()
               ]
 
   @doc """
   Returns a structure holding a clear NALu parser state. `input_stream_structure`
   determines the prefixes of input NALU payloads.
   """
-  @spec new(Parser.encoding(), Parser.stream_structure()) :: t()
-  def new(encoding \\ :h264, input_stream_structure \\ :annexb) do
+  @spec new(module(), Parser.stream_structure()) :: t()
+  def new(codec_parser, input_stream_structure \\ :annexb) do
     %__MODULE__{
-      encoding: encoding,
-      input_stream_structure: input_stream_structure,
-      nal_header_size: if(encoding == :h264, do: 1, else: 2)
+      codec_parser: codec_parser,
+      input_stream_structure: input_stream_structure
     }
   end
 
@@ -71,23 +62,23 @@ defmodule Membrane.H26x.NALuParser do
       if payload_prefixed? do
         unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
       else
-        {0, nalu_payload}
+        {<<>>, nalu_payload}
       end
 
-    <<nalu_header::binary-size(state.nal_header_size), nalu_body::binary>> =
-      unprefixed_nalu_payload
+    {nalu_header, nalu_body} =
+      state.codec_parser.get_nalu_header_and_body(unprefixed_nalu_payload)
 
     new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
 
     {parsed_fields, scheme_parser_state} =
-      parse_nalu_header(state.encoding, nalu_header, new_scheme_parser_state)
+      state.codec_parser.parse_nalu_header(nalu_header, new_scheme_parser_state)
 
-    type = get_nalu_type(state.encoding, parsed_fields.nal_unit_type)
+    type = state.codec_parser.get_nalu_type(parsed_fields.nal_unit_type)
 
     {nalu, scheme_parser_state} =
       try do
         {parsed_fields, scheme_parser_state} =
-          parse_proper_nalu_type(state.encoding, nalu_body, scheme_parser_state, type)
+          state.codec_parser.parse_proper_nalu_type(nalu_body, type, scheme_parser_state)
 
         {%NALu{
            parsed_fields: parsed_fields,
@@ -131,7 +122,7 @@ defmodule Membrane.H26x.NALuParser do
       {:annexb, false} ->
         @annexb_prefix_code <> nalu.payload
 
-      {{_avc, nalu_length_size}, _stable_prefixing?} ->
+      {{_atom, nalu_length_size}, _stable_prefixing?} ->
         <<byte_size(nalu.payload)::integer-size(nalu_length_size)-unit(8), nalu.payload::binary>>
     end
   end
@@ -145,7 +136,7 @@ defmodule Membrane.H26x.NALuParser do
     end
   end
 
-  defp unprefix_nalu_payload(nalu_payload, {_avc, nalu_length_size}) do
+  defp unprefix_nalu_payload(nalu_payload, {_atom, nalu_length_size}) do
     <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
 
     {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
@@ -156,62 +147,9 @@ defmodule Membrane.H26x.NALuParser do
     Enum.join([<<>> | nalus], @annexb_prefix_code)
   end
 
-  def prefix_nalus_payloads(nalus, {_avc, nalu_length_size}) do
+  def prefix_nalus_payloads(nalus, {_atom, nalu_length_size}) do
     Enum.map_join(nalus, fn nalu ->
       <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
     end)
-  end
-
-  defp parse_nalu_header(:h264, nalu_header, state) do
-    SchemeParser.parse_with_scheme(nalu_header, AVCSchemes.NALuHeader, state)
-  end
-
-  defp parse_nalu_header(:h265, nalu_header, state) do
-    SchemeParser.parse_with_scheme(nalu_header, HEVCSchemes.NALuHeader, state)
-  end
-
-  defp get_nalu_type(:h264, nal_unit_type), do: AVCNALuTypes.get_type(nal_unit_type)
-  defp get_nalu_type(:h265, nal_unit_type), do: HEVCNALuTypes.get_type(nal_unit_type)
-
-  defp parse_proper_nalu_type(:h264, payload, state, type) do
-    case type do
-      :sps ->
-        SchemeParser.parse_with_scheme(payload, AVCSchemes.SPS, state)
-
-      :pps ->
-        SchemeParser.parse_with_scheme(payload, AVCSchemes.PPS, state)
-
-      :idr ->
-        SchemeParser.parse_with_scheme(payload, AVCSchemes.Slice, state)
-
-      :non_idr ->
-        SchemeParser.parse_with_scheme(payload, AVCSchemes.Slice, state)
-
-      _unknown_nalu_type ->
-        {%{}, state}
-    end
-  end
-
-  defp parse_proper_nalu_type(:h265, payload, state, type) do
-    # delete prevention emulation 3 bytes
-    payload = :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
-
-    case type do
-      :vps ->
-        SchemeParser.parse_with_scheme(payload, HEVCSchemes.VPS, state)
-
-      :sps ->
-        SchemeParser.parse_with_scheme(payload, HEVCSchemes.SPS, state)
-
-      :pps ->
-        SchemeParser.parse_with_scheme(payload, HEVCSchemes.PPS, state)
-
-      type ->
-        if type in HEVCNALuTypes.vcl_nalu_types() do
-          SchemeParser.parse_with_scheme(payload, HEVCSchemes.Slice, state)
-        else
-          {SchemeParser.get_local_state(state), state}
-        end
-    end
   end
 end

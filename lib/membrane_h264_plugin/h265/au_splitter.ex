@@ -10,6 +10,7 @@ defmodule Membrane.H265.AUSplitter do
   @behaviour Membrane.H26x.AUSplitter
 
   require Logger
+  require Membrane.H265.NALuTypes, as: NALuTypes
 
   alias Membrane.H265.NALuTypes
   alias Membrane.H26x.{AUSplitter, NALu}
@@ -46,7 +47,6 @@ defmodule Membrane.H265.AUSplitter do
     }
   end
 
-  @vcl_nalus NALuTypes.vcl_nalu_types()
   @non_vcl_nalus_at_au_beginning [:vps, :sps, :pps, :prefix_sei]
   @non_vcl_nalus_at_au_end [:fd, :eos, :eob, :suffix_sei]
 
@@ -155,7 +155,7 @@ defmodule Membrane.H265.AUSplitter do
   end
 
   defp access_unit_first_slice_segment?(nalu) do
-    nalu.type in @vcl_nalus and
+    NALuTypes.is_vcl_nalu_type(nalu.type) and
       nalu.parsed_fields[:first_slice_segment_in_pic_flag] == 1
   end
 end

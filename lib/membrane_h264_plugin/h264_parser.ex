@@ -43,21 +43,17 @@ defmodule Membrane.H264.Parser do
   (in-band).
   """
 
-  use Membrane.Filter
+  use Membrane.H26x.Parser,
+    encoding: :h264,
+    au_splitter: Membrane.H264.AUSplitter,
+    nalu_parser: Membrane.H264.NALuParser
 
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.Element.{Action, CallbackContext}
+  alias Membrane.H264.DecoderConfigurationRecord
 
-  alias Membrane.H2645.Parser
-
-  @typedoc """
-  Type referencing `Membrane.H264.stream_structure` type, in case of `:avc1` and `:avc3`
-  stream structure, it contains an information about the size of each NALU's prefix describing
-  their length.
-  """
-  @type stream_structure :: :annexb | {:avc1 | :avc3, nalu_length_size :: pos_integer()}
+  @nalu_length_size 4
 
   def_input_pad :input,
     demand_unit: :buffers,
@@ -157,39 +153,103 @@ defmodule Membrane.H264.Parser do
               ]
 
   @impl true
-  def handle_init(_ctx, opts) do
-    {[], Parser.new(:h264, opts, Membrane.H264.AUSplitter)}
+  def handle_init(ctx, opts) do
+    output_stream_structure =
+      case opts.output_stream_structure do
+        :avc1 -> {:avc1, @nalu_length_size}
+        :avc3 -> {:avc3, @nalu_length_size}
+        stream_structure -> stream_structure
+      end
+
+    initial_parameter_sets = {opts.spss, opts.ppss}
+
+    opts =
+      Map.from_struct(opts)
+      |> Map.drop([:spss, :ppss])
+      |> Map.put(:output_stream_structure, output_stream_structure)
+      |> Map.put(:initial_parameter_sets, initial_parameter_sets)
+
+    super(ctx, opts)
   end
 
   @impl true
-  def handle_stream_format(:input, stream_format, ctx, state) do
-    old_stream_format = ctx.pads.output.stream_format
+  def parse_raw_input_stream_structure(stream_format) do
+    {alignment, input_raw_stream_structure} =
+      case stream_format do
+        %RemoteStream{type: :bytestream} ->
+          {:bytestream, :annexb}
 
-    case Parser.handle_stream_format(state, stream_format, old_stream_format) do
-      {nil, state} -> {[], state}
-      {stream_format, state} -> {[stream_format: {:output, stream_format}], state}
+        %H264{alignment: alignment, stream_structure: stream_structure} ->
+          {alignment, stream_structure}
+      end
+
+    case input_raw_stream_structure do
+      :annexb ->
+        {alignment, :annexb, {[], []}}
+
+      {avc, dcr} ->
+        %{nalu_length_size: nalu_length_size, spss: spss, ppss: ppss} =
+          DecoderConfigurationRecord.parse(dcr)
+
+        {alignment, {avc, nalu_length_size}, {spss, ppss}}
     end
   end
 
   @impl true
-  def handle_process(:input, %Membrane.Buffer{} = buffer, ctx, state) do
-    Parser.handle_process(state, buffer, ctx.pads.output.stream_format)
-  end
+  def remove_parameter_sets_from_stream?({:avc1, _nalu_length_size}), do: true
+  def remove_parameter_sets_from_stream?(_stream_structure), do: false
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state) do
-    {actions, state} = Parser.handle_end_of_stream(state, ctx.pads.output.stream_format)
+  def generate_stream_format(parameter_sets, last_sent_stream_format, state) do
+    latest_sps = List.last(elem(parameter_sets, 0))
 
-    if stream_format_sent?(actions, ctx) do
-      {actions ++ [end_of_stream: :output], state}
-    else
-      {[], state}
+    output_raw_stream_structure =
+      case state.output_stream_structure do
+        :annexb ->
+          :annexb
+
+        {avc, _nalu_length_size} ->
+          {spss, ppss} = state.cached_parameter_sets
+
+          spss = Enum.map(spss, & &1.payload)
+          ppss = Enum.map(ppss, & &1.payload)
+
+          {avc, DecoderConfigurationRecord.generate(spss, ppss, state.output_stream_structure)}
+      end
+
+    case {latest_sps, last_sent_stream_format} do
+      {nil, nil} ->
+        nil
+
+      {nil, last_sent_stream_format} ->
+        %{last_sent_stream_format | stream_structure: output_raw_stream_structure}
+
+      {latest_sps, _last_sent_stream_format} ->
+        sps = latest_sps.parsed_fields
+
+        %H264{
+          width: sps.width,
+          height: sps.height,
+          profile: sps.profile,
+          framerate: state.framerate,
+          alignment: state.output_alignment,
+          nalu_in_metadata?: true,
+          stream_structure: output_raw_stream_structure
+        }
     end
   end
 
-  @spec stream_format_sent?([Action.t()], CallbackContext.t()) :: boolean()
-  defp stream_format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
-    do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
+  @impl true
+  def get_parameter_sets(au) do
+    Enum.reduce(au, {[], []}, fn nalu, {spss, ppss} ->
+      case nalu.type do
+        :sps -> {spss ++ [nalu], ppss}
+        :pps -> {spss, ppss ++ [nalu]}
+        _other -> {spss, ppss}
+      end
+    end)
+  end
 
-  defp stream_format_sent?(_actions, _ctx), do: true
+  @impl true
+  def keyframe?(au), do: Enum.any?(au, &(&1.type == :idr))
 end

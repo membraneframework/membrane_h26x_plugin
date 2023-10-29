@@ -21,7 +21,10 @@ defmodule AUSplitterTest do
     @spec parse(binary()) :: Membrane.H26x.AUSplitter.access_unit()
     def parse(payload) do
       {nalus_payloads, _nalu_splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
-      {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
+
+      {nalus, _nalu_parser} =
+        NALuParser.parse_nalus(nalus_payloads, NALuParser.new(Membrane.H264.NALuParser))
+
       {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
       aus
     end

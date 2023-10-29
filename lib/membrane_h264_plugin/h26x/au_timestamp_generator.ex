@@ -2,6 +2,7 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   @moduledoc false
 
   require Membrane.H264.NALuTypes, as: NALuTypes
+  require Membrane.H265.NALuTypes, as: HevcNALuTypes
 
   alias Membrane.H26x.NALu
 
@@ -70,7 +71,7 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   end
 
   defp get_first_vcl_nalu(:h265, au) do
-    Enum.find(au, &(&1.type in Membrane.H265.NALuTypes.vcl_nalu_types()))
+    Enum.find(au, &HevcNALuTypes.is_vcl_nalu_type(&1.type))
   end
 
   # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification

@@ -42,6 +42,22 @@ defmodule Membrane.H265.NALuTypes do
               end)
               |> Map.new()
 
+  @irap_nalu_types [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra]
+  @vcl_nalu_types [
+                    :trail_n,
+                    :trail_r,
+                    :tsa_n,
+                    :tsa_r,
+                    :stsa_n,
+                    :stsa_r,
+                    :radl_n,
+                    :radl_r,
+                    :rasl_n,
+                    :rasl_r,
+                    :reserved_non_irap,
+                    :reserved_irap
+                  ] ++ @irap_nalu_types
+
   @typedoc """
   A type representing all the possible human-friendly names of NAL unit types.
   """
@@ -60,23 +76,6 @@ defmodule Membrane.H265.NALuTypes do
     @nalu_types[nal_unit_type]
   end
 
-  @doc """
-  Get all the VCL NAL units
-  """
-  @spec vcl_nalu_types() :: [nalu_type()]
-  def vcl_nalu_types() do
-    @nalu_types
-    |> Enum.filter(fn {type, _} -> type in 0..31 end)
-    |> Enum.map(fn {_, name} -> name end)
-  end
-
-  @doc """
-  Returns the list of IRAP NAL units.
-
-  An IRAP (Intra Random Access Picture) NALu type denotes a picture that can be decoded
-  without referencing prior pictures.
-  IDR and BLA NALus start a new VCS(Video Coded Sequence).
-  """
-  @spec irap_nalus() :: [nalu_type()]
-  def irap_nalus(), do: [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra]
+  defguard is_vcl_nalu_type(nalu_type) when nalu_type in @vcl_nalu_types
+  defguard is_irap_nalu_type(nalu_type) when nalu_type in @irap_nalu_types
 end
