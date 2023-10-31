@@ -1,13 +1,13 @@
 defmodule Membrane.H264.Support.Common do
   @moduledoc false
 
-  alias Membrane.H264.AUSplitter
-  alias Membrane.H26x.{NALuParser, NALuSplitter}
+  alias Membrane.H264.{AUSplitter, NALuParser}
+  alias Membrane.H26x.NALuSplitter
 
   @spec prepare_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H264.Parser.stream_structure(),
+          Membrane.H26x.Parser.stream_structure(),
           boolean()
         ) :: list
 
@@ -27,10 +27,7 @@ defmodule Membrane.H264.Support.Common do
 
   def prepare_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
     {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
-
-    {nalus, _nalu_parser} =
-      NALuParser.parse_nalus(nalus_payloads, NALuParser.new(Membrane.H264.NALuParser))
-
+    {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
     {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
 
     case mode do
