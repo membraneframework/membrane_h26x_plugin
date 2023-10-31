@@ -270,10 +270,10 @@ defmodule Membrane.H264.Parser do
         state
       )
 
-    {other_actions, state} =
+    {parameter_sets_actions, state} =
       process_stream_format_parameter_sets(incoming_spss, incoming_ppss, ctx, state)
 
-    {actions ++ other_actions, state}
+    {actions ++ parameter_sets_actions, state}
   end
 
   @impl true
