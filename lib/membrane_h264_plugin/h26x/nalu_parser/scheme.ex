@@ -8,7 +8,7 @@ defmodule Membrane.H26x.NALuParser.Scheme do
   # The `Membrane.H26x.NALuParser.Scheme` behaviour defines a
   # callback: `scheme/0`, which returns the description of NALu structure.
   # The syntax which can be used to describe the NALu scheme is designed to
-  # match the syntax forms used in *7.1.* chapter of the *"ITU-T Rec. H.264 (01/2012)"*.
+  # match the syntax forms used in the H26x specification documents.
   # The scheme is read by the parser in an imperative manner, line by line.
   # The following statements are available:
   # * field: reads the appropriate number of bits, decodes the integer based on

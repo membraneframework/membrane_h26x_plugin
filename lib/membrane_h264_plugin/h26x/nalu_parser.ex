@@ -53,7 +53,7 @@ defmodule Membrane.H26x.NALuParser do
   Returns a structure that
   contains parsed fields fetched from that NALu.
   When `payload_prefixed?` is true the input binary is expected to contain one of:
-  * prefix defined as the *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
+  * prefix defined as the *"Annex B"* in the H26x recommendation document.
   * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
   @spec parse(binary(), NALu.timestamps(), boolean(), t()) :: {NALu.t(), t()}
@@ -75,30 +75,20 @@ defmodule Membrane.H26x.NALuParser do
 
     type = state.codec_parser.get_nalu_type(parsed_fields.nal_unit_type)
 
-    {nalu, scheme_parser_state} =
-      try do
-        {parsed_fields, scheme_parser_state} =
-          state.codec_parser.parse_proper_nalu_type(nalu_body, type, scheme_parser_state)
-
-        {%NALu{
-           parsed_fields: parsed_fields,
-           type: type,
-           status: :valid,
-           stripped_prefix: prefix,
-           payload: unprefixed_nalu_payload,
-           timestamps: timestamps
-         }, scheme_parser_state}
-      catch
-        "Cannot load information from SPS" ->
-          {%NALu{
-             parsed_fields: parsed_fields,
-             type: type,
-             status: :error,
-             stripped_prefix: prefix,
-             payload: unprefixed_nalu_payload,
-             timestamps: timestamps
-           }, scheme_parser_state}
+    {status, parsed_fields, scheme_parser_state} =
+      case state.codec_parser.parse_proper_nalu_type(nalu_body, type, scheme_parser_state) do
+        {:ok, parsed_fields, state} -> {:valid, parsed_fields, state}
+        {:error, state} -> {:error, SchemeParser.get_local_state(state), state}
       end
+
+    nalu = %NALu{
+      parsed_fields: parsed_fields,
+      type: type,
+      status: status,
+      stripped_prefix: prefix,
+      payload: unprefixed_nalu_payload,
+      timestamps: timestamps
+    }
 
     state = %{state | scheme_parser_state: scheme_parser_state}
 

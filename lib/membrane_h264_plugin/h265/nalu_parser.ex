@@ -23,8 +23,20 @@ defmodule Membrane.H265.NALuParser do
   def get_nalu_type(nal_unit_type), do: NALuTypes.get_type(nal_unit_type)
 
   @spec parse_proper_nalu_type(binary(), NALuTypes.nalu_type(), SchemeParser.t()) ::
-          {map(), SchemeParser.t()}
+          {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
+    try do
+      {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
+      {:ok, parsed_fields, state}
+    catch
+      # We throw the scheme parser state since we do need the parsed fields for
+      # acess unit splitter even if the parameter sets are not present
+      state ->
+        {:error, state}
+    end
+  end
+
+  defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do
     # delete prevention emulation 3 bytes
     nalu_body = :binary.split(nalu_body, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
 

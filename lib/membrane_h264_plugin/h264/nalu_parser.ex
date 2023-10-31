@@ -21,8 +21,18 @@ defmodule Membrane.H264.NALuParser do
   def get_nalu_type(nal_unit_type), do: NALuTypes.get_type(nal_unit_type)
 
   @spec parse_proper_nalu_type(binary(), NALuTypes.nalu_type(), SchemeParser.t()) ::
-          {map(), SchemeParser.t()}
+          {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
+    try do
+      {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
+      {:ok, parsed_fields, state}
+    catch
+      "Cannot load information from SPS" ->
+        {:error, state}
+    end
+  end
+
+  defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do
     case nalu_type do
       :sps ->
         SchemeParser.parse_with_scheme(nalu_body, Schemes.SPS, state)
