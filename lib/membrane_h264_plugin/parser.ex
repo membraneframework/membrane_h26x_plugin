@@ -17,7 +17,7 @@ defmodule Membrane.H26x.Parser do
           :annexb | {codec_tag :: atom(), decoder_configuration_record :: binary()}
 
   @doc """
-  Invoked each time a new stream format is arrived. It should returns a tuple of 3
+  Invoked each time a new stream format arrives. It should return a tuple of 3
   elements: the alignment of the NALUs, the stream structure and the parameter sets.
   """
   @callback parse_raw_input_stream_structure(stream_format()) ::

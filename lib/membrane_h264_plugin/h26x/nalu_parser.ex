@@ -20,7 +20,7 @@ defmodule Membrane.H26x.NALuParser do
                       parse_proper_nalu_type: 3
 
   defmacro __using__(_options) do
-    quote do
+    quote location: :keep do
       @behaviour unquote(__MODULE__)
 
       alias Membrane.H26x.{NALu, Parser}

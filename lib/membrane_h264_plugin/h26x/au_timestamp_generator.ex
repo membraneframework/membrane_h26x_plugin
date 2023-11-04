@@ -20,7 +20,7 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   @optional_callbacks get_first_vcl_nalu: 1, calculate_poc: 2
 
   defmacro __using__(_options) do
-    quote do
+    quote location: :keep do
       @behaviour unquote(__MODULE__)
 
       @typep config :: %{
