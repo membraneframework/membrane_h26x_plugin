@@ -229,7 +229,7 @@ defmodule Membrane.H264.Parser do
 
     input_stream_structure = parse_raw_stream_structure(input_raw_stream_structure)
 
-    state =
+    {actions, state} =
       cond do
         is_first_received_stream_format ->
           output_stream_structure =
@@ -237,15 +237,16 @@ defmodule Membrane.H264.Parser do
               do: input_stream_structure,
               else: state.output_stream_structure
 
-          %{
-            state
-            | mode: mode,
-              nalu_splitter: NALuSplitter.new(input_stream_structure),
-              nalu_parser: NALuParser.new(input_stream_structure),
-              input_stream_structure: input_stream_structure,
-              output_stream_structure: output_stream_structure,
-              framerate: Map.get(stream_format, :framerate) || state.framerate
-          }
+          {[],
+           %{
+             state
+             | mode: mode,
+               nalu_splitter: NALuSplitter.new(input_stream_structure),
+               nalu_parser: NALuParser.new(input_stream_structure),
+               input_stream_structure: input_stream_structure,
+               output_stream_structure: output_stream_structure,
+               framerate: Map.get(stream_format, :framerate) || state.framerate
+           }}
 
         not is_input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -254,10 +255,12 @@ defmodule Membrane.H264.Parser do
           raise "stream structure cannot be fundamentally changed during stream"
 
         mode != state.mode ->
-          raise "mode cannot be changed during stream"
+          {actions, state} = clean_state(state, ctx)
+          state = %{state | mode: mode}
+          {actions, state}
 
         true ->
-          state
+          {[], state}
       end
 
     {incoming_spss, incoming_ppss} =
@@ -267,7 +270,10 @@ defmodule Membrane.H264.Parser do
         state
       )
 
-    process_stream_format_parameter_sets(incoming_spss, incoming_ppss, ctx, state)
+    {parameter_sets_actions, state} =
+      process_stream_format_parameter_sets(incoming_spss, incoming_ppss, ctx, state)
+
+    {actions ++ parameter_sets_actions, state}
   end
 
   @impl true
@@ -623,4 +629,19 @@ defmodule Membrane.H264.Parser do
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
   defp stream_format_sent?(_actions, _ctx), do: true
+
+  defp clean_state(state, ctx) do
+    {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
+    {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, state.nalu_parser)
+    {access_units, au_splitter} = AUSplitter.split(nalus, true, state.au_splitter)
+
+    state = %{
+      state
+      | nalu_splitter: nalu_splitter,
+        nalu_parser: nalu_parser,
+        au_splitter: au_splitter
+    }
+
+    prepare_actions_for_aus(access_units, ctx, state)
+  end
 end
