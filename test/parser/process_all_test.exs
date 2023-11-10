@@ -10,13 +10,13 @@ defmodule Membrane.H264.ProcessAllTest do
   @prefix <<1::32>>
 
   defp make_pipeline(in_path, out_path, spss, ppss) do
-    structure = [
+    spec = [
       child(:file_src, %Membrane.File.Source{chunk_size: 40_960, location: in_path})
       |> child(:parser, %H264.Parser{spss: spss, ppss: ppss})
       |> child(:sink, %Membrane.File.Sink{location: out_path})
     ]
 
-    Pipeline.start_link_supervised(structure: structure)
+    Pipeline.start_link_supervised(spec: spec)
   end
 
   defp perform_test(filename, tmp_dir, timeout, spss \\ [], ppss \\ []) do
@@ -24,7 +24,6 @@ defmodule Membrane.H264.ProcessAllTest do
     out_path = Path.join(tmp_dir, "output-all-#{filename}.h264")
 
     assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, spss, ppss)
-    assert_pipeline_play(pid)
     assert_end_of_stream(pid, :sink, :input, timeout)
 
     expected =
@@ -36,7 +35,7 @@ defmodule Membrane.H264.ProcessAllTest do
 
     assert File.read!(out_path) == expected
 
-    Pipeline.terminate(pid, blocking?: true)
+    Pipeline.terminate(pid)
   end
 
   describe "ProcessAllPipeline should" do
