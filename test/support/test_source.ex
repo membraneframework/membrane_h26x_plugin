@@ -7,7 +7,7 @@ defmodule Membrane.H264.Support.TestSource do
               output_raw_stream_structure: [default: :annexb]
 
   def_output_pad :output,
-    mode: :push,
+    flow_control: :push,
     accepted_format:
       any_of(
         %Membrane.RemoteStream{type: :bytestream},
