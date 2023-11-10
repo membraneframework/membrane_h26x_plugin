@@ -1,7 +1,7 @@
 defmodule Membrane.H264.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.9.0"
   @github_url "https://github.com/membraneframework-labs/membrane_h264_plugin"
 
   def project do
@@ -37,10 +37,10 @@ defmodule Membrane.H264.Plugin.Mixfile do
 
   defp deps do
     [
-      {:membrane_core, "~> 0.12.7"},
+      {:membrane_core, "~> 1.0"},
       {:membrane_h264_format, "~> 0.6.0"},
       {:bunch, "~> 1.4"},
-      {:membrane_stream_plugin, "~> 0.3.1", only: :test},
+      {:membrane_stream_plugin, "~> 0.4.0", only: :test},
       {:membrane_file_plugin, "~> 0.14.0", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
