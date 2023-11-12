@@ -8,13 +8,13 @@ defmodule Membrane.H264.StreamFormatTest do
   alias Membrane.Testing.Pipeline
 
   defp make_pipeline(in_path) do
-    structure = [
+    spec = [
       child(:file_src, %Membrane.File.Source{chunk_size: 40_960, location: in_path})
       |> child(:parser, H264.Parser)
       |> child(:sink, Membrane.Testing.Sink)
     ]
 
-    Pipeline.start_link_supervised(structure: structure)
+    Pipeline.start_link_supervised(spec: spec)
   end
 
   @video_parameters %{
@@ -34,10 +34,9 @@ defmodule Membrane.H264.StreamFormatTest do
 
     assert_sink_stream_format(pid, :sink, %H264{profile: ^profile, width: ^width, height: ^height})
 
-    assert_pipeline_play(pid)
     assert_end_of_stream(pid, :sink, :input, timeout)
 
-    Pipeline.terminate(pid, blocking?: true)
+    Pipeline.terminate(pid)
   end
 
   describe "Parser should" do

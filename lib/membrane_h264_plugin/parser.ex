@@ -48,7 +48,7 @@ defmodule Membrane.H26x.Parser do
   Invoked for each parsed access unit.
   """
   @callback get_parameter_sets(AUSplitter.access_unit()) :: parameter_sets()
-
+  
   @doc """
   Invoked for each parsed access unit.
 
@@ -143,7 +143,9 @@ defmodule Membrane.H26x.Parser do
               raise "stream structure cannot be fundamentally changed during stream"
 
             mode != state.mode ->
-              raise "mode cannot be changed during stream"
+              {actions, state} = clean_state(state, ctx)
+              state = %{state | mode: mode}
+              {actions, state}
 
             true ->
               state
@@ -544,6 +546,21 @@ defmodule Membrane.H26x.Parser do
         do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
       defp stream_format_sent?(_actions, _ctx), do: true
+      
+      defp clean_state(state, ctx) do
+        {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
+        {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, state.nalu_parser)
+        {access_units, au_splitter} = AUSplitter.split(nalus, true, state.au_splitter)
+
+        state = %{
+          state
+          | nalu_splitter: nalu_splitter,
+            nalu_parser: nalu_parser,
+            au_splitter: au_splitter
+        }
+
+        prepare_actions_for_aus(access_units, ctx, state)
+      end
 
       defoverridable handle_init: 2,
                      parse_raw_input_stream_structure: 1,

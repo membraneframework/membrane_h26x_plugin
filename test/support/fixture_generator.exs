@@ -14,11 +14,11 @@ defmodule Aligner do
 
   def_input_pad :input,
     demand_unit: :buffers,
-    demand_mode: :auto,
+    flow_control: :auto,
     accepted_format: Membrane.H264
 
   def_output_pad :output,
-    demand_mode: :auto,
+    flow_control: :auto,
     accepted_format: Membrane.H264
 
   def_options output_alignment: [
@@ -54,7 +54,7 @@ defmodule Aligner do
   end
 
   @impl true
-  def handle_process(:input, buffer, _ctx, state) do
+  def handle_buffer(:input, buffer, _ctx, state) do
     buffers =
       case state.output_alignment do
         :au ->
@@ -85,7 +85,7 @@ defmodule FixtureGeneratorPipeline do
 
   @impl true
   def handle_init(_ctx, options) do
-    structure = [
+    spec = [
       child(:video_source, %Membrane.File.Source{location: options.input_location})
       |> child(:demuxer, Membrane.MP4.Demuxer.ISOM)
       |> via_out(Pad.ref(:output, 1))
@@ -97,7 +97,7 @@ defmodule FixtureGeneratorPipeline do
       |> child(:sink, %Membrane.File.Sink{location: options.output_location})
     ]
 
-    {[spec: structure], %{children_with_eos: MapSet.new()}}
+    {[spec: spec], %{children_with_eos: MapSet.new()}}
   end
 
   @impl true

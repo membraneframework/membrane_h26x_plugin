@@ -22,7 +22,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
          34, 192>>
 
   defp make_pipeline(source, spss \\ [], ppss \\ [], output_stream_structure \\ :annexb) do
-    structure =
+    spec =
       child(:source, source)
       |> child(:parser, %H264.Parser{
         spss: spss,
@@ -32,7 +32,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       })
       |> child(:sink, Sink)
 
-    Pipeline.start_link_supervised!(structure: structure)
+    Pipeline.start_link_supervised!(spec: spec)
   end
 
   defp perform_test(
@@ -44,7 +44,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
        ) do
     buffers = prepare_buffers(data, mode, parser_input_stream_structure)
 
-    assert_pipeline_play(pipeline_pid)
+    assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
@@ -61,7 +61,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end)
 
     assert_end_of_stream(pipeline_pid, :sink, :input, 3_000)
-    Pipeline.terminate(pipeline_pid, blocking?: true)
+    Pipeline.terminate(pipeline_pid)
   end
 
   defp split_access_unit(access_unit) do
@@ -103,7 +103,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       buffers = prepare_buffers(File.read!(in_path), :bytestream)
 
-      assert_pipeline_play(pid)
+      assert_sink_playing(pid, :sink)
       actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
       Pipeline.message_child(pid, :source, actions ++ [end_of_stream: :output])
 
@@ -115,7 +115,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       end)
 
       assert_end_of_stream(pid, :sink, :input, 3_000)
-      Pipeline.terminate(pid, blocking?: true)
+      Pipeline.terminate(pid)
     end
   end
 end

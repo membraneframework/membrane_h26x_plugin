@@ -22,7 +22,7 @@ The package can be installed by adding `membrane_h264_plugin` to your list of de
 ```elixir
 def deps do
   [
-	  {:membrane_h264_plugin, "~> 0.8.0"}
+    {:membrane_h264_plugin, "~> 0.9.0"}
   ]
 end
 ```
@@ -39,13 +39,13 @@ defmodule Decoding.Pipeline do
 
   @impl true
   def handle_init(_ctx, _opts) do
-    structure =
+    spec =
       child(:source, %File.Source{location: "test/fixtures/input-10-720p-main.h264"})
       |> child(:parser, H264.Parser)
       |> child(:decoder, H264.FFmpeg.Decoder)
       |> child(:sink, %File.Sink{location: "output.raw"})
 
-    {[spec: structure], nil}
+    {[spec: spec], nil}
   end
 
   @impl true
