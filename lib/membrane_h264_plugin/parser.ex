@@ -48,7 +48,7 @@ defmodule Membrane.H26x.Parser do
   Invoked for each parsed access unit.
   """
   @callback get_parameter_sets(AUSplitter.access_unit()) :: parameter_sets()
-  
+
   @doc """
   Invoked for each parsed access unit.
 
@@ -167,7 +167,7 @@ defmodule Membrane.H26x.Parser do
       end
 
       @impl true
-      def handle_process(:input, %Membrane.Buffer{} = buffer, ctx, state) do
+      def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state) do
         old_stream_format = ctx.pads.output.stream_format
 
         {payload, state} =
@@ -546,11 +546,11 @@ defmodule Membrane.H26x.Parser do
         do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
       defp stream_format_sent?(_actions, _ctx), do: true
-      
+
       defp clean_state(state, ctx) do
         {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-        {nalus, nalu_parser} = NALuParser.parse_nalus(nalus_payloads, state.nalu_parser)
-        {access_units, au_splitter} = AUSplitter.split(nalus, true, state.au_splitter)
+        {nalus, nalu_parser} = unquote(nalu_parser).parse_nalus(nalus_payloads, state.nalu_parser)
+        {access_units, au_splitter} = unquote(au_splitter).split(nalus, true, state.au_splitter)
 
         state = %{
           state

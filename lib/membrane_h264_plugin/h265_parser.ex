@@ -43,12 +43,11 @@ defmodule Membrane.H265.Parser do
   @nalu_length_size 4
 
   def_input_pad :input,
-    demand_unit: :buffers,
-    demand_mode: :auto,
+    flow_control: :auto,
     accepted_format: any_of(%RemoteStream{type: :bytestream}, H265)
 
   def_output_pad :output,
-    demand_mode: :auto,
+    flow_control: :auto,
     accepted_format:
       %H265{alignment: alignment, nalu_in_metadata?: true} when alignment in [:nalu, :au]
 
