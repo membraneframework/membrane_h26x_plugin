@@ -17,8 +17,6 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   @callback get_first_vcl_nalu(AUSplitter.access_unit()) :: NALu.t()
   @callback calculate_poc(NALu.t(), state()) :: {non_neg_integer(), state()}
 
-  @optional_callbacks get_first_vcl_nalu: 1, calculate_poc: 2
-
   defmacro __using__(_options) do
     quote location: :keep do
       @behaviour unquote(__MODULE__)
@@ -73,18 +71,6 @@ defmodule Membrane.H26x.AUTimestampGenerator do
 
         {{pts, dts}, state}
       end
-
-      @impl true
-      def get_first_vcl_nalu(au) do
-        raise "get_first_vcl_nalu/1 not implemented"
-      end
-
-      @impl true
-      def calculate_poc(first_vcl_nalu, state) do
-        raise "calculate_poc/2 not implemented"
-      end
-
-      defoverridable get_first_vcl_nalu: 1, calculate_poc: 2
     end
   end
 end
