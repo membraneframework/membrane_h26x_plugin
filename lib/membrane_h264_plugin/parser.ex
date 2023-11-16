@@ -79,16 +79,16 @@ defmodule Membrane.H26x.Parser do
       @typep callback_return :: Membrane.Element.Base.callback_return()
 
       @impl true
-      def handle_init(ctx, opts),
-        do:
-          Parser.handle_init(
-            ctx,
-            opts,
-            unquote(au_timestamp_generator),
-            unquote(nalu_parser),
-            unquote(au_splitter),
-            unquote(metadata_key)
-          )
+      def handle_init(ctx, opts) do
+        Parser.handle_init(
+          ctx,
+          opts,
+          unquote(au_timestamp_generator),
+          unquote(nalu_parser),
+          unquote(au_splitter),
+          unquote(metadata_key)
+        )
+      end
 
       @impl true
       def handle_stream_format(:input, stream_format, ctx, state) do
@@ -111,7 +111,7 @@ defmodule Membrane.H26x.Parser do
                 state
                 | mode: mode,
                   nalu_splitter: NALuSplitter.new(input_stream_structure),
-                  nalu_parser: unquote(nalu_parser).new(input_stream_structure),
+                  nalu_parser: state.nalu_parser_mod.new(input_stream_structure),
                   input_stream_structure: input_stream_structure,
                   output_stream_structure: output_stream_structure,
                   framerate: Map.get(stream_format, :framerate) || state.framerate
@@ -176,14 +176,14 @@ defmodule Membrane.H26x.Parser do
           {parsed_parameter_sets, nalu_parser} =
             Enum.map_reduce(Tuple.to_list(parameter_sets), state.nalu_parser, fn ps,
                                                                                  nalu_parser ->
-              unquote(nalu_parser).parse_nalus(ps, {nil, nil}, false, nalu_parser)
+              state.nalu_parser_mod.parse_nalus(ps, {nil, nil}, false, nalu_parser)
             end)
 
           state = %{state | nalu_parser: nalu_parser}
           process_new_parameter_sets(List.to_tuple(parsed_parameter_sets), stream_format, state)
         else
           frame_prefix =
-            unquote(nalu_parser).prefix_nalus_payloads(
+            state.nalu_parser_mod.prefix_nalus_payloads(
               flatten_parameter_sets(parameter_sets),
               state.input_stream_structure
             )
@@ -270,9 +270,7 @@ defmodule Membrane.H26x.Parser do
       defp stream_format_sent?(_actions, _ctx), do: true
 
       defp clean_state(state, ctx) do
-        {access_units, state} =
-          Parser.clean_state(unquote(nalu_parser), unquote(au_splitter), state)
-
+        {access_units, state} = Parser.clean_state(state)
         prepare_actions_for_aus(access_units, ctx, state)
       end
 
@@ -303,8 +301,8 @@ defmodule Membrane.H26x.Parser do
         cached_parameter_sets: empty_parameter_sets(opts.initial_parameter_sets),
         input_stream_structure: nil,
         output_stream_structure: opts.output_stream_structure,
-        nalu_parser_mod: nalu_parser,
         au_timestamp_generator_mod: au_timestamp_generator_mod,
+        nalu_parser_mod: nalu_parser,
         au_splitter_mod: au_splitter,
         metadata_key: metadata_key
       }
@@ -414,11 +412,11 @@ defmodule Membrane.H26x.Parser do
     {buffers_actions, state}
   end
 
-  @spec clean_state(module(), module(), state()) :: {[AUSplitter.access_unit()], state()}
-  def clean_state(nalu_parser, au_splitter, state) do
+  @spec clean_state(state()) :: {[AUSplitter.access_unit()], state()}
+  def clean_state(state) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-    {nalus, nalu_parser} = nalu_parser.parse_nalus(nalus_payloads, state.nalu_parser)
-    {access_units, au_splitter} = au_splitter.split(nalus, true, state.au_splitter)
+    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
+    {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
 
     {access_units,
      %{
