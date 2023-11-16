@@ -80,7 +80,15 @@ defmodule Membrane.H26x.Parser do
 
       @impl true
       def handle_init(ctx, opts),
-        do: Parser.handle_init(ctx, opts, unquote(au_splitter), unquote(au_timestamp_generator))
+        do:
+          Parser.handle_init(
+            ctx,
+            opts,
+            unquote(au_timestamp_generator),
+            unquote(nalu_parser),
+            unquote(au_splitter),
+            unquote(metadata_key)
+          )
 
       @impl true
       def handle_stream_format(:input, stream_format, ctx, state) do
@@ -141,21 +149,15 @@ defmodule Membrane.H26x.Parser do
 
       @impl true
       def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state) do
-        {access_units, state} =
-          Parser.handle_buffer(buffer, unquote(nalu_parser), unquote(au_splitter), state)
-
+        {access_units, state} = Parser.handle_buffer(buffer, state)
         prepare_actions_for_aus(access_units, ctx, state)
       end
 
       @impl true
       def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
-        {aus, state} =
-          Parser.handle_end_of_stream(unquote(nalu_parser), unquote(au_splitter), state)
-
+        {aus, state} = Parser.handle_end_of_stream(state)
         {actions, state} = prepare_actions_for_aus(aus, ctx, state)
-
         actions = if stream_format_sent?(actions, ctx), do: actions, else: []
-
         {actions ++ [end_of_stream: :output], state}
       end
 
@@ -217,17 +219,7 @@ defmodule Membrane.H26x.Parser do
       defp prepare_actions_for_aus(aus, ctx, state) do
         Enum.flat_map_reduce(aus, state, fn au, state ->
           {au, stream_format, state} = process_au_parameter_sets(au, ctx, state)
-
-          {buffers_actions, state} =
-            Parser.prepare_actions_for_aus(
-              au,
-              keyframe?(au),
-              unquote(au_timestamp_generator),
-              unquote(nalu_parser),
-              unquote(metadata_key),
-              state
-            )
-
+          {buffers_actions, state} = Parser.prepare_actions_for_aus(au, keyframe?(au), state)
           {stream_format ++ buffers_actions, state}
         end)
       end
@@ -288,10 +280,10 @@ defmodule Membrane.H26x.Parser do
     end
   end
 
-  @spec handle_init(map(), map(), module(), module()) :: callback_return()
-  def handle_init(_ctx, opts, au_splitter, au_timestamp_generator) do
+  @spec handle_init(map(), map(), module(), module(), module(), atom()) :: callback_return()
+  def handle_init(_ctx, opts, au_timestamp_generator_mod, nalu_parser, au_splitter, metadata_key) do
     {au_timestamp_generator, framerate} =
-      get_timestamp_generator(opts.generate_best_effort_timestamps, au_timestamp_generator)
+      get_timestamp_generator(opts.generate_best_effort_timestamps, au_timestamp_generator_mod)
 
     state =
       %{
@@ -310,15 +302,18 @@ defmodule Membrane.H26x.Parser do
         initial_parameter_sets: opts.initial_parameter_sets,
         cached_parameter_sets: empty_parameter_sets(opts.initial_parameter_sets),
         input_stream_structure: nil,
-        output_stream_structure: opts.output_stream_structure
+        output_stream_structure: opts.output_stream_structure,
+        nalu_parser_mod: nalu_parser,
+        au_timestamp_generator_mod: au_timestamp_generator_mod,
+        au_splitter_mod: au_splitter,
+        metadata_key: metadata_key
       }
 
     {[], state}
   end
 
-  @spec handle_buffer(Buffer.t(), module(), module(), state()) ::
-          {[AUSplitter.access_unit()], state()}
-  def handle_buffer(%Buffer{} = buffer, nalu_parser, au_splitter, state) do
+  @spec handle_buffer(Buffer.t(), state()) :: {[AUSplitter.access_unit()], state()}
+  def handle_buffer(%Buffer{} = buffer, state) do
     {payload, state} =
       case state.frame_prefix do
         <<>> -> {buffer.payload, state}
@@ -331,19 +326,24 @@ defmodule Membrane.H26x.Parser do
       NALuSplitter.split(payload, is_nalu_aligned, state.nalu_splitter)
 
     timestamps = {buffer.pts, buffer.dts}
-    {nalus, nalu_parser} = nalu_parser.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
+
+    {nalus, nalu_parser} =
+      state.nalu_parser_mod.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
+
     is_au_aligned = state.mode == :au_aligned
-    {access_units, au_splitter} = au_splitter.split(nalus, is_au_aligned, state.au_splitter)
+
+    {access_units, au_splitter} =
+      state.au_splitter_mod.split(nalus, is_au_aligned, state.au_splitter)
 
     {access_units,
      %{state | nalu_splitter: nalu_splitter, nalu_parser: nalu_parser, au_splitter: au_splitter}}
   end
 
-  @spec handle_end_of_stream(module(), module(), state()) :: {[AUSplitter.access_unit()], state()}
-  def handle_end_of_stream(nalu_parser, au_splitter, state) do
+  @spec handle_end_of_stream(state()) :: {[AUSplitter.access_unit()], state()}
+  def handle_end_of_stream(state) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-    {nalus, nalu_parser} = nalu_parser.parse_nalus(nalus_payloads, state.nalu_parser)
-    {access_units, au_splitter} = au_splitter.split(nalus, true, state.au_splitter)
+    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
+    {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
 
     {access_units,
      %{state | nalu_splitter: nalu_splitter, nalu_parser: nalu_parser, au_splitter: au_splitter}}
@@ -398,42 +398,16 @@ defmodule Membrane.H26x.Parser do
     |> List.to_tuple()
   end
 
-  @spec prepare_actions_for_aus(
-          AUSplitter.access_unit(),
-          boolean(),
-          module(),
-          module(),
-          atom(),
-          state()
-        ) :: callback_return()
-  def prepare_actions_for_aus(
-        au,
-        keyframe?,
-        au_timestamp_generator,
-        nalu_parser,
-        metadata_key,
-        state
-      ) do
-    {{pts, dts}, state} = prepare_timestamps(au, au_timestamp_generator, state)
-
+  @spec prepare_actions_for_aus(AUSplitter.access_unit(), boolean(), state()) :: callback_return()
+  def prepare_actions_for_aus(au, keyframe?, state) do
+    {{pts, dts}, state} = prepare_timestamps(au, state)
     {should_skip_au, state} = skip_au?(au, keyframe?, state)
 
     buffers_actions =
       if should_skip_au do
         []
       else
-        buffers =
-          wrap_into_buffer(
-            au,
-            pts,
-            dts,
-            keyframe?,
-            state.output_alignment,
-            nalu_parser,
-            metadata_key,
-            state
-          )
-
+        buffers = wrap_into_buffer(au, pts, dts, keyframe?, state)
         [buffer: {:output, buffers}]
       end
 
@@ -455,12 +429,12 @@ defmodule Membrane.H26x.Parser do
      }}
   end
 
-  @spec prepare_timestamps(AUSplitter.access_unit(), module(), state()) ::
+  @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
           {{Membrane.Time.t(), Membrane.Time.t()}, state()}
-  defp prepare_timestamps(au, au_timestamp_generator, state) do
+  defp prepare_timestamps(au, state) do
     if state.mode == :bytestream and state.au_timestamp_generator do
       {timestamps, timestamp_generator} =
-        au_timestamp_generator.generate_ts_with_constant_framerate(
+        state.au_timestamp_generator_mod.generate_ts_with_constant_framerate(
           au,
           state.au_timestamp_generator
         )
@@ -488,40 +462,29 @@ defmodule Membrane.H26x.Parser do
           Membrane.Time.t(),
           Membrane.Time.t(),
           boolean(),
-          :au | :nalu,
-          module(),
-          atom(),
           state()
         ) :: Buffer.t() | [Buffer.t()]
-  defp wrap_into_buffer(access_unit, pts, dts, key_frame?, :au, nalu_parser, metadata_key, state) do
+  defp wrap_into_buffer(access_unit, pts, dts, key_frame?, %{output_alignment: :au} = state) do
     Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-      acc <> nalu_parser.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
+      acc <> state.nalu_parser_mod.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
     end)
     |> then(fn payload ->
       %Buffer{
         payload: payload,
-        metadata: prepare_au_metadata(access_unit, key_frame?, metadata_key),
+        metadata: prepare_au_metadata(access_unit, key_frame?, state.metadata_key),
         pts: pts,
         dts: dts
       }
     end)
   end
 
-  defp wrap_into_buffer(
-         access_unit,
-         pts,
-         dts,
-         key_frame?,
-         :nalu,
-         nalu_parser,
-         metadata_key,
-         state
-       ) do
+  defp wrap_into_buffer(access_unit, pts, dts, key_frame?, %{output_alignment: :nalu} = state) do
     access_unit
-    |> Enum.zip(prepare_nalus_metadata(access_unit, key_frame?, metadata_key))
+    |> Enum.zip(prepare_nalus_metadata(access_unit, key_frame?, state.metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: nalu_parser.get_prefixed_nalu_payload(nalu, state.output_stream_structure),
+        payload:
+          state.nalu_parser_mod.get_prefixed_nalu_payload(nalu, state.output_stream_structure),
         metadata: metadata,
         pts: pts,
         dts: dts
