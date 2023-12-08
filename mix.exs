@@ -1,8 +1,8 @@
 defmodule Membrane.H264.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.9.0"
-  @github_url "https://github.com/membraneframework-labs/membrane_h264_plugin"
+  @version "0.9.1"
+  @github_url "https://github.com/membraneframework/membrane_h264_plugin"
 
   def project do
     [

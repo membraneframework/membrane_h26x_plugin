@@ -305,7 +305,8 @@ defmodule Membrane.H264.Parser do
   end
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
+  def handle_end_of_stream(:input, ctx, state)
+      when state.mode != :au_aligned and ctx.pads.input.start_of_stream? do
     {last_nalu_payload, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {last_nalu, nalu_parser} = NALuParser.parse_nalus(last_nalu_payload, state.nalu_parser)
     {maybe_improper_aus, au_splitter} = AUSplitter.split(last_nalu, true, state.au_splitter)
