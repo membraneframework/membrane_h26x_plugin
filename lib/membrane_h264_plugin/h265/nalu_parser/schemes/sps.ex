@@ -1,3 +1,4 @@
+# credo:disable-for-this-file Credo.Check.Refactor.Nesting
 defmodule Membrane.H265.NALuParser.Schemes.SPS do
   @moduledoc false
 

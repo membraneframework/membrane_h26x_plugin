@@ -5,7 +5,6 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
   """
 
-  alias Membrane.H265.Parser
   alias Membrane.H26x.NALu
 
   @enforce_keys [
@@ -49,7 +48,8 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on given PPSs, SPSs and VPSs.
   """
-  @spec generate([NALu.t()], [NALu.t()], [NALu.t()], Parser.stream_structure()) :: binary() | nil
+  @spec generate([NALu.t()], [NALu.t()], [NALu.t()], Membrane.H26x.Parser.stream_structure()) ::
+          binary() | nil
   def generate(_vpss, [], _ppss, _stream_structure) do
     nil
   end
