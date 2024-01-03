@@ -22,7 +22,7 @@ The package can be installed by adding `membrane_h264_plugin` to your list of de
 ```elixir
 def deps do
   [
-    {:membrane_h264_plugin, "~> 0.9.0"}
+    {:membrane_h264_plugin, "~> 0.9.1"}
   ]
 end
 ```
