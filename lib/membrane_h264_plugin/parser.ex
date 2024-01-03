@@ -5,6 +5,11 @@ defmodule Membrane.H26x.Parser do
   alias Membrane.H26x.{AUSplitter, NALuSplitter}
 
   @typedoc """
+  A type of a module implementing `Membrane.H26xParser` behaviour.
+  """
+  @type t :: module()
+
+  @typedoc """
   Stream structure of the NALUs. In case it's not `:annexb` format, it contains an information
   about the size of each NALU's prefix describing their length.
   """
@@ -59,8 +64,17 @@ defmodule Membrane.H26x.Parser do
   """
   @callback keyframe?(AUSplitter.access_unit()) :: boolean()
 
-  @spec handle_init(map(), map(), module(), module(), module(), atom()) :: callback_return()
-  def handle_init(_ctx, opts, au_timestamp_generator_mod, nalu_parser, au_splitter, metadata_key) do
+  @spec handle_init(map(), map(), t(), module(), module(), module(), atom()) ::
+          callback_return()
+  def handle_init(
+        _ctx,
+        opts,
+        parser_module,
+        au_timestamp_generator_mod,
+        nalu_parser,
+        au_splitter,
+        metadata_key
+      ) do
     {au_timestamp_generator, framerate} =
       get_timestamp_generator(opts.generate_best_effort_timestamps, au_timestamp_generator_mod)
 
@@ -85,15 +99,17 @@ defmodule Membrane.H26x.Parser do
         au_timestamp_generator_mod: au_timestamp_generator_mod,
         nalu_parser_mod: nalu_parser,
         au_splitter_mod: au_splitter,
-        metadata_key: metadata_key
+        metadata_key: metadata_key,
+        module: parser_module
       }
 
     {[], state}
   end
 
-  def handle_stream_format(module, stream_format, ctx, state) do
+  # TODO: add spec
+  def handle_stream_format(stream_format, ctx, state) do
     {alignment, input_stream_structure, parameter_sets} =
-      module.parse_raw_input_stream_structure(stream_format)
+      state.module.parse_raw_input_stream_structure(stream_format)
 
     is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
 
@@ -141,16 +157,15 @@ defmodule Membrane.H26x.Parser do
       )
 
     process_stream_format_parameter_sets(
-      module,
       incoming_parameter_sets,
       ctx.pads.output.stream_format,
       state
     )
   end
 
-  @spec handle_buffer(module(), Buffer.t(), CallbackContext.t(), state()) ::
+  @spec handle_buffer(Buffer.t(), CallbackContext.t(), state()) ::
           {[AUSplitter.access_unit()], state()}
-  def handle_buffer(module, %Buffer{} = buffer, ctx, state) do
+  def handle_buffer(%Buffer{} = buffer, ctx, state) do
     {payload, state} =
       case state.frame_prefix do
         <<>> -> {buffer.payload, state}
@@ -179,11 +194,11 @@ defmodule Membrane.H26x.Parser do
         au_splitter: au_splitter
     }
 
-    prepare_actions_for_aus(module, access_units, ctx, state)
+    prepare_actions_for_aus(access_units, ctx, state)
   end
 
-  @spec handle_end_of_stream(module(), CallbackContext.t(), state()) :: callback_return()
-  def handle_end_of_stream(module, ctx, state) do
+  @spec handle_end_of_stream(CallbackContext.t(), state()) :: callback_return()
+  def handle_end_of_stream(ctx, state) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
     {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
@@ -195,13 +210,13 @@ defmodule Membrane.H26x.Parser do
         au_splitter: au_splitter
     }
 
-    {actions, state} = prepare_actions_for_aus(module, access_units, ctx, state)
+    {actions, state} = prepare_actions_for_aus(access_units, ctx, state)
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
     {actions ++ [end_of_stream: :output], state}
   end
 
-  defp process_stream_format_parameter_sets(module, parameter_sets, stream_format, state) do
-    if module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
+  defp process_stream_format_parameter_sets(parameter_sets, stream_format, state) do
+    if state.module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
       {parsed_parameter_sets, nalu_parser} =
         Enum.map_reduce(Tuple.to_list(parameter_sets), state.nalu_parser, fn ps, nalu_parser ->
           state.nalu_parser_mod.parse_nalus(ps, {nil, nil}, false, nalu_parser)
@@ -210,7 +225,6 @@ defmodule Membrane.H26x.Parser do
       state = %{state | nalu_parser: nalu_parser}
 
       process_new_parameter_sets(
-        module,
         List.to_tuple(parsed_parameter_sets),
         stream_format,
         state
@@ -276,57 +290,55 @@ defmodule Membrane.H26x.Parser do
   end
 
   @spec prepare_actions_for_aus(
-          module(),
           [AUSplitter.access_unit()],
           CallbackContext.t(),
           state()
         ) ::
           callback_return()
-  defp prepare_actions_for_aus(module, aus, ctx, state) do
+  defp prepare_actions_for_aus(aus, ctx, state) do
     Enum.flat_map_reduce(aus, state, fn au, state ->
-      {au, stream_format, state} = process_au_parameter_sets(module, au, ctx, state)
-      {buffers_actions, state} = prepare_actions_for_au(au, module.keyframe?(au), state)
+      {au, stream_format, state} = process_au_parameter_sets(au, ctx, state)
+      {buffers_actions, state} = prepare_actions_for_au(au, state.module.keyframe?(au), state)
       {stream_format ++ buffers_actions, state}
     end)
   end
 
   @spec process_au_parameter_sets(
-          module(),
           AUSplitter.access_unit(),
           CallbackContext.t(),
           state()
         ) ::
           {AUSplitter.access_unit(), [Action.t()], state()}
-  defp process_au_parameter_sets(module, au, ctx, state) do
+  defp process_au_parameter_sets(au, ctx, state) do
     old_stream_format = ctx.pads.output.stream_format
-    parameter_sets = module.get_parameter_sets(au)
+    parameter_sets = state.module.get_parameter_sets(au)
 
     {stream_format, state} =
-      process_new_parameter_sets(module, parameter_sets, old_stream_format, state)
+      process_new_parameter_sets(parameter_sets, old_stream_format, state)
 
     au =
-      if module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
+      if state.module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
         Enum.filter(au, &(&1 not in flatten_parameter_sets(parameter_sets)))
       else
-        maybe_add_parameter_sets(module, au, state)
-        |> delete_duplicate_parameter_sets(module, state)
+        maybe_add_parameter_sets(au, state)
+        |> delete_duplicate_parameter_sets(state)
       end
 
     {au, stream_format, state}
   end
 
-  @spec delete_duplicate_parameter_sets(AUSplitter.access_unit(), module(), state()) ::
+  @spec delete_duplicate_parameter_sets(AUSplitter.access_unit(), state()) ::
           AUSplitter.access_unit()
-  defp delete_duplicate_parameter_sets(au, module, _state) do
-    if module.keyframe?(au), do: Enum.uniq(au), else: au
+  defp delete_duplicate_parameter_sets(au, state) do
+    if state.module.keyframe?(au), do: Enum.uniq(au), else: au
   end
 
-  @spec maybe_add_parameter_sets(module(), AUSplitter.access_unit(), state()) ::
+  @spec maybe_add_parameter_sets(AUSplitter.access_unit(), state()) ::
           AUSplitter.access_unit()
-  defp maybe_add_parameter_sets(_module, au, %{repeat_parameter_sets: false}), do: au
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
 
-  defp maybe_add_parameter_sets(module, au, state) do
-    if module.keyframe?(au),
+  defp maybe_add_parameter_sets(au, state) do
+    if state.module.keyframe?(au),
       do: flatten_parameter_sets(state.cached_parameter_sets) ++ au,
       else: au
   end
@@ -487,14 +499,14 @@ defmodule Membrane.H26x.Parser do
     |> List.to_tuple()
   end
 
-  defp process_new_parameter_sets(module, parameter_sets, last_sent_stream_format, state) do
+  defp process_new_parameter_sets(parameter_sets, last_sent_stream_format, state) do
     updated_parameter_sets =
       merge_parameter_sets(parameter_sets, state.cached_parameter_sets)
 
     state = %{state | cached_parameter_sets: updated_parameter_sets}
 
     stream_format_candidate =
-      module.generate_stream_format(parameter_sets, last_sent_stream_format, state)
+      state.module.generate_stream_format(parameter_sets, last_sent_stream_format, state)
 
     if stream_format_candidate in [last_sent_stream_format, nil] do
       {[], state}
