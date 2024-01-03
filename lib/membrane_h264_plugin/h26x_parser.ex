@@ -5,7 +5,7 @@ defmodule Membrane.H26x.Parser do
   alias Membrane.H26x.{AUSplitter, NALuSplitter}
 
   @typedoc """
-  A type of a module implementing `Membrane.H26xParser` behaviour.
+  A type of a module implementing `Membrane.H26x.Parser` behaviour.
   """
   @type t :: module()
 
