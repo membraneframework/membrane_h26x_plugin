@@ -43,18 +43,21 @@ defmodule Membrane.H264.Parser do
   (in-band).
   """
 
-  use Membrane.H26x.Parser,
-    au_splitter: Membrane.H264.AUSplitter,
-    nalu_parser: Membrane.H264.NALuParser,
-    au_timestamp_generator: Membrane.H264.AUTimestampGenerator,
-    metadata_key: :h264
+  use Membrane.Filter
 
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.H264.DecoderConfigurationRecord
+  alias Membrane.H264.{DecoderConfigurationRecord, AUSplitter, NALuParser, AUTimestampGenerator}
+
+  @behaviour Membrane.H26x.Parser
 
   @nalu_length_size 4
+  @metadata_key :h264
+
+  @typep stream_format :: Membrane.StreamFormat.t()
+  @typep state :: Membrane.Element.state()
+  @typep callback_return :: Membrane.Element.Base.callback_return()
 
   def_input_pad :input,
     flow_control: :auto,
@@ -169,7 +172,34 @@ defmodule Membrane.H264.Parser do
       |> Map.put(:output_stream_structure, output_stream_structure)
       |> Map.put(:initial_parameter_sets, initial_parameter_sets)
 
-    super(ctx, opts)
+    Membrane.H26x.Parser.handle_init(
+      ctx,
+      opts,
+      AUTimestampGenerator,
+      NALuParser,
+      AUSplitter,
+      @metadata_key
+    )
+  end
+
+  @impl true
+  def handle_stream_format(:input, stream_format, ctx, state) do
+    Membrane.H26x.Parser.handle_stream_format(__MODULE__, stream_format, ctx, state)
+  end
+
+  @impl true
+  def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state) do
+    Membrane.H26x.Parser.handle_buffer(__MODULE__, buffer, ctx, state)
+  end
+
+  @impl true
+  def handle_end_of_stream(:input, ctx, state) when state.mode != :au_aligned do
+    Membrane.H26x.Parser.handle_end_of_stream(__MODULE__, ctx, state)
+  end
+
+  @impl true
+  def handle_end_of_stream(_pad, _ctx, state) do
+    {[end_of_stream: :output], state}
   end
 
   @impl true
