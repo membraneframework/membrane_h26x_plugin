@@ -43,14 +43,14 @@ defmodule Membrane.H264.Parser do
   (in-band).
   """
 
+  @behaviour Membrane.H26x.Parser
+
   use Membrane.Filter
 
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.H264.{DecoderConfigurationRecord, AUSplitter, NALuParser, AUTimestampGenerator}
-
-  @behaviour Membrane.H26x.Parser
+  alias Membrane.H264.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
 
   @nalu_length_size 4
   @metadata_key :h264

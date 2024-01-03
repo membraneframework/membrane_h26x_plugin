@@ -15,6 +15,8 @@ defmodule Membrane.H26x.Parser do
   """
   @type stream_structure :: :annexb | {codec_tag :: atom(), nalu_length_size :: pos_integer()}
 
+  @type callback_context :: Membrane.Element.CallbackContext.t()
+  @type action :: Membrane.Element.Action.t()
   @type parameter_sets :: tuple()
   @type stream_format :: Membrane.StreamFormat.t()
   @type state :: Membrane.Element.state()
@@ -106,7 +108,7 @@ defmodule Membrane.H26x.Parser do
     {[], state}
   end
 
-  # TODO: add spec
+  @spec handle_stream_format(stream_format(), callback_context(), state()) :: callback_return()
   def handle_stream_format(stream_format, ctx, state) do
     {alignment, input_stream_structure, parameter_sets} =
       state.module.parse_raw_input_stream_structure(stream_format)
@@ -163,7 +165,7 @@ defmodule Membrane.H26x.Parser do
     )
   end
 
-  @spec handle_buffer(Buffer.t(), CallbackContext.t(), state()) ::
+  @spec handle_buffer(Buffer.t(), callback_context(), state()) ::
           {[AUSplitter.access_unit()], state()}
   def handle_buffer(%Buffer{} = buffer, ctx, state) do
     {payload, state} =
@@ -197,7 +199,7 @@ defmodule Membrane.H26x.Parser do
     prepare_actions_for_aus(access_units, ctx, state)
   end
 
-  @spec handle_end_of_stream(CallbackContext.t(), state()) :: callback_return()
+  @spec handle_end_of_stream(callback_context(), state()) :: callback_return()
   def handle_end_of_stream(ctx, state) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
@@ -215,6 +217,8 @@ defmodule Membrane.H26x.Parser do
     {actions ++ [end_of_stream: :output], state}
   end
 
+  @spec process_stream_format_parameter_sets(parameter_sets(), stream_format(), state()) ::
+          callback_return()
   defp process_stream_format_parameter_sets(parameter_sets, stream_format, state) do
     if state.module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
       {parsed_parameter_sets, nalu_parser} =
@@ -291,7 +295,7 @@ defmodule Membrane.H26x.Parser do
 
   @spec prepare_actions_for_aus(
           [AUSplitter.access_unit()],
-          CallbackContext.t(),
+          callback_context(),
           state()
         ) ::
           callback_return()
@@ -305,10 +309,10 @@ defmodule Membrane.H26x.Parser do
 
   @spec process_au_parameter_sets(
           AUSplitter.access_unit(),
-          CallbackContext.t(),
+          callback_context(),
           state()
         ) ::
-          {AUSplitter.access_unit(), [Action.t()], state()}
+          {AUSplitter.access_unit(), [action()], state()}
   defp process_au_parameter_sets(au, ctx, state) do
     old_stream_format = ctx.pads.output.stream_format
     parameter_sets = state.module.get_parameter_sets(au)
@@ -359,12 +363,12 @@ defmodule Membrane.H26x.Parser do
     {buffers_actions, state}
   end
 
-  @spec flatten_parameter_sets(unquote(__MODULE__).parameter_sets()) :: list()
+  @spec flatten_parameter_sets(parameter_sets()) :: list()
   defp flatten_parameter_sets(parameter_sets) do
     Tuple.to_list(parameter_sets) |> List.flatten()
   end
 
-  @spec stream_format_sent?([Action.t()], CallbackContext.t()) :: boolean()
+  @spec stream_format_sent?([action()], callback_context()) :: boolean()
   defp stream_format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
@@ -494,11 +498,14 @@ defmodule Membrane.H26x.Parser do
      generate_best_effort_timestamps.framerate}
   end
 
+  @spec empty_parameter_sets(parameter_sets()) :: parameter_sets()
   defp empty_parameter_sets(parameter_sets) do
     Enum.map(1..tuple_size(parameter_sets), fn _id -> [] end)
     |> List.to_tuple()
   end
 
+  @spec process_new_parameter_sets(parameter_sets(), stream_format(), state()) ::
+          callback_return()
   defp process_new_parameter_sets(parameter_sets, last_sent_stream_format, state) do
     updated_parameter_sets =
       merge_parameter_sets(parameter_sets, state.cached_parameter_sets)

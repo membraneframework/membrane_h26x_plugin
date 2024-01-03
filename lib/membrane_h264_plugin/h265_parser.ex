@@ -30,14 +30,13 @@ defmodule Membrane.H265.Parser do
   * hev1, `:hev1` - The same as hvc1, only that parameter sets may be also present in the stream (in-band).
   """
 
+  @behaviour Membrane.H26x.Parser
   use Membrane.Filter
 
   require Membrane.H265.NALuTypes, as: NALuTypes
 
   alias Membrane.{H265, RemoteStream}
-  alias Membrane.H265.{DecoderConfigurationRecord, AUSplitter, NALuParser, AUTimestampGenerator}
-
-  @behaviour Membrane.H26x.Parser
+  alias Membrane.H265.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
 
   @nalu_length_size 4
   @metadata_key :h265
