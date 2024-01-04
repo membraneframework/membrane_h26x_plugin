@@ -1,4 +1,4 @@
-defmodule Membrane.H264.Support.Common do
+defmodule Membrane.H26x.Support.Common do
   @moduledoc false
 
   alias Membrane.H264.{AUSplitter, NALuParser}

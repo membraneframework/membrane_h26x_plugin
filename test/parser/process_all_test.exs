@@ -20,7 +20,7 @@ defmodule Membrane.H264.ProcessAllTest do
   end
 
   defp perform_test(filename, tmp_dir, timeout, spss \\ [], ppss \\ []) do
-    in_path = "../fixtures/input-#{filename}.h264" |> Path.expand(__DIR__)
+    in_path = "../fixtures/h264/input-#{filename}.h264" |> Path.expand(__DIR__)
     out_path = Path.join(tmp_dir, "output-all-#{filename}.h264")
 
     assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, spss, ppss)

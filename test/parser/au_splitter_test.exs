@@ -28,7 +28,7 @@ defmodule AUSplitterTest do
 
   test "if the access unit lenghts parsed by access unit splitter are the same as access units lengths parsed by FFMPEG" do
     for name <- @test_files_names do
-      full_name = "test/fixtures/input-#{name}.h264"
+      full_name = "test/fixtures/h264/input-#{name}.h264"
       binary = File.read!(full_name)
 
       aus = FullBinaryParser.parse(binary)

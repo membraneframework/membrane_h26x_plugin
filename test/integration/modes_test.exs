@@ -1,16 +1,16 @@
-defmodule Membrane.H264.ModesTest do
+defmodule Membrane.H26x.ModesTest do
   use ExUnit.Case, async: true
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
-  import Membrane.H264.Support.Common
+  import Membrane.H26x.Support.Common
 
   alias Membrane.Buffer
-  alias Membrane.H264.Parser
-  alias Membrane.H264.Support.TestSource
+  alias Membrane.H264
+  alias Membrane.H26x.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
-  @h264_input_file "test/fixtures/input-10-720p.h264"
+  @h264_input_file "test/fixtures/h264/input-10-720p.h264"
 
   test "if the pts and dts are set to nil in :bytestream mode" do
     binary = File.read!(@h264_input_file)
@@ -21,7 +21,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, Parser)
+          |> child(:parser, H264.Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -49,7 +49,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, Parser)
+          |> child(:parser, H264.Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -79,7 +79,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, Parser)
+          |> child(:parser, H264.Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -105,7 +105,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %Membrane.File.Source{location: @h264_input_file})
-          |> child(:parser, %Parser{output_alignment: :nalu})
+          |> child(:parser, %H264.Parser{output_alignment: :nalu})
           |> child(:sink, Sink)
         ]
       )

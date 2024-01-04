@@ -5,11 +5,11 @@ defmodule Membrane.H264.TimestampGenerationTest do
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
-  import Membrane.H264.Support.Common
+  import Membrane.H26x.Support.Common
 
   alias Membrane.Buffer
   alias Membrane.H264.Parser
-  alias Membrane.H264.Support.TestSource
+  alias Membrane.H26x.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
   defmodule EnhancedPipeline do
@@ -29,7 +29,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     end
   end
 
-  @h264_input_file_main "test/fixtures/input-10-720p.h264"
+  @h264_input_file_main "test/fixtures/h264/input-10-720p.h264"
   @h264_input_timestamps_main [
     {0, -500},
     {133, -467},
@@ -42,7 +42,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     {233, -233},
     {300, -200}
   ]
-  @h264_input_file_baseline "test/fixtures/input-10-720p-baseline.h264"
+  @h264_input_file_baseline "test/fixtures/h264/input-10-720p-baseline.h264"
   @h264_input_timestamps_baseline [0, 33, 67, 100, 133, 167, 200, 233, 267, 300]
                                   |> Enum.map(&{&1, &1 - 500})
 

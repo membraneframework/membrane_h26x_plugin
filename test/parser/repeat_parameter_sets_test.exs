@@ -5,14 +5,14 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
-  import Membrane.H264.Support.Common
+  import Membrane.H26x.Support.Common
 
-  alias Membrane.H264
+  alias Membrane.{H264, H26x}
   alias Membrane.H26x.NALuSplitter
   alias Membrane.Testing.{Pipeline, Sink}
 
-  @in_path "../fixtures/input-30-240p-no-sps-pps.h264" |> Path.expand(__DIR__)
-  @ref_path "../fixtures/reference-30-240p-with-sps-pps.h264" |> Path.expand(__DIR__)
+  @in_path "../fixtures/h264/input-30-240p-no-sps-pps.h264" |> Path.expand(__DIR__)
+  @ref_path "../fixtures/h264/reference-30-240p-with-sps-pps.h264" |> Path.expand(__DIR__)
 
   @sps <<103, 100, 0, 21, 172, 217, 65, 177, 254, 255, 252, 5, 0, 5, 4, 64, 0, 0, 3, 0, 64, 0, 0,
          15, 3, 197, 139, 101, 128>>
@@ -71,13 +71,13 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
   describe "Parameter sets should be reapeated on each IDR access unit" do
     test "when provided by parser options" do
-      source = %H264.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source, [@sps], [@pps])
       perform_test(pid, File.read!(@in_path))
     end
 
     test "when retrieved from the bytestream" do
-      source = %H264.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source)
 
       data = Enum.join([<<>>, @sps, @pps], <<0, 0, 0, 1>>) <> File.read!(@in_path)
@@ -85,7 +85,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when provided via DCR" do
-      source = %H264.Support.TestSource{
+      source = %H26x.Support.TestSource{
         mode: :au_aligned,
         output_raw_stream_structure: {:avc3, @dcr}
       }
@@ -95,10 +95,10 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when bytestream has variable parameter sets" do
-      in_path = "./test/fixtures/input-30-240p-vp-sps-pps.h264"
-      ref_path = "./test/fixtures/reference-30-240p-vp-sps-pps.h264"
+      in_path = "./test/fixtures/h264/input-30-240p-vp-sps-pps.h264"
+      ref_path = "./test/fixtures/h264/reference-30-240p-vp-sps-pps.h264"
 
-      source = %H264.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source)
 
       buffers = prepare_buffers(File.read!(in_path), :bytestream)
