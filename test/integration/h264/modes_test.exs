@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.ModesTest do
+defmodule Membrane.H264.ModesTest do
   use ExUnit.Case, async: true
 
   import Membrane.ChildrenSpec

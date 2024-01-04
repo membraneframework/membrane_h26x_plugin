@@ -22,7 +22,7 @@ defmodule Membrane.H264.SkipUntilTest do
 
     test "skip the whole stream if no pps/sps are provided", ctx do
       filename = "10-no-pps-sps"
-      in_path = "../fixtures/h264/input-#{filename}.h264" |> Path.expand(__DIR__)
+      in_path = "test/fixtures/h264/input-#{filename}.h264"
       out_path = Path.join(ctx.tmp_dir, "output-all-#{filename}.h264")
 
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, false)
@@ -34,7 +34,7 @@ defmodule Membrane.H264.SkipUntilTest do
 
     test "skip until AU with IDR frame is provided, when `skip_until_keyframe: true`", ctx do
       filename = "sps-pps-non-idr-sps-pps-idr"
-      in_path = "../fixtures/h264/input-#{filename}.h264" |> Path.expand(__DIR__)
+      in_path = "test/fixtures/h264/input-#{filename}.h264"
       out_path = Path.join(ctx.tmp_dir, "output-#{filename}.h264")
       ref_path = "test/fixtures/h264/reference-#{filename}.h264"
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, true)
@@ -46,7 +46,7 @@ defmodule Membrane.H264.SkipUntilTest do
     test "skip until AU with parameters is provided, no matter if it contains keyframe, when `skip_until_keyframe: false`",
          ctx do
       filename = "idr-sps-pps-non-idr"
-      in_path = "../fixtures/h264/input-#{filename}.h264" |> Path.expand(__DIR__)
+      in_path = "test/fixtures/h264/input-#{filename}.h264"
       out_path = Path.join(ctx.tmp_dir, "output-#{filename}.h264")
       ref_path = "test/fixtures/h264/reference-#{filename}.h264"
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, false)
@@ -58,7 +58,7 @@ defmodule Membrane.H264.SkipUntilTest do
     test "skip until AU with parameters and IDR is provided, when `skip_until_keyframe: true`",
          ctx do
       filename = "idr-sps-pps-non-idr"
-      in_path = "../fixtures/h264/input-#{filename}.h264" |> Path.expand(__DIR__)
+      in_path = "test/fixtures/h264/input-#{filename}.h264"
       out_path = Path.join(ctx.tmp_dir, "output-#{filename}.h264")
       assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path, out_path, true)
       assert_end_of_stream(pid, :parser)

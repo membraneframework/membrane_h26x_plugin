@@ -1,4 +1,4 @@
-defmodule AUSplitterTest do
+defmodule Membrane.H264.AUSplitterTest do
   @moduledoc false
 
   use ExUnit.Case, async: true

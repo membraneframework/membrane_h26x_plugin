@@ -11,8 +11,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   alias Membrane.H26x.NALuSplitter
   alias Membrane.Testing.{Pipeline, Sink}
 
-  @in_path "../fixtures/h264/input-30-240p-no-sps-pps.h264" |> Path.expand(__DIR__)
-  @ref_path "../fixtures/h264/reference-30-240p-with-sps-pps.h264" |> Path.expand(__DIR__)
+  @in_path "test/fixtures/h264/input-30-240p-no-sps-pps.h264"
+  @ref_path "test/fixtures/h264/reference-30-240p-with-sps-pps.h264"
 
   @sps <<103, 100, 0, 21, 172, 217, 65, 177, 254, 255, 252, 5, 0, 5, 4, 64, 0, 0, 3, 0, 64, 0, 0,
          15, 3, 197, 139, 101, 128>>

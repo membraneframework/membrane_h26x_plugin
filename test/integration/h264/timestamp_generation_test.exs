@@ -12,23 +12,6 @@ defmodule Membrane.H264.TimestampGenerationTest do
   alias Membrane.H26x.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
-  defmodule EnhancedPipeline do
-    @moduledoc false
-
-    use Membrane.Pipeline
-
-    @impl true
-    def handle_init(_ctx, args) do
-      {[spec: args], %{}}
-    end
-
-    @impl true
-    def handle_call({:get_child_pid, child}, ctx, state) do
-      child_pid = Map.get(ctx.children, child).pid
-      {[reply: child_pid], state}
-    end
-  end
-
   @h264_input_file_main "test/fixtures/h264/input-10-720p.h264"
   @h264_input_timestamps_main [
     {0, -500},
