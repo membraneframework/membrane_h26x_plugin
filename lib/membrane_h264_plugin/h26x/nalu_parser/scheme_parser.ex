@@ -1,12 +1,12 @@
-defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
+defmodule Membrane.H26x.NALuParser.SchemeParser do
   @moduledoc false
   # The module providing functions to parse the binary,
   # based on the given Scheme.
 
   use Bunch.Access
 
-  alias Membrane.H264.Common
-  alias Membrane.H264.Parser.NALuParser.Scheme
+  alias Membrane.H26x.ExpGolombConverter
+  alias Membrane.H26x.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.
@@ -146,12 +146,14 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
     {min_value, min_args_list} = make_function(min_value)
     {max_value, max_args_list} = make_function(max_value)
 
+    {min_value, max_value} = {
+      apply(min_value, get_args(min_args_list, state.__local__)),
+      apply(max_value, get_args(max_args_list, state.__local__))
+    }
+
     {payload, state} =
       Enum.reduce(
-        apply(min_value, get_args(min_args_list, state.__local__))..apply(
-          max_value,
-          get_args(max_args_list, state.__local__)
-        ),
+        if(min_value > max_value, do: [], else: min_value..max_value),
         {payload, state},
         fn iterator, {payload, state} ->
           state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
@@ -201,10 +203,10 @@ defmodule Membrane.H264.Parser.NALuParser.SchemeParser do
         {value, rest}
 
       :ue ->
-        Common.ExpGolombConverter.to_integer(payload)
+        ExpGolombConverter.to_integer(payload)
 
       :se ->
-        Common.ExpGolombConverter.to_integer(payload, negatives: true)
+        ExpGolombConverter.to_integer(payload, negatives: true)
 
       unsigned_int ->
         how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()

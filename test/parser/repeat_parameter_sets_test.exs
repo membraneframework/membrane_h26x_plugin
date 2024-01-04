@@ -8,7 +8,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   import Membrane.H264.Support.Common
 
   alias Membrane.H264
-  alias Membrane.H264.Parser.NALuSplitter
+  alias Membrane.H26x.NALuSplitter
   alias Membrane.Testing.{Pipeline, Sink}
 
   @in_path "../fixtures/input-30-240p-no-sps-pps.h264" |> Path.expand(__DIR__)

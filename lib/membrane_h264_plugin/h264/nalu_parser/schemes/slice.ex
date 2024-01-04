@@ -1,6 +1,6 @@
-defmodule Membrane.H264.Parser.NALuParser.Schemes.Slice do
+defmodule Membrane.H264.NALuParser.Schemes.Slice do
   @moduledoc false
-  @behaviour Membrane.H264.Parser.NALuParser.Scheme
+  @behaviour Membrane.H26x.NALuParser.Scheme
 
   @impl true
   def defaults(), do: []

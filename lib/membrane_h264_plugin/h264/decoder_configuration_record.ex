@@ -1,11 +1,9 @@
-defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
+defmodule Membrane.H264.DecoderConfigurationRecord do
   @moduledoc """
   Utility functions for parsing and generating AVC Configuration Record.
 
   The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
   """
-
-  alias Membrane.H264.Parser
 
   @enforce_keys [
     :spss,
@@ -30,7 +28,7 @@ defmodule Membrane.H264.Parser.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on given PPSs and SPSs.
   """
-  @spec generate([binary()], [binary()], Parser.stream_structure()) ::
+  @spec generate([binary()], [binary()], Membrane.H26x.Parser.stream_structure()) ::
           binary() | nil
   def generate([], _ppss, _stream_structure) do
     nil

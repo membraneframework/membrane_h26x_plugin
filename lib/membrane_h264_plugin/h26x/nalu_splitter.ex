@@ -1,17 +1,15 @@
-defmodule Membrane.H264.Parser.NALuSplitter do
+defmodule Membrane.H26x.NALuSplitter do
   @moduledoc """
-  A module with functions responsible for splitting
-  the h264 stream into the NAL units.
-
-  The splitting is based on
-  *"Annex B"* of the *"ITU-T Rec. H.264 (01/2012)"*.
+  A module with functions responsible for splitting the H26x streams into the NAL units.
   """
+
+  alias Membrane.H26x.Parser
 
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            input_stream_structure: Membrane.H264.Parser.stream_structure(),
+            input_stream_structure: Parser.stream_structure(),
             unparsed_payload: binary()
           }
 
@@ -21,12 +19,10 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @doc """
   Returns a structure holding a NALu splitter state.
 
-
   The `input_stream_structure` determines which prefix is considered as delimiting two NALUs.
   By default, the inner `unparsed_payload` of the state is clean, but can be set to a given binary.
   """
-  @spec new(Membrane.H264.Parser.stream_structure(), initial_binary :: binary()) ::
-          t()
+  @spec new(Parser.stream_structure(), initial_binary :: binary()) :: t()
   def new(input_stream_structure \\ :annexb, initial_binary \\ <<>>) do
     %__MODULE__{
       input_stream_structure: input_stream_structure,
@@ -37,9 +33,9 @@ defmodule Membrane.H264.Parser.NALuSplitter do
   @doc """
   Splits the binary into NALus sequence.
 
-  Takes a binary h264 stream as an input
+  Takes a binary H26x stream as an input
   and produces a list of binaries, where each binary is
-  a complete NALu that can be passed to the `Membrane.H264.Parser.NALuParser.parse/2`.
+  a complete NALu that can be passed to the `Membrane.H26x.NALuParser.parse/4`.
 
   If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
   of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned
@@ -84,19 +80,19 @@ defmodule Membrane.H264.Parser.NALuSplitter do
     end)
   end
 
-  defp get_complete_nalus_list(payload, {_avc, nalu_length_size})
+  defp get_complete_nalus_list(payload, {_codec_tag, nalu_length_size})
        when byte_size(payload) < nalu_length_size do
     []
   end
 
-  defp get_complete_nalus_list(payload, {avc, nalu_length_size}) do
+  defp get_complete_nalus_list(payload, {codec_tag, nalu_length_size}) do
     <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = payload
 
     if nalu_length > byte_size(rest) do
       []
     else
       <<nalu::binary-size(nalu_length + nalu_length_size), rest::binary>> = payload
-      [nalu | get_complete_nalus_list(rest, {avc, nalu_length_size})]
+      [nalu | get_complete_nalus_list(rest, {codec_tag, nalu_length_size})]
     end
   end
 end

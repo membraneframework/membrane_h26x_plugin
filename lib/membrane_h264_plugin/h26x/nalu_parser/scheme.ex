@@ -1,14 +1,14 @@
-defmodule Membrane.H264.Parser.NALuParser.Scheme do
+defmodule Membrane.H26x.NALuParser.Scheme do
   @moduledoc false
   # A module defining the behaviour which should be implemented
   # by each NALu scheme.
 
   # A NALu scheme is defining the internal structure of the NALu
   # and describes the fields which need to by fetched from the binary.
-  # The `Membrane.H264.Parser.SchemeParserScheme` behaviour defines a
+  # The `Membrane.H26x.NALuParser.Scheme` behaviour defines a
   # callback: `scheme/0`, which returns the description of NALu structure.
   # The syntax which can be used to describe the NALu scheme is designed to
-  # match the syntax forms used in *7.1.* chapter of the *"ITU-T Rec. H.264 (01/2012)"*.
+  # match the syntax forms used in the H26x specification documents.
   # The scheme is read by the parser in an imperative manner, line by line.
   # The following statements are available:
   # * field: reads the appropriate number of bits, decodes the integer based on
@@ -26,7 +26,7 @@ defmodule Membrane.H264.Parser.NALuParser.Scheme do
   #
   # Furthermore, `Scheme` behavior defines `defaults/0` callback,
   # which is used to provide the default values of the fields.
-  alias Membrane.H264.Parser.NALuParser.SchemeParser
+  alias Membrane.H26x.NALuParser.SchemeParser
 
   @type field :: {any(), SchemeParser.field()}
   @type if_clause :: {value_provider(boolean()), t()}
