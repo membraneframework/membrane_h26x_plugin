@@ -209,7 +209,9 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
         ExpGolombConverter.to_integer(payload, negatives: true)
 
       unsigned_int ->
-        how_many_bits = Atom.to_string(unsigned_int) |> String.slice(1..-1) |> String.to_integer()
+        how_many_bits =
+          Atom.to_string(unsigned_int) |> String.slice(1..-1//1) |> String.to_integer()
+
         <<value::unsigned-size(how_many_bits), rest::bitstring>> = payload
         {value, rest}
     end
