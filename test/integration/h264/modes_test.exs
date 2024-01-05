@@ -6,7 +6,7 @@ defmodule Membrane.H264.ModesTest do
   import Membrane.H26x.Support.Common
 
   alias Membrane.Buffer
-  alias Membrane.H264
+  alias Membrane.H264.Parser
   alias Membrane.H26x.Support.TestSource
   alias Membrane.Testing.{Pipeline, Sink}
 
@@ -21,7 +21,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, H264.Parser)
+          |> child(:parser, Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -49,7 +49,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, H264.Parser)
+          |> child(:parser, Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -79,7 +79,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %TestSource{mode: mode})
-          |> child(:parser, H264.Parser)
+          |> child(:parser, Parser)
           |> child(:sink, Sink)
         ]
       )
@@ -105,7 +105,7 @@ defmodule Membrane.H264.ModesTest do
       Pipeline.start_supervised(
         spec: [
           child(:source, %Membrane.File.Source{location: @h264_input_file})
-          |> child(:parser, %H264.Parser{output_alignment: :nalu})
+          |> child(:parser, %Parser{output_alignment: :nalu})
           |> child(:sink, Sink)
         ]
       )

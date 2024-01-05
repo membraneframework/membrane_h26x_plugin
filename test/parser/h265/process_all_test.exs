@@ -6,6 +6,7 @@ defmodule Membrane.H265.ProcessAllTest do
   import Membrane.ChildrenSpec
   import Membrane.Testing.Assertions
 
+  alias Membrane.H26x.NALuSplitter
   alias Membrane.H265
   alias Membrane.Testing.Pipeline
 
@@ -24,12 +25,9 @@ defmodule Membrane.H265.ProcessAllTest do
   end
 
   defp strip_parameter_sets(file) do
-    data = File.read!(file)
+    {nalus, _splitter} = NALuSplitter.split(File.read!(file), true, NALuSplitter.new())
 
-    data
-    |> :binary.matches([<<0, 0, 1>>, <<0, 0, 0, 1>>])
-    |> Enum.chunk_every(2, 1, [{byte_size(data), nil}])
-    |> Enum.map(fn [{from, _}, {to, _}] -> :binary.part(data, from, to - from) end)
+    nalus
     |> Enum.filter(fn
       <<0, 0, 1, 0::1, type::6, 0::1, _rest::binary>> when type in [32, 33, 34, 39] -> false
       <<0, 0, 0, 1, 0::1, type::6, 0::1, _rest::binary>> when type in [32, 33, 34, 39] -> false
