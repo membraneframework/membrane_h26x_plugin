@@ -10,23 +10,14 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   alias Membrane.{H264, H26x}
   alias Membrane.Testing.{Pipeline, Sink}
 
-  @annexb_fixtures "../fixtures/h264/*.h264"
-                   |> Path.expand(__DIR__)
+  @annexb_fixtures "test/fixtures/h264/*.h264"
                    |> Path.wildcard()
                    |> Enum.reject(&String.contains?(&1, ["no-sps", "no-pps", "sps-pps-non-idr"]))
 
-  @avc1_au_fixtures "../fixtures/h264/msr/*-avc1-au.msr"
-                    |> Path.expand(__DIR__)
-                    |> Path.wildcard()
-  @avc1_nalu_fixtures "../fixtures/h264/msr/*-avc1-nalu.msr"
-                      |> Path.expand(__DIR__)
-                      |> Path.wildcard()
-  @avc3_au_fixtures "../fixtures/h264/msr/*-avc3-au.msr"
-                    |> Path.expand(__DIR__)
-                    |> Path.wildcard()
-  @avc3_nalu_fixtures "../fixtures/h264/msr/*-avc3-nalu.msr"
-                      |> Path.expand(__DIR__)
-                      |> Path.wildcard()
+  @avc1_au_fixtures "test/fixtures/h264/msr/*-avc1-au.msr" |> Path.wildcard()
+  @avc1_nalu_fixtures "test/fixtures/h264/msr/*-avc1-nalu.msr" |> Path.wildcard()
+  @avc3_au_fixtures "test/fixtures/h264/msr/*-avc3-au.msr" |> Path.wildcard()
+  @avc3_nalu_fixtures "test/fixtures/h264/msr/*-avc3-nalu.msr" |> Path.wildcard()
 
   defp make_annexb_pipeline(alignment, parsers) do
     parser_chain = make_parser_chain(parsers)
@@ -49,7 +40,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   end
 
   defp perform_annexb_test(pipeline_pid, data, mode, identical_order?) do
-    buffers = prepare_buffers(data, mode, :annexb, false)
+    buffers = prepare_h264_buffers(data, mode, :annexb, false)
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])

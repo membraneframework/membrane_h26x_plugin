@@ -15,7 +15,7 @@ defmodule Membrane.H264.ModesTest do
   test "if the pts and dts are set to nil in :bytestream mode" do
     binary = File.read!(@h264_input_file)
     mode = :bytestream
-    input_buffers = prepare_buffers(binary, mode)
+    input_buffers = prepare_h264_buffers(binary, mode)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
@@ -30,7 +30,7 @@ defmodule Membrane.H264.ModesTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(binary, :au_aligned)
+    output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -43,7 +43,7 @@ defmodule Membrane.H264.ModesTest do
   test "if the pts and dts are rewritten properly in :nalu_aligned mode" do
     binary = File.read!(@h264_input_file)
     mode = :nalu_aligned
-    input_buffers = prepare_buffers(binary, mode)
+    input_buffers = prepare_h264_buffers(binary, mode)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
@@ -58,7 +58,7 @@ defmodule Membrane.H264.ModesTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(binary, :au_aligned)
+    output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -73,7 +73,7 @@ defmodule Membrane.H264.ModesTest do
   test "if the pts and dts are rewritten properly in :au_aligned mode" do
     binary = File.read!(@h264_input_file)
     mode = :au_aligned
-    input_buffers = prepare_buffers(binary, mode)
+    input_buffers = prepare_h264_buffers(binary, mode)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
@@ -114,7 +114,7 @@ defmodule Membrane.H264.ModesTest do
     assert_sink_stream_format(pid, :sink, %Membrane.H264{alignment: :nalu})
 
     binary = File.read!(@h264_input_file)
-    ref_buffers = prepare_buffers(binary, :nalu_aligned)
+    ref_buffers = prepare_h264_buffers(binary, :nalu_aligned)
 
     Enum.each(ref_buffers, fn ref_buffer ->
       assert_sink_buffer(pid, :sink, buffer)

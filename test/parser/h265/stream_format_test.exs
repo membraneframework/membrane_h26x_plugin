@@ -29,7 +29,7 @@ defmodule Membrane.H265.StreamFormatTest do
   }
 
   defp perform_test(filename, timeout) do
-    in_path = Path.expand("../../fixtures/h265/input-#{filename}.h265", __DIR__)
+    in_path = "test/fixtures/h265/input-#{filename}.h265"
     assert {:ok, _supervisor_pid, pid} = make_pipeline(in_path)
     {profile, width, height} = @video_parameters[filename]
 

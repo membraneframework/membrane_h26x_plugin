@@ -117,14 +117,14 @@ defmodule AVCFixtureGenerator do
   @moduledoc false
 
   @mp4_avc1_fixtures [
-    "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
-    "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__)
+    "test/fixtures/mp4/ref_video.mp4",
+    "test/fixtures/mp4/ref_video_fast_start.mp4"
   ]
 
   @mp4_avc3_fixtures [
-    "../fixtures/mp4/ref_video.mp4" |> Path.expand(__DIR__),
-    "../fixtures/mp4/ref_video_fast_start.mp4" |> Path.expand(__DIR__),
-    "../fixtures/mp4/ref_video_variable_parameters.mp4" |> Path.expand(__DIR__)
+    "test/fixtures/mp4/ref_video.mp4",
+    "test/fixtures/mp4/ref_video_fast_start.mp4",
+    "test/fixtures/mp4/ref_video_variable_parameters.mp4"
   ]
 
   @spec generate_avc_fixtures() :: :ok

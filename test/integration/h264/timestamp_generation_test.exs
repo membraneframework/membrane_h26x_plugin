@@ -32,7 +32,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
   test "if the pts and dts are set to nil in :bytestream mode when framerate isn't given" do
     binary = File.read!(@h264_input_file_baseline)
     mode = :bytestream
-    input_buffers = prepare_buffers(binary, mode)
+    input_buffers = prepare_h264_buffers(binary, mode)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
@@ -47,7 +47,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_buffers(binary, :au_aligned)
+    output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -70,7 +70,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
       """ do
         binary = File.read!(unquote(file))
         mode = :bytestream
-        input_buffers = prepare_buffers(binary, mode)
+        input_buffers = prepare_h264_buffers(binary, mode)
 
         framerate = {30, 1}
 
@@ -89,7 +89,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
         send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
         Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-        output_buffers = prepare_buffers(binary, :au_aligned)
+        output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
         output_buffers
         |> Enum.zip(unquote(timestamps))

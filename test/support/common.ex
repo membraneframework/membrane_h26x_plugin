@@ -4,25 +4,25 @@ defmodule Membrane.H26x.Support.Common do
   alias Membrane.{H264, H265}
   alias Membrane.H26x.NALuSplitter
 
-  @spec prepare_buffers(
+  @spec prepare_h264_buffers(
           binary,
           :au | :bytestream | :nalu,
           Membrane.H26x.Parser.stream_structure(),
           boolean()
         ) :: list
 
-  def prepare_buffers(
+  def prepare_h264_buffers(
         binary,
         alignment,
         output_stream_structure \\ :annexb,
         stable_reprefixing? \\ true
       )
 
-  def prepare_buffers(binary, :bytestream, _output_stream_structure, _stable_reprefixing?) do
+  def prepare_h264_buffers(binary, :bytestream, _output_stream_structure, _stable_reprefixing?) do
     do_prepare_bytestream_buffers(binary)
   end
 
-  def prepare_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
+  def prepare_h264_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
     do_prepare_buffers(
       binary,
       mode,
