@@ -13,7 +13,8 @@ defmodule Membrane.H26x.Parser do
   Stream structure of the NALUs. In case it's not `:annexb` format, it contains an information
   about the size of each NALU's prefix describing their length.
   """
-  @type stream_structure :: :annexb | {codec_tag :: atom(), nalu_length_size :: pos_integer()}
+  @type stream_structure ::
+          Membrane.H264.Parser.stream_structure() | Membrane.H265.Parser.stream_structure()
 
   @type callback_context :: Membrane.Element.CallbackContext.t()
   @type action :: Membrane.Element.Action.t()

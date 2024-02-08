@@ -1,12 +1,12 @@
-# Membrane H264 Plugin
+# Membrane H26x Plugin
 
 [![Hex.pm](https://img.shields.io/hexpm/v/membrane_h264_plugin.svg)](https://hex.pm/packages/membrane_h264_plugin)
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/membrane_h264_plugin)
 [![CircleCI](https://circleci.com/gh/membraneframework/membrane_h264_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_h264_plugin)
 
-Membrane H264 parser.
-It is the Membrane element responsible for parsing the incoming H264 stream. The parsing is done as a sequence of the following steps:
-* splitting the H264 stream into stream NAL units, based on the "Annex B" of the "ITU-T Rec. H.264 (01/2012)" or length prefix defined in "ISO/IEC 14496-10"
+Membrane H.264 and H.265 parsers.
+It is a pair of Membrane elements responsible for parsing the incoming H.264 and H.265 streams. The parsing is done as a sequence of the following steps:
+* splitting the stream into stream NAL units
 * Parsing the NAL unit headers, so that to read the type of the NAL unit
 * Parsing the NAL unit body with the appropriate scheme, based on the NAL unit type read in the step before
 * Aggregating the NAL units into a stream of *access units*
@@ -17,12 +17,12 @@ It is part of [Membrane Multimedia Framework](https://membraneframework.org).
 
 ## Installation
 
-The package can be installed by adding `membrane_h264_plugin` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `membrane_h26x_plugin` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:membrane_h264_plugin, "~> 0.10.0"}
+    {:membrane_h26x_plugin, "~> 0.10.0"}
   ]
 end
 ```

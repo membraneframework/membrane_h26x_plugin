@@ -151,6 +151,14 @@ defmodule Membrane.H264.Parser do
                 """
               ]
 
+  @typedoc """
+  Format of the H264 stream, if set to `:annexb` NALUs will be separated by
+  a start code (0x(00)000001) or if set to `:avc3` or `:avc1` they will
+  be prefixed by their size.
+  """
+  @type stream_structure ::
+          :annexb | {codec_tag :: :avc1 | :avc3, nalu_length_size :: pos_integer()}
+
   @impl true
   def handle_init(ctx, opts) do
     output_stream_structure =

@@ -48,7 +48,7 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on given PPSs, SPSs and VPSs.
   """
-  @spec generate([NALu.t()], [NALu.t()], [NALu.t()], Membrane.H26x.Parser.stream_structure()) ::
+  @spec generate([NALu.t()], [NALu.t()], [NALu.t()], Membrane.H265.Parser.stream_structure()) ::
           binary() | nil
   def generate(_vpss, [], _ppss, _stream_structure) do
     nil
