@@ -22,7 +22,7 @@ defmodule Membrane.H26x.NALuSplitter do
   The `input_stream_structure` determines which prefix is considered as delimiting two NALUs.
   By default, the inner `unparsed_payload` of the state is clean, but can be set to a given binary.
   """
-  @spec new(Parser.stream_structure(), initial_binary :: binary()) :: t()
+  @spec new(Membrane.H264.Parser.stream_structure(), initial_binary :: binary()) :: t()
   def new(input_stream_structure \\ :annexb, initial_binary \\ <<>>) do
     %__MODULE__{
       input_stream_structure: input_stream_structure,
@@ -33,9 +33,9 @@ defmodule Membrane.H26x.NALuSplitter do
   @doc """
   Splits the binary into NALus sequence.
 
-  Takes a binary H26x stream as an input
+  Takes a binary H264 stream as an input
   and produces a list of binaries, where each binary is
-  a complete NALu that can be passed to the `Membrane.H26x.NALuParser.parse/4`.
+  a complete NALu that can be passed to the `Membrane.H264.NALuParser.parse/4`.
 
   If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
   of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned

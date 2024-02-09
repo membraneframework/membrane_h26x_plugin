@@ -29,26 +29,16 @@ defmodule Membrane.H26x.NALuParser.Scheme do
   alias Membrane.H26x.NALuParser.SchemeParser
 
   @type field :: {any(), SchemeParser.field()}
-  @type if_clause :: {value_provider(boolean()), t()}
+  @type if_clause :: {SchemeParser.value_provider(boolean()), t()}
   @type for_loop ::
-          {[iterator: any(), from: value_provider(integer()), to: value_provider(integer())], t()}
-  @type calculate :: {any(), value_provider(any())}
+          {[
+             iterator: any(),
+             from: SchemeParser.value_provider(integer()),
+             to: SchemeParser.value_provider(integer())
+           ], t()}
+  @type calculate :: {any(), SchemeParser.value_provider(any())}
   @type execute :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
-  @type save_as_global_state :: value_provider(any())
-
-  @typedoc """
-  This type defines a value provider which provides values used in further
-  processing of a parser.
-
-  A value provider can be either a hardcoded value, known at the compilation
-  time, or a tuple consisting of a lambda expression and the list of keys
-  mapping to some values in the parser's state. If the value provider is a tuple,
-  then it's first element - the lambda expression-  is invoked with the arguments
-  being the values of the fields which are available in the parser's state under
-  the key names given in the parser's state, and the value used in the further
-  processing is the value returned by that lambda expression.
-  """
-  @type value_provider(return_type) :: return_type | {(... -> return_type), list(any())}
+  @type save_as_global_state :: SchemeParser.value_provider(any())
 
   @type directive ::
           {:field, field()}

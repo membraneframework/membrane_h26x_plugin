@@ -1,12 +1,12 @@
 defmodule Membrane.H26x.NALuParser.SchemeParser do
-  @moduledoc false
-  # The module providing functions to parse the binary,
-  # based on the given Scheme.
+  @moduledoc """
+  The module providing functions to parse the binary,
+  based on the given Scheme.
+  """
 
   use Bunch.Access
 
   alias Membrane.H26x.ExpGolombConverter
-  alias Membrane.H26x.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.
@@ -31,6 +31,20 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
   defstruct @enforce_keys
 
   @typedoc """
+  This type defines a value provider which provides values used in further
+  processing of a parser.
+
+  A value provider can be either a hardcoded value, known at the compilation
+  time, or a tuple consisting of a lambda expression and the list of keys
+  mapping to some values in the parser's state. If the value provider is a tuple,
+  then it's first element - the lambda expression-  is invoked with the arguments
+  being the values of the fields which are available in the parser's state under
+  the key names given in the parser's state, and the value used in the further
+  processing is the value returned by that lambda expression.
+  """
+  @type value_provider(return_type) :: return_type | {(... -> return_type), list(any())}
+
+  @typedoc """
   A type describing the field types which can be used
   in NALu scheme definition.
 
@@ -46,7 +60,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
           | :u8
           | :u16
           | :u16
-          | {:uv, Scheme.value_provider(integer())}
+          | {:uv, value_provider(integer())}
           | :ue
           | :se
 

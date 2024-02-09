@@ -79,7 +79,6 @@ defmodule Membrane.H26x.Plugin.Mixfile do
       extras: ["README.md", "LICENSE"],
       formatters: ["html"],
       source_ref: "v#{@version}",
-      filter_modules: "Membrane\.H26(4|5)",
       nest_modules_by_prefix: [Membrane.H264, Membrane.H265, Membrane.H26x]
     ]
   end
