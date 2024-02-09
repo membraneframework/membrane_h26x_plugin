@@ -110,10 +110,9 @@ defmodule Membrane.H265.Parser do
               output_stream_structure: [
                 spec:
                   nil
-                  | :annexb
+                  | stream_structure()
                   | :hvc1
-                  | :hev1
-                  | {:hvc1 | :hev1, nalu_length_size :: pos_integer()},
+                  | :hev1,
                 default: nil,
                 description: """
                 format of the outgoing H265 stream, if set to `:annexb` NALUs will be separated by

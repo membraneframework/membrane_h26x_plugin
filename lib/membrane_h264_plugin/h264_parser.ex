@@ -112,10 +112,9 @@ defmodule Membrane.H264.Parser do
               output_stream_structure: [
                 spec:
                   nil
-                  | :annexb
+                  | stream_structure()
                   | :avc1
-                  | :avc3
-                  | {:avc1 | :avc3, nalu_length_size :: pos_integer()},
+                  | :avc3,
                 default: nil,
                 description: """
                 format of the outgoing H264 stream, if set to `:annexb` NALUs will be separated by
