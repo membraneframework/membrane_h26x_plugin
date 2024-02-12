@@ -1,12 +1,12 @@
-defmodule Membrane.H264.Plugin.Mixfile do
+defmodule Membrane.H26x.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.9.1"
-  @github_url "https://github.com/membraneframework/membrane_h264_plugin"
+  @version "0.10.0"
+  @github_url "https://github.com/membraneframework/membrane_h26x_plugin"
 
   def project do
     [
-      app: :membrane_h264_plugin,
+      app: :membrane_h26x_plugin,
       version: @version,
       elixir: "~> 1.13",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -15,11 +15,11 @@ defmodule Membrane.H264.Plugin.Mixfile do
       dialyzer: dialyzer(),
 
       # hex
-      description: "Membrane H264 parser",
+      description: "Membrane H.264 and H.265 parser",
       package: package(),
 
       # docs
-      name: "Membrane H264 plugin",
+      name: "Membrane H.264 and H.265 plugin",
       source_url: @github_url,
       homepage_url: "https://membrane.stream",
       docs: docs()
@@ -79,8 +79,7 @@ defmodule Membrane.H264.Plugin.Mixfile do
       extras: ["README.md", "LICENSE"],
       formatters: ["html"],
       source_ref: "v#{@version}",
-      filter_modules: "Membrane\.H264\.Parser",
-      nest_modules_by_prefix: [Membrane.H264.Parser]
+      nest_modules_by_prefix: [Membrane.H264, Membrane.H265, Membrane.H26x]
     ]
   end
 end

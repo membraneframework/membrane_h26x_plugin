@@ -5,9 +5,7 @@ defmodule Membrane.H264.AUSplitterTest do
 
   @test_files_names ["10-720a", "10-720p"]
 
-  # These values were obtained with the use of H264.FFmpeg.Parser, available
-  # in the membrane_h264_ffmpeg_plugin repository.
-  @au_lengths_ffmpeg %{
+  @au_lengths_snapshot %{
     "10-720a" => [777, 146, 93, 136],
     "10-720p" => [25_699, 19_043, 14_379, 14_281, 14_761, 18_702, 14_735, 13_602, 12_094, 17_228]
   }
@@ -40,7 +38,7 @@ defmodule Membrane.H264.AUSplitterTest do
                 byte_size(payload) + byte_size(prefix) + acc
               end)
 
-      assert au_lengths == @au_lengths_ffmpeg[name]
+      assert au_lengths == @au_lengths_snapshot[name]
     end
   end
 

@@ -52,14 +52,14 @@ defmodule Membrane.H265.RepeatParameterSetsTest do
          parser_input_stream_structure \\ :annexb,
          parser_output_stream_structure \\ :annexb
        ) do
-    buffers = prepare_h264_buffers(data, mode, parser_input_stream_structure)
+    buffers = prepare_h265_buffers(data, mode, parser_input_stream_structure)
 
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
     output_buffers =
-      prepare_h264_buffers(
+      prepare_h265_buffers(
         File.read!(@ref_path),
         :au_aligned,
         parser_output_stream_structure
@@ -112,14 +112,14 @@ defmodule Membrane.H265.RepeatParameterSetsTest do
       source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source)
 
-      buffers = prepare_h264_buffers(File.read!(in_path), :bytestream)
+      buffers = prepare_h265_buffers(File.read!(in_path), :bytestream)
 
       assert_sink_playing(pid, :sink)
       actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
       Pipeline.message_child(pid, :source, actions ++ [end_of_stream: :output])
 
       File.read!(ref_path)
-      |> prepare_h264_buffers(:au_aligned)
+      |> prepare_h265_buffers(:au_aligned)
       |> Enum.each(fn output_buffer ->
         assert_sink_buffer(pid, :sink, buffer)
         assert split_access_unit(output_buffer.payload) == split_access_unit(buffer.payload)

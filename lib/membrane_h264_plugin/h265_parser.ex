@@ -110,10 +110,9 @@ defmodule Membrane.H265.Parser do
               output_stream_structure: [
                 spec:
                   nil
-                  | :annexb
+                  | stream_structure()
                   | :hvc1
-                  | :hev1
-                  | {:hvc1 | :hev1, nalu_length_size :: pos_integer()},
+                  | :hev1,
                 default: nil,
                 description: """
                 format of the outgoing H265 stream, if set to `:annexb` NALUs will be separated by
@@ -154,6 +153,14 @@ defmodule Membrane.H265.Parser do
                 higher temporal sub-layer.
                 """
               ]
+
+  @typedoc """
+  Format of the H265 stream, if set to `:annexb` NALUs will be separated by
+  a start code (0x(00)000001) or if set to `:hvc1` or `:hev1` they will be
+  prefixed by their size.
+  """
+  @type stream_structure ::
+          :annexb | {codec_tag :: :hvc1 | :hev1, nalu_length_size :: pos_integer()}
 
   @impl true
   def handle_init(ctx, opts) do
