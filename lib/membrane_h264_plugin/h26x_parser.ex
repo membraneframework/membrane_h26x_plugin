@@ -335,7 +335,7 @@ defmodule Membrane.H26x.Parser do
   @spec delete_duplicate_parameter_sets(AUSplitter.access_unit(), state()) ::
           AUSplitter.access_unit()
   defp delete_duplicate_parameter_sets(au, state) do
-    if state.module.keyframe?(au), do: Enum.uniq(au), else: au
+    if state.module.keyframe?(au), do: Enum.uniq_by(au, & &1.payload), else: au
   end
 
   @spec maybe_add_parameter_sets(AUSplitter.access_unit(), state()) ::
