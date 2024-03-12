@@ -79,9 +79,9 @@ defmodule Membrane.H264.AUTimestampGenerator do
 
   defp get_slice_type(vcl_nalu) do
     case vcl_nalu.parsed_fields do
-      %{frame_mbs_only_flag: true} -> :frame
-      %{field_pic_flag: false} -> :frame
-      %{bottom_field_flag: true} -> :bottom_field
+      %{frame_mbs_only_flag: 1} -> :frame
+      %{field_pic_flag: 0} -> :frame
+      %{bottom_field_flag: 1} -> :bottom_field
       _other -> :top_field
     end
   end

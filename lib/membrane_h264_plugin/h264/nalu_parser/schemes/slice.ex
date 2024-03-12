@@ -3,7 +3,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
   @behaviour Membrane.H26x.NALuParser.Scheme
 
   @impl true
-  def defaults(), do: []
+  def defaults(), do: [field_pic_flag: 0, delta_pic_order_cnt_bottom: 0]
 
   # If we're ever unlucky and have to parse more fields from the slice header
   # this implementation may come in handy:
@@ -14,7 +14,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
       field: {:first_mb_in_slice, :ue},
       field: {:slice_type, :ue},
       field: {:pic_parameter_set_id, :ue},
-      execute: &load_data_from_sps(&1, &2, &3),
+      execute: &load_data_from_sps_and_pps(&1, &2, &3),
       if: {{&(&1 == 1), [:separate_colour_plane_flag]}, field: {:colour_plane_id, :u2}},
       field: {:frame_num, {:uv, &(&1 + 4), [:log2_max_frame_num_minus4]}},
       if:
@@ -24,10 +24,15 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
       if: {{&(&1 == 5), [:nal_unit_type]}, field: {:idr_pic_id, :ue}},
       if:
         {{&(&1 == 0), [:pic_order_cnt_type]},
-         field: {:pic_order_cnt_lsb, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}}}
+         field: {:pic_order_cnt_lsb, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}},
+         if:
+           {{fn delta_pic_order_cnt_bottom, field_pic_flag ->
+               delta_pic_order_cnt_bottom == 1 and field_pic_flag == 0
+             end, [:bottom_field_pic_order_in_frame_present_flag, :field_pic_flag]},
+            field: {:pic_order_cnt_lsb, :se}}}
     ]
 
-  defp load_data_from_sps(payload, state, _iterators) do
+  defp load_data_from_sps_and_pps(payload, state, _iterators) do
     with pic_parameter_set_id when pic_parameter_set_id != nil <-
            Map.get(state.__local__, :pic_parameter_set_id),
          pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
@@ -49,7 +54,13 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
           :log2_max_pic_order_cnt_lsb_minus4
         ])
 
+      pps_fields =
+        Map.take(pps, [
+          :bottom_field_pic_order_in_frame_present_flag
+        ])
+
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
+      state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
       {payload, state}
     else
