@@ -145,7 +145,7 @@ defmodule Membrane.H26x.Parser do
 
         mode != state.mode ->
           {access_units, state} = clean_state(state)
-          access_unit_actions = prepare_actions_for_aus(access_units, ctx, state)
+          {access_unit_actions, state} = prepare_actions_for_aus(access_units, ctx, state)
           state = %{state | mode: mode}
           {access_unit_actions, state}
 
