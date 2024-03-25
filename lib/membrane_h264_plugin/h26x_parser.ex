@@ -118,7 +118,7 @@ defmodule Membrane.H26x.Parser do
 
     mode = get_mode_from_alignment(alignment)
 
-    state =
+    {access_units_actions, state} =
       cond do
         is_first_received_stream_format ->
           output_stream_structure =
@@ -126,15 +126,16 @@ defmodule Membrane.H26x.Parser do
               do: input_stream_structure,
               else: state.output_stream_structure
 
-          %{
-            state
-            | mode: mode,
-              nalu_splitter: NALuSplitter.new(input_stream_structure),
-              nalu_parser: state.nalu_parser_mod.new(input_stream_structure),
-              input_stream_structure: input_stream_structure,
-              output_stream_structure: output_stream_structure,
-              framerate: Map.get(stream_format, :framerate) || state.framerate
-          }
+          {[],
+           %{
+             state
+             | mode: mode,
+               nalu_splitter: NALuSplitter.new(input_stream_structure),
+               nalu_parser: state.nalu_parser_mod.new(input_stream_structure),
+               input_stream_structure: input_stream_structure,
+               output_stream_structure: output_stream_structure,
+               framerate: Map.get(stream_format, :framerate) || state.framerate
+           }}
 
         not is_input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -143,12 +144,13 @@ defmodule Membrane.H26x.Parser do
           raise "stream structure cannot be fundamentally changed during stream"
 
         mode != state.mode ->
-          {actions, state} = clean_state(state)
+          {access_units, state} = clean_state(state)
+          access_unit_actions = prepare_actions_for_aus(access_units, ctx, state)
           state = %{state | mode: mode}
-          {actions, state}
+          {access_unit_actions, state}
 
         true ->
-          state
+          {[], state}
       end
 
     incoming_parameter_sets =
@@ -159,11 +161,14 @@ defmodule Membrane.H26x.Parser do
         state
       )
 
-    process_stream_format_parameter_sets(
-      incoming_parameter_sets,
-      ctx.pads.output.stream_format,
-      state
-    )
+    {stream_format_actions, state} =
+      process_stream_format_parameter_sets(
+        incoming_parameter_sets,
+        ctx.pads.output.stream_format,
+        state
+      )
+
+    {access_units_actions ++ stream_format_actions, state}
   end
 
   @spec handle_buffer(Buffer.t(), callback_context(), state()) ::
