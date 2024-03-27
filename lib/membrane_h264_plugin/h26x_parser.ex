@@ -144,10 +144,9 @@ defmodule Membrane.H26x.Parser do
           raise "stream structure cannot be fundamentally changed during stream"
 
         mode != state.mode ->
-          {access_units, state} = clean_state(state)
-          {access_unit_actions, state} = prepare_actions_for_aus(access_units, ctx, state)
+          {actions, state} = clean_state(state, ctx)
           state = %{state | mode: mode}
-          {access_unit_actions, state}
+          {actions, state}
 
         true ->
           {[], state}
@@ -380,19 +379,20 @@ defmodule Membrane.H26x.Parser do
 
   defp stream_format_sent?(_actions, _ctx), do: true
 
-  @spec clean_state(state()) :: {[AUSplitter.access_unit()], state()}
-  def clean_state(state) do
+  @spec clean_state(state(), callback_context()) :: {[AUSplitter.access_unit()], state()}
+  def clean_state(state, ctx) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
     {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
     {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
 
-    {access_units,
-     %{
-       state
-       | nalu_splitter: nalu_splitter,
-         nalu_parser: nalu_parser,
-         au_splitter: au_splitter
-     }}
+    state = %{
+      state
+      | nalu_splitter: nalu_splitter,
+        nalu_parser: nalu_parser,
+        au_splitter: au_splitter
+    }
+
+    prepare_actions_for_aus(access_units, ctx, state)
   end
 
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
@@ -407,7 +407,15 @@ defmodule Membrane.H26x.Parser do
 
       {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
-      {List.last(au).timestamps, state}
+      case state.nalu_parser_mod do
+        Membrane.H264.NALuParser ->
+          require Membrane.H264.NALuTypes, as: NALuTypes
+          {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
+
+        Membrane.H265.NALuParser ->
+          require Membrane.H265.NALuTypes, as: NALuTypes
+          {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
+      end
     end
   end
 
