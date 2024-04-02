@@ -532,6 +532,7 @@ defmodule Membrane.H264.Parser do
 
       {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
+      IO.inspect(au, label: "AU")
       {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
     end
   end
