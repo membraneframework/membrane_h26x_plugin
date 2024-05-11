@@ -57,7 +57,7 @@ defmodule Membrane.H264.Parser do
 
   def_input_pad :input,
     flow_control: :auto,
-    accepted_format: any_of(%RemoteStream{type: :bytestream}, H264)
+    accepted_format: any_of(RemoteStream, H264)
 
   def_output_pad :output,
     flow_control: :auto,
