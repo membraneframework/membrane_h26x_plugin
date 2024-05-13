@@ -11,7 +11,7 @@ defmodule Membrane.H26x.Support.TestSource do
     flow_control: :push,
     accepted_format:
       any_of(
-        %Membrane.RemoteStream{type: :bytestream},
+        %Membrane.RemoteStream{type: :packetized},
         %Membrane.H264{alignment: alignment} when alignment in [:au, :nalu],
         %Membrane.H265{alignment: alignment} when alignment in [:au, :nalu]
       )
@@ -36,7 +36,7 @@ defmodule Membrane.H26x.Support.TestSource do
     stream_format =
       case {state.codec, state.mode} do
         {_codec, :bytestream} ->
-          %Membrane.RemoteStream{type: :bytestream}
+          %Membrane.RemoteStream{type: :packetized}
 
         {:H264, :nalu_aligned} ->
           %Membrane.H264{alignment: :nalu, stream_structure: state.output_raw_stream_structure}
