@@ -354,18 +354,15 @@ defmodule Membrane.H26x.Parser do
 
   @spec prepare_actions_for_au(AUSplitter.access_unit(), boolean(), state()) :: callback_return()
   def prepare_actions_for_au(au, keyframe?, state) do
-    {{pts, dts}, state} = prepare_timestamps(au, state)
-    {should_skip_au, state} = skip_au?(au, keyframe?, state)
+    {should_forward_au, state} = forward_au?(au, keyframe?, state)
 
-    buffers_actions =
-      if should_skip_au do
-        []
-      else
-        buffers = wrap_into_buffer(au, pts, dts, keyframe?, state)
-        [buffer: {:output, buffers}]
-      end
-
-    {buffers_actions, state}
+    if should_forward_au do
+      {{pts, dts}, state} = prepare_timestamps(au, state)
+      buffers = wrap_into_buffer(au, pts, dts, keyframe?, state)
+      {[buffer: {:output, buffers}], state}
+    else
+      {[], state}
+    end
   end
 
   @spec flatten_parameter_sets(parameter_sets()) :: list()
@@ -407,28 +404,32 @@ defmodule Membrane.H26x.Parser do
 
       {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
     else
-      case state.nalu_parser_mod do
-        Membrane.H264.NALuParser ->
-          require Membrane.H264.NALuTypes, as: NALuTypes
-          {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
-
-        Membrane.H265.NALuParser ->
-          require Membrane.H265.NALuTypes, as: NALuTypes
-          {Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type)).timestamps, state}
-      end
+      {first_vcl_nalu(au, state).timestamps, state}
     end
   end
 
-  @spec skip_au?(AUSplitter.access_unit(), boolean(), state()) :: {boolean(), state()}
-  defp skip_au?(au, keyframe?, state) do
-    has_seen_keyframe? = keyframe? and Enum.all?(au, &(&1.status == :valid))
+  @spec forward_au?(AUSplitter.access_unit(), boolean(), state()) :: {boolean(), state()}
+  defp forward_au?(au, keyframe?, state) do
+    with true <- Enum.all?(au, &(&1.status == :valid)),
+         true <- first_vcl_nalu(au, state) != nil do
+      skip_until_keyframe? = state.skip_until_keyframe and not keyframe?
+      state = %{state | skip_until_keyframe: skip_until_keyframe?}
+      {not skip_until_keyframe?, state}
+    else
+      false -> {false, state}
+    end
+  end
 
-    state = %{
-      state
-      | skip_until_keyframe: state.skip_until_keyframe and not has_seen_keyframe?
-    }
+  defp first_vcl_nalu(au, state) do
+    case state.nalu_parser_mod do
+      Membrane.H264.NALuParser ->
+        require Membrane.H264.NALuTypes, as: NALuTypes
+        Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
 
-    {Enum.any?(au, &(&1.status == :error)) or state.skip_until_keyframe, state}
+      Membrane.H265.NALuParser ->
+        require Membrane.H265.NALuTypes, as: NALuTypes
+        Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+    end
   end
 
   @spec wrap_into_buffer(
