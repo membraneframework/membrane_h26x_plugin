@@ -354,7 +354,7 @@ defmodule Membrane.H26x.Parser do
 
   @spec prepare_actions_for_au(AUSplitter.access_unit(), boolean(), state()) :: callback_return()
   def prepare_actions_for_au(au, keyframe?, state) do
-    {should_forward_au, state} = forward_au?(au, keyframe?, state)
+    {should_forward_au, state} = should_forward_au(au, keyframe?, state)
 
     if should_forward_au do
       {{pts, dts}, state} = prepare_timestamps(au, state)
@@ -408,8 +408,8 @@ defmodule Membrane.H26x.Parser do
     end
   end
 
-  @spec forward_au?(AUSplitter.access_unit(), boolean(), state()) :: {boolean(), state()}
-  defp forward_au?(au, keyframe?, state) do
+  @spec should_forward_au(AUSplitter.access_unit(), boolean(), state()) :: {boolean(), state()}
+  defp should_forward_au(au, keyframe?, state) do
     with true <- Enum.all?(au, &(&1.status == :valid)),
          true <- first_vcl_nalu(au, state) != nil do
       skip_until_keyframe? = state.skip_until_keyframe and not keyframe?
