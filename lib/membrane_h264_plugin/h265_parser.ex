@@ -16,7 +16,7 @@ defmodule Membrane.H265.Parser do
   * `:au_aligned` - each input buffer contains a single access unit's payload
 
   The parser's mode is set automatically, based on the input stream format received by that element:
-  * Receiving `%Membrane.RemoteStream{type: :bytestream}` results in the parser mode being set to `:bytestream`
+  * Receiving `Membrane.RemoteStream` results in the parser mode being set to `:bytestream`
   * Receiving `%Membrane.H265{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`.
   * Receiving `%Membrane.H265{alignment: :au}` results in the parser mode being set to `:au_aligned`.
 
@@ -43,7 +43,7 @@ defmodule Membrane.H265.Parser do
 
   def_input_pad :input,
     flow_control: :auto,
-    accepted_format: any_of(%RemoteStream{type: :bytestream}, H265)
+    accepted_format: any_of(RemoteStream, H265)
 
   def_output_pad :output,
     flow_control: :auto,
@@ -215,7 +215,7 @@ defmodule Membrane.H265.Parser do
   def parse_raw_input_stream_structure(stream_format) do
     {alignment, input_raw_stream_structure} =
       case stream_format do
-        %RemoteStream{type: :bytestream} ->
+        %RemoteStream{} ->
           {:bytestream, :annexb}
 
         %H265{alignment: alignment, stream_structure: stream_structure} ->
