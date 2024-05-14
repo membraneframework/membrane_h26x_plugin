@@ -420,6 +420,7 @@ defmodule Membrane.H26x.Parser do
     end
   end
 
+  @spec first_vcl_nalu(AUSplitter.access_unit(), state()) :: Membrane.H26x.NALu.t()
   defp first_vcl_nalu(au, state) do
     case state.nalu_parser_mod do
       Membrane.H264.NALuParser ->
