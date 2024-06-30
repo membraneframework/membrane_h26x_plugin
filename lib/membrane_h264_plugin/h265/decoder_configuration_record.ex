@@ -80,8 +80,8 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
         progressive_source_flag::1, interlaced_source_flag::1, non_packed_constraint_flag::1,
         frame_only_constraint_flag::1, reserved_zero_44bits::44, level_idc, 0b1111::4, 0::12,
         0b111111::6, 0::2, 0b111111::6, chroma_format_idc::2, 0b11111::5,
-        bit_depth_luma_minus8::3, 0b11111::5, bit_depth_chroma_minus8::3, 0::19,
-        num_temporal_layers + 1::2, temporal_id_nested::1, nalu_length_size - 1::2-integer>>
+        bit_depth_luma_minus8::3, 0b11111::5, bit_depth_chroma_minus8::3, 0::18,
+        num_temporal_layers + 1::3, temporal_id_nested::1, nalu_length_size - 1::2-integer>>
 
     cond do
       avc == :hvc1 ->
