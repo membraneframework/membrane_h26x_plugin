@@ -78,9 +78,10 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
     common_config =
       <<1, profile_space::2, tier_flag::1, profile_idc::5, profile_compatibility_flag::32,
         progressive_source_flag::1, interlaced_source_flag::1, non_packed_constraint_flag::1,
-        frame_only_constraint_flag::1, reserved_zero_44bits::44, level_idc, 0b1111::4, 0::12,
-        0b111111::6, 0::2, 0b111111::6, chroma_format_idc::2, 0b11111::5,
-        bit_depth_luma_minus8::3, 0b11111::5, bit_depth_chroma_minus8::3, 0::18,
+        frame_only_constraint_flag::1, reserved_zero_44bits::44, level_idc, 0b1111::4,
+        _min_spatial_segmentation_idc = 0::12, 0b111111::6, _parallelism_type = 0::2, 0b111111::6,
+        chroma_format_idc::2, 0b11111::5, bit_depth_luma_minus8::3, 0b11111::5,
+        bit_depth_chroma_minus8::3, _average_framerate = 0::16, _constant_framerate = 0::2,
         num_temporal_layers + 1::3, temporal_id_nested::1, nalu_length_size - 1::2-integer>>
 
     cond do
