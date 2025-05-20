@@ -200,7 +200,6 @@ defmodule Membrane.H26x.Parser do
         nalu_parser: nalu_parser,
         au_splitter: au_splitter
     }
-
     prepare_actions_for_aus(access_units, ctx, state)
   end
 
@@ -379,8 +378,10 @@ defmodule Membrane.H26x.Parser do
   @spec clean_state(state(), callback_context()) :: {[AUSplitter.access_unit()], state()}
   def clean_state(state, ctx) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
+    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads,
+      state.au_splitter.previous_primary_coded_picture_nalu.timestamps, state.nalu_parser)
     {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
+
 
     state = %{
       state
