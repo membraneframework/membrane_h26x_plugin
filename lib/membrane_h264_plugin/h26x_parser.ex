@@ -25,7 +25,10 @@ defmodule Membrane.H26x.Parser do
   @type raw_stream_structure ::
           :annexb | {codec_tag :: atom(), decoder_configuration_record :: binary()}
 
-  @typep callback_return :: Membrane.Element.Base.callback_return()
+  @typep callback_return :: {[
+     Membrane.Element.Action.common_actions()
+     | Membrane.Element.Action.stream_actions()
+   ], Membrane.Element.state()}
 
   @doc """
   Invoked each time a new stream format arrives. It should return a tuple of 3
