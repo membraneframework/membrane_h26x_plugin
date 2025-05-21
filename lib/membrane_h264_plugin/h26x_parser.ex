@@ -137,7 +137,7 @@ defmodule Membrane.H26x.Parser do
                framerate: Map.get(stream_format, :framerate) || state.framerate
            }}
 
-        not is_input_stream_structure_change_allowed?(
+        not input_stream_structure_change_allowed?(
           input_stream_structure,
           state.input_stream_structure
         ) ->
@@ -280,12 +280,17 @@ defmodule Membrane.H26x.Parser do
     end
   end
 
-  @spec is_input_stream_structure_change_allowed?(stream_structure(), stream_structure()) ::
+  @spec input_stream_structure_change_allowed?(stream_structure(), stream_structure()) ::
           boolean()
-  def is_input_stream_structure_change_allowed?(:annexb, :annexb), do: true
-  def is_input_stream_structure_change_allowed?({codec_tag, _}, {codec_tag, _}), do: true
+  def input_stream_structure_change_allowed?(:annexb, :annexb), do: true
 
-  def is_input_stream_structure_change_allowed?(_stream_structure1, _stream_structure2),
+  def input_stream_structure_change_allowed?(
+        {codec_tag, _from_prefix_len},
+        {codec_tag, _to_prefix_len}
+      ),
+      do: true
+
+  def input_stream_structure_change_allowed?(_stream_structure1, _stream_structure2),
     do: false
 
   @spec merge_parameter_sets(parameter_sets(), parameter_sets()) :: parameter_sets()

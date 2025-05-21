@@ -91,7 +91,7 @@ defmodule Membrane.H264.AUSplitter do
 
   defp do_split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
     cond do
-      is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
+      new_primary_coded_vcl_nalu?(first_nalu, state.previous_primary_coded_picture_nalu) ->
         do_split(
           rest_nalus,
           %__MODULE__{
@@ -139,7 +139,7 @@ defmodule Membrane.H264.AUSplitter do
           }
         )
 
-      is_new_primary_coded_vcl_nalu(first_nalu, state.previous_primary_coded_picture_nalu) ->
+      new_primary_coded_vcl_nalu?(first_nalu, state.previous_primary_coded_picture_nalu) ->
         do_split(
           rest_nalus,
           %__MODULE__{
@@ -215,15 +215,15 @@ defmodule Membrane.H264.AUSplitter do
   defguardp idrs_with_idr_pic_id_differ(a, b)
             when a.nal_unit_type == 5 and b.nal_unit_type == 5 and a.idr_pic_id != b.idr_pic_id
 
-  defp is_new_primary_coded_vcl_nalu(%{type: type}, _last_nalu)
+  defp new_primary_coded_vcl_nalu?(%{type: type}, _last_nalu)
        when not NALuTypes.is_vcl_nalu_type(type),
        do: false
 
-  defp is_new_primary_coded_vcl_nalu(_nalu, nil), do: true
+  defp new_primary_coded_vcl_nalu?(_nalu, nil), do: true
 
   # Conditions based on 7.4.1.2.4 "Detection of the first VCL NAL unit of a primary coded picture"
   # of the "ITU-T Rec. H.264 (01/2012)"
-  defp is_new_primary_coded_vcl_nalu(%{parsed_fields: nalu}, %{parsed_fields: last_nalu})
+  defp new_primary_coded_vcl_nalu?(%{parsed_fields: nalu}, %{parsed_fields: last_nalu})
        when first_mb_in_slice_zero(nalu)
        when frame_num_differs(nalu, last_nalu)
        when pic_parameter_set_id_differs(nalu, last_nalu)
@@ -238,7 +238,7 @@ defmodule Membrane.H264.AUSplitter do
     true
   end
 
-  defp is_new_primary_coded_vcl_nalu(_nalu, _last_nalu) do
+  defp new_primary_coded_vcl_nalu?(_nalu, _last_nalu) do
     false
   end
 end

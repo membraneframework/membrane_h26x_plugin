@@ -28,7 +28,7 @@ defmodule Membrane.H264.ModesTest do
 
     assert_sink_playing(pid, :sink)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
-    Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
+    Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
     output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
@@ -56,7 +56,7 @@ defmodule Membrane.H264.ModesTest do
 
     assert_sink_playing(pid, :sink)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
-    Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
+    Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
     output_buffers = prepare_h264_buffers(binary, :au_aligned)
 
@@ -86,7 +86,7 @@ defmodule Membrane.H264.ModesTest do
 
     assert_sink_playing(pid, :sink)
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
-    Pipeline.message_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
+    Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
     output_buffers = input_buffers
 
