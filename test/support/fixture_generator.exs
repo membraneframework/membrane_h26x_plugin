@@ -140,7 +140,7 @@ defmodule AVCFixtureGenerator do
     end)
   end
 
-  defp generate_fixture(input_location, output_alignment, {avc, _} = stream_structure) do
+  defp generate_fixture(input_location, output_alignment, {avc, _prefix_len} = stream_structure) do
     output_location =
       input_location
       |> Path.split()

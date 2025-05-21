@@ -46,7 +46,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
-    Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
+    Pipeline.notify_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
     output_buffers =
       prepare_h264_buffers(
@@ -105,7 +105,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       assert_sink_playing(pid, :sink)
       actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
-      Pipeline.message_child(pid, :source, actions ++ [end_of_stream: :output])
+      Pipeline.notify_child(pid, :source, actions ++ [end_of_stream: :output])
 
       File.read!(ref_path)
       |> prepare_h264_buffers(:au_aligned)

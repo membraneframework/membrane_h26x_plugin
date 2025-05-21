@@ -192,7 +192,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
       variables =
         lexems
         |> Enum.map(fn lexem ->
-          variable_name = String.slice(lexem, 1..-2)
+          variable_name = String.slice(lexem, 1..-2//-1)
           Map.get(state, variable_name) |> Integer.to_string()
         end)
 

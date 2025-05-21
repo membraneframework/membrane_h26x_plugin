@@ -132,7 +132,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
     <<pred_mode_flag::1, payload::binary>> = payload
 
     if pred_mode_flag == 0 do
-      {_, payload} = ExpGolombConverter.to_integer(payload)
+      {_number, payload} = ExpGolombConverter.to_integer(payload)
       {payload, state, next_coeff}
     else
       coef_num = min(64, 1 <<< (4 + (idx <<< 1)))

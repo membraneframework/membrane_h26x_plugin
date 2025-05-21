@@ -74,7 +74,7 @@ defmodule Membrane.H26x.NALuSplitter do
     |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
     |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
     |> then(&Enum.drop(&1, -1))
-    |> Enum.map(fn [{from, _prefix_len}, {to, _}] ->
+    |> Enum.map(fn [{from, _from_prefix_len}, {to, _to_prefix_len}] ->
       len = to - from
       :binary.part(payload, from, len)
     end)

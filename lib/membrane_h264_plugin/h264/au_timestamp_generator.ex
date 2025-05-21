@@ -19,7 +19,7 @@ defmodule Membrane.H264.AUTimestampGenerator do
       if vcl_nalu.type == :idr do
         {0, 0}
       else
-        # TODO: As described in the spec, we should check for presence of the
+        # As described in the spec, we should check for presence of the
         # memory_management_control_operation syntax element equal to 5
         # in the previous reference picture and calculate prev_pic_order_cnt_*sb
         # values accordingly if it's there. Since getting to that information

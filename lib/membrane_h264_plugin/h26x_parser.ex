@@ -25,7 +25,11 @@ defmodule Membrane.H26x.Parser do
   @type raw_stream_structure ::
           :annexb | {codec_tag :: atom(), decoder_configuration_record :: binary()}
 
-  @typep callback_return :: Membrane.Element.Base.callback_return()
+  @typep callback_return ::
+           {[
+              Membrane.Element.Action.common_actions()
+              | Membrane.Element.Action.stream_actions()
+            ], Membrane.Element.state()}
 
   @doc """
   Invoked each time a new stream format arrives. It should return a tuple of 3
@@ -137,7 +141,7 @@ defmodule Membrane.H26x.Parser do
                framerate: Map.get(stream_format, :framerate) || state.framerate
            }}
 
-        not is_input_stream_structure_change_allowed?(
+        not input_stream_structure_change_allowed?(
           input_stream_structure,
           state.input_stream_structure
         ) ->
@@ -198,7 +202,8 @@ defmodule Membrane.H26x.Parser do
       state
       | nalu_splitter: nalu_splitter,
         nalu_parser: nalu_parser,
-        au_splitter: au_splitter
+        au_splitter: au_splitter,
+        previous_buffer_timestamps: {buffer.pts || buffer.dts, buffer.dts || buffer.pts}
     }
 
     prepare_actions_for_aus(access_units, ctx, state)
@@ -279,12 +284,17 @@ defmodule Membrane.H26x.Parser do
     end
   end
 
-  @spec is_input_stream_structure_change_allowed?(stream_structure(), stream_structure()) ::
+  @spec input_stream_structure_change_allowed?(stream_structure(), stream_structure()) ::
           boolean()
-  def is_input_stream_structure_change_allowed?(:annexb, :annexb), do: true
-  def is_input_stream_structure_change_allowed?({codec_tag, _}, {codec_tag, _}), do: true
+  def input_stream_structure_change_allowed?(:annexb, :annexb), do: true
 
-  def is_input_stream_structure_change_allowed?(_stream_structure1, _stream_structure2),
+  def input_stream_structure_change_allowed?(
+        {codec_tag, _from_prefix_len},
+        {codec_tag, _to_prefix_len}
+      ),
+      do: true
+
+  def input_stream_structure_change_allowed?(_stream_structure1, _stream_structure2),
     do: false
 
   @spec merge_parameter_sets(parameter_sets(), parameter_sets()) :: parameter_sets()
@@ -379,7 +389,14 @@ defmodule Membrane.H26x.Parser do
   @spec clean_state(state(), callback_context()) :: {[AUSplitter.access_unit()], state()}
   def clean_state(state, ctx) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
+
+    {nalus, nalu_parser} =
+      state.nalu_parser_mod.parse_nalus(
+        nalus_payloads,
+        state.previous_buffer_timestamps,
+        state.nalu_parser
+      )
+
     {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
 
     state = %{

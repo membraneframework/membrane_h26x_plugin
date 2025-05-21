@@ -43,7 +43,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     buffers = prepare_h264_buffers(data, mode, :annexb, false)
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
-    Pipeline.message_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
+    Pipeline.notify_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
 
     assert_end_of_stream(pipeline_pid, :sink, :input, 3_000)
 
@@ -231,12 +231,12 @@ defmodule Membrane.H264.StreamStructureConversionTest do
           Enum.map_join(parser_types, fn parser_type ->
             case parser_type do
               :annexb -> "annexb -> "
-              {:avc1, _} -> "avc1 -> "
-              {:avc3, _} -> "avc3 -> "
+              {:avc1, _prefix_len} -> "avc1 -> "
+              {:avc3, _prefix_len} -> "avc3 -> "
             end
           end)
 
-        identical_order? = not Enum.any?(parser_types, &match?({:avc1, _}, &1))
+        identical_order? = not Enum.any?(parser_types, &match?({:avc1, _prefix_len}, &1))
 
         stream_name =
           "stream #{tested_stream_structure_name} -> #{parser_chain_string}#{tested_stream_structure_name}#{name_suffix}"
