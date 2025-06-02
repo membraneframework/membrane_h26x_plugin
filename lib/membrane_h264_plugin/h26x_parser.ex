@@ -212,7 +212,14 @@ defmodule Membrane.H26x.Parser do
   @spec handle_end_of_stream(callback_context(), state()) :: callback_return()
   def handle_end_of_stream(ctx, state) do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
-    {nalus, nalu_parser} = state.nalu_parser_mod.parse_nalus(nalus_payloads, state.nalu_parser)
+
+    {nalus, nalu_parser} =
+      state.nalu_parser_mod.parse_nalus(
+        nalus_payloads,
+        state.previous_buffer_timestamps,
+        state.nalu_parser
+      )
+
     {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
 
     state = %{
