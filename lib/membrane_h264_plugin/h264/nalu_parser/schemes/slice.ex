@@ -29,7 +29,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
            {{fn delta_pic_order_cnt_bottom, field_pic_flag ->
                delta_pic_order_cnt_bottom == 1 and field_pic_flag == 0
              end, [:bottom_field_pic_order_in_frame_present_flag, :field_pic_flag]},
-            field: {:pic_order_cnt_lsb, :se}}}
+            field: {:delta_pic_order_cnt_bottom, :se}}}
     ]
 
   defp load_data_from_sps_and_pps(payload, state, _iterators) do
