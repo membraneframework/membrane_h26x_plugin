@@ -18,6 +18,7 @@ defmodule Membrane.H264.StreamFormatTest do
   end
 
   @video_parameters %{
+    "root-encoder" => {:high, 1280, 720},
     "10-720p" => {:high, 1280, 720},
     "100-240p" => {:high, 320, 240},
     "20-360p-I422" => {:high_4_2_2, 480, 360},
@@ -40,6 +41,10 @@ defmodule Membrane.H264.StreamFormatTest do
   end
 
   describe "Parser should" do
+    test "read the proper stream format for: Root Encoder lib frames" do
+      perform_test("root-encoder", 1000)
+    end
+
     test "read the proper stream format for: 10 720p frames" do
       perform_test("10-720p", 1000)
     end

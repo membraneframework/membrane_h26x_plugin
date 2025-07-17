@@ -41,6 +41,10 @@ defmodule Membrane.H264.ProcessAllTest do
   describe "ProcessAllPipeline should" do
     @describetag :tmp_dir
 
+    test "process all Root Encoder lib frames", ctx do
+      perform_test("root-encoder", ctx.tmp_dir, 1000)
+    end
+
     test "process all 10 720p frames", ctx do
       perform_test("10-720p", ctx.tmp_dir, 1000)
     end
