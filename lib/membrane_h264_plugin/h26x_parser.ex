@@ -212,9 +212,9 @@ defmodule Membrane.H26x.Parser do
 
   defp sort_nalus(aus) do
     Enum.map(aus, fn au ->
-      {auds, _non_auds} = Enum.split_with(au, & &1.type == :aud)
-      {seis, _non_seis} = Enum.split_with(au, & &1.type == :sei)
-      {rest, _auds_and_seis} = Enum.split_with(au, & &1.type not in [:aud, :sei])
+      {auds, _non_auds} = Enum.split_with(au, &(&1.type == :aud))
+      {seis, _non_seis} = Enum.split_with(au, &(&1.type == :sei))
+      {rest, _auds_and_seis} = Enum.split_with(au, &(&1.type not in [:aud, :sei]))
       auds ++ seis ++ rest
     end)
   end
