@@ -86,7 +86,16 @@ defmodule Membrane.H264.AUSplitter do
         {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
       end
 
-    {Enum.reject(aus, &Enum.empty?/1), state}
+    aus =
+      Enum.reject(aus, &Enum.empty?/1)
+      |> Enum.map(fn au ->
+        {auds, _non_auds} = Enum.split_with(au, &(&1.type == :aud))
+        {seis, _non_seis} = Enum.split_with(au, &(&1.type == :sei))
+        {rest, _auds_and_seis} = Enum.split_with(au, &(&1.type not in [:aud, :sei]))
+        auds ++ seis ++ rest
+      end)
+
+    {aus, state}
   end
 
   defp do_split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do

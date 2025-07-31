@@ -206,17 +206,7 @@ defmodule Membrane.H26x.Parser do
         previous_buffer_timestamps: {buffer.pts || buffer.dts, buffer.dts || buffer.pts}
     }
 
-    access_units = sort_nalus(access_units)
     prepare_actions_for_aus(access_units, ctx, state)
-  end
-
-  defp sort_nalus(aus) do
-    Enum.map(aus, fn au ->
-      {auds, _non_auds} = Enum.split_with(au, &(&1.type == :aud))
-      {seis, _non_seis} = Enum.split_with(au, &(&1.type == :sei))
-      {rest, _auds_and_seis} = Enum.split_with(au, &(&1.type not in [:aud, :sei]))
-      auds ++ seis ++ rest
-    end)
   end
 
   @spec handle_end_of_stream(callback_context(), state()) :: callback_return()
