@@ -106,10 +106,7 @@ defmodule Membrane.H26x.NALuParser do
           input_stream_structure: Membrane.H264.Parser.stream_structure()
         }
   @enforce_keys [:input_stream_structure]
-  defstruct @enforce_keys ++
-              [
-                scheme_parser_state: SchemeParser.new()
-              ]
+  defstruct @enforce_keys ++ [:scheme_parser_state]
 
   @doc """
   Returns a structure holding a clear NALu parser state. `input_stream_structure`
@@ -118,7 +115,8 @@ defmodule Membrane.H26x.NALuParser do
   @spec new(Membrane.H264.Parser.stream_structure()) :: t()
   def new(input_stream_structure) do
     %__MODULE__{
-      input_stream_structure: input_stream_structure
+      input_stream_structure: input_stream_structure,
+      scheme_parser_state: SchemeParser.new()
     }
   end
 

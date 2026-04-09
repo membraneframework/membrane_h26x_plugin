@@ -64,7 +64,7 @@ defmodule Membrane.H265.AUSplitter do
   """
   @spec split([NALu.t()], boolean(), t()) :: {[AUSplitter.access_unit()], t()}
   def split(nalus, assume_au_aligned \\ false, state) do
-    state = do_split(nalus, state)
+    %__MODULE__{} = state = do_split(nalus, state)
 
     {aus, state} =
       if assume_au_aligned do
@@ -77,7 +77,7 @@ defmodule Membrane.H265.AUSplitter do
     {Enum.reject(aus, &Enum.empty?/1), state}
   end
 
-  defp do_split([first_nalu | rest_nalus], %{fsm_state: :first} = state) do
+  defp do_split([first_nalu | rest_nalus], %__MODULE__{fsm_state: :first} = state) do
     cond do
       access_unit_first_slice_segment?(first_nalu) ->
         do_split(
@@ -105,7 +105,7 @@ defmodule Membrane.H265.AUSplitter do
     end
   end
 
-  defp do_split([first_nalu | rest_nalus], %{fsm_state: :second} = state) do
+  defp do_split([first_nalu | rest_nalus], %__MODULE__{fsm_state: :second} = state) do
     previous_nalu = state.previous_nalu
 
     cond do
