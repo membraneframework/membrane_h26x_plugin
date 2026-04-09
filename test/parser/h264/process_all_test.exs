@@ -27,7 +27,7 @@ defmodule Membrane.H264.ProcessAllTest do
     assert_end_of_stream(pid, :sink, :input, timeout)
 
     expected =
-      if spss != [] and ppss != 0 do
+      if spss != [] and ppss != [] do
         Enum.join([<<>>] ++ spss ++ ppss, @prefix) <> File.read!(in_path)
       else
         File.read!(in_path)
