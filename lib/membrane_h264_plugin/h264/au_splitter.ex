@@ -54,7 +54,7 @@ defmodule Membrane.H264.AUSplitter do
     }
   end
 
-  @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
+  @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei, :filler_data]
   @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]
 
   @doc """
