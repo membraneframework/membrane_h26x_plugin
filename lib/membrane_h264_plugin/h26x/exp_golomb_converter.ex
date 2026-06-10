@@ -19,7 +19,7 @@ defmodule Membrane.H26x.ExpGolombConverter do
   def to_integer(binary, negatives: should_support_negatives) do
     zeros_size = cut_zeros(binary)
     number_size = zeros_size + 1
-    <<_zeros::size(zeros_size), number::size(number_size), rest::bitstring>> = binary
+    <<_zeros::size(^zeros_size), number::size(^number_size), rest::bitstring>> = binary
     number = number - 1
 
     if should_support_negatives do

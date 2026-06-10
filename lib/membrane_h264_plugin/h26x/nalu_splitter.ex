@@ -86,12 +86,12 @@ defmodule Membrane.H26x.NALuSplitter do
   end
 
   defp get_complete_nalus_list(payload, {codec_tag, nalu_length_size}) do
-    <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = payload
+    <<nalu_length::integer-size(^nalu_length_size)-unit(8), rest::binary>> = payload
 
     if nalu_length > byte_size(rest) do
       []
     else
-      <<nalu::binary-size(nalu_length + nalu_length_size), rest::binary>> = payload
+      <<nalu::binary-size(^nalu_length + ^nalu_length_size), rest::binary>> = payload
       [nalu | get_complete_nalus_list(rest, {codec_tag, nalu_length_size})]
     end
   end

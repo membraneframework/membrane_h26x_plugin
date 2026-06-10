@@ -213,7 +213,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
     case type do
       {:uv, lambda, args} ->
         size = apply(lambda, get_args(args, state.__local__))
-        <<value::unsigned-size(size), rest::bitstring>> = payload
+        <<value::unsigned-size(^size), rest::bitstring>> = payload
         {value, rest}
 
       :ue ->
@@ -226,7 +226,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
         how_many_bits =
           Atom.to_string(unsigned_int) |> String.slice(1..-1//1) |> String.to_integer()
 
-        <<value::unsigned-size(how_many_bits), rest::bitstring>> = payload
+        <<value::unsigned-size(^how_many_bits), rest::bitstring>> = payload
         {value, rest}
     end
   end
