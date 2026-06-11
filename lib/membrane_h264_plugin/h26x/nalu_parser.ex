@@ -153,7 +153,7 @@ defmodule Membrane.H26x.NALuParser do
   end
 
   def unprefix_nalu_payload(nalu_payload, {_codec_tag, nalu_length_size}) do
-    <<nalu_length::integer-size(nalu_length_size)-unit(8), rest::binary>> = nalu_payload
+    <<nalu_length::integer-size(^nalu_length_size)-unit(8), rest::binary>> = nalu_payload
 
     {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
   end
