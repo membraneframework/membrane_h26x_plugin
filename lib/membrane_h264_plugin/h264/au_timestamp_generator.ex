@@ -11,6 +11,22 @@ defmodule Membrane.H264.AUTimestampGenerator do
   end
 
   @impl true
+  # The buffer is disabled (depth 0) whenever the bitstream guarantees frames are
+  # not reordered:
+  #   * baseline / constrained baseline profiles forbid B-slices,
+  #   * pic_order_cnt_type == 2 implies the output order equals the decode order.
+  # Otherwise we fall back to the maximal reorder allowed by the spec.
+  def reorder_buffer_depth(vcl_nalu, _state) do
+    fields = vcl_nalu.parsed_fields
+
+    cond do
+      fields.profile in [:baseline, :constrained_baseline] -> 0
+      fields.pic_order_cnt_type == 2 -> 0
+      true -> Membrane.H26x.AUTimestampGenerator.max_frame_reorder()
+    end
+  end
+
+  @impl true
   # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification
   def calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 0}} = vcl_nalu, state) do
     max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)

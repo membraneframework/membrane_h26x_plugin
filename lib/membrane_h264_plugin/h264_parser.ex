@@ -143,6 +143,19 @@ defmodule Membrane.H264.Parser do
                 to video getting out of sync with other media, therefore h264 should
                 be kept in a container that stores the timestamps alongside.
 
+                PTS are derived from each frame's presentation order, recovered by
+                sorting the access units by their Picture Order Count (POC). Because
+                PTS are based on the relative POC order rather than the absolute POC
+                values, the timestamps are correct regardless of the step by which POC
+                advances.
+
+                Recovering the presentation order requires buffering (reordering) a
+                bounded number of access units before emitting them, which introduces a
+                small, constant latency. This only happens when the stream can actually
+                reorder frames; when it can't (baseline / constrained baseline profile,
+                or `pic_order_cnt_type == 2`) the buffering is disabled and no latency
+                is added.
+
                 By default, the parser adds negative DTS offset to the timestamps,
                 so that in case of frame reorder (which always happens when B frames
                 are present) the DTS was always bigger than PTS. If that is not desired,

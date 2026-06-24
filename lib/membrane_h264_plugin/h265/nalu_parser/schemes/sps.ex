@@ -61,6 +61,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
             field: {:max_num_reorder_pics, :ue},
             field: {:max_latency_increase_plus1, :ue}
           },
+          execute: &extract_max_num_reorder_pics/3,
           field: {:log2_min_luma_coding_block_size_minus3, :ue},
           field: {:log2_diff_max_min_luma_coding_block_size, :ue},
           field: {:log2_min_luma_transform_block_size_minus2, :ue},
@@ -112,6 +113,17 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
           execute: &resolution_and_profile/3,
           save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
         ]
+
+  # The `for` loop above stores `max_num_reorder_pics` per sub-layer (keyed by the
+  # iterator value). The relevant value is the one for the highest sub-layer; it
+  # states the maximal number of pictures that can precede any picture in decode
+  # order and follow it in output order, i.e. the reorder buffer depth.
+  defp extract_max_num_reorder_pics(payload, state, _iterators) do
+    highest_sub_layer = get_in(state, [:__local__, :max_sub_layers_minus1])
+    reorder_pics_per_sub_layer = get_in(state, [:__local__, :max_num_reorder_pics]) || %{}
+    sps_max_num_reorder_pics = Map.get(reorder_pics_per_sub_layer, highest_sub_layer, 0)
+    {payload, put_in(state, [:__local__, :sps_max_num_reorder_pics], sps_max_num_reorder_pics)}
+  end
 
   defp scaling_list(payload, state, _iterators) do
     0..3
