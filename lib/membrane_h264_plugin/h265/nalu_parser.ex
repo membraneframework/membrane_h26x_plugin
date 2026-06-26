@@ -7,6 +7,7 @@ defmodule Membrane.H265.NALuParser do
   use Membrane.H26x.NALuParser
 
   require Membrane.H265.NALuTypes
+  require Membrane.Logger
 
   alias Membrane.H265.NALuParser.Schemes
   alias Membrane.H265.NALuTypes
@@ -26,21 +27,23 @@ defmodule Membrane.H265.NALuParser do
 
   @impl true
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    try do
-      {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
-      {:ok, parsed_fields, state}
-    catch
-      # We throw the scheme parser state since we do need the parsed fields for
-      # acess unit splitter even if the parameter sets are not present
-      state ->
-        {:error, state}
-    end
+    {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
+    {:ok, parsed_fields, state}
+  rescue
+    error ->
+      Membrane.Logger.warning(
+        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
+      )
+
+      {:error, state}
+  catch
+    # We throw the scheme parser state since we do need the parsed fields for
+    # acess unit splitter even if the parameter sets are not present
+    state ->
+      {:error, state}
   end
 
   defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    # delete prevention emulation 3 bytes
-    nalu_body = :binary.split(nalu_body, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
-
     case nalu_type do
       :vps ->
         SchemeParser.parse_with_scheme(nalu_body, Schemes.VPS, state)
