@@ -27,6 +27,9 @@ defmodule Membrane.H264.NALuParser do
     try do
       {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
       {:ok, parsed_fields, state}
+    rescue
+      _error ->
+        {:error, state}
     catch
       "Cannot load information from SPS" ->
         {:error, state}

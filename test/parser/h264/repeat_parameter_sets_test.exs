@@ -120,17 +120,16 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   end
 
   describe "A malformed parameter set" do
-    # `input-30-240p-vp-sps-pps.h264` contains an unused, corrupt SPS (sps_id=4)
-    # that ffmpeg fails to parse but tolerates (it is never referenced by a slice).
-    # Our parser currently crashes on it instead. This test documents that known
-    # limitation - to be revisited when parser robustness is reconsidered.
-    test "currently fails to parse" do
+    test "is tolerated and marked as erroneous instead of crashing the parser" do
       payload = File.read!("./test/fixtures/h264/input-30-240p-vp-sps-pps.h264")
       {nalus_payloads, _splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
 
-      assert_raise MatchError, fn ->
-        H264.NALuParser.parse_nalus(nalus_payloads, H264.NALuParser.new())
-      end
+      {nalus, _state} = H264.NALuParser.parse_nalus(nalus_payloads, H264.NALuParser.new())
+
+      spss = Enum.filter(nalus, &(&1.type == :sps))
+
+      assert Enum.any?(spss, &(&1.status == :valid))
+      assert Enum.any?(spss, &(&1.status == :error))
     end
   end
 end
