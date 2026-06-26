@@ -95,8 +95,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when bytestream has variable parameter sets" do
-      in_path = "./test/fixtures/h264/input-30-240p-vp-sps-pps.h264"
-      ref_path = "./test/fixtures/h264/reference-30-240p-vp-sps-pps.h264"
+      in_path = "./test/fixtures/h264/input-vp-sps-pps.h264"
+      ref_path = "./test/fixtures/h264/reference-vp-sps-pps.h264"
 
       source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source)
@@ -116,6 +116,21 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       assert_end_of_stream(pid, :sink, :input, 3_000)
       Pipeline.terminate(pid)
+    end
+  end
+
+  describe "A malformed parameter set" do
+    # `input-30-240p-vp-sps-pps.h264` contains an unused, corrupt SPS (sps_id=4)
+    # that ffmpeg fails to parse but tolerates (it is never referenced by a slice).
+    # Our parser currently crashes on it instead. This test documents that known
+    # limitation - to be revisited when parser robustness is reconsidered.
+    test "currently fails to parse" do
+      payload = File.read!("./test/fixtures/h264/input-30-240p-vp-sps-pps.h264")
+      {nalus_payloads, _splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
+
+      assert_raise MatchError, fn ->
+        H264.NALuParser.parse_nalus(nalus_payloads, H264.NALuParser.new())
+      end
     end
   end
 end

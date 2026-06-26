@@ -285,7 +285,8 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
       field: {:chroma_loc_info_present_flag, :u1},
       if: {
         {&(&1 == 1), [:chroma_loc_info_present_flag]},
-        field: {:chroma_sample_loc_type_top_field, :ue}, field: {:matrix_coeffs, :u8}
+        field: {:chroma_sample_loc_type_top_field, :ue},
+        field: {:chroma_sample_loc_type_bottom_field, :ue}
       },
       field: {:neutral_chroma_indication_flag, :u1},
       field: {:field_seq_flag, :u1},

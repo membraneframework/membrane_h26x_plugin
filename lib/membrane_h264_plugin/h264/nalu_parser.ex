@@ -34,6 +34,9 @@ defmodule Membrane.H264.NALuParser do
   end
 
   defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do
+    # delete prevention emulation 3 bytes
+    nalu_body = :binary.split(nalu_body, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
+
     case nalu_type do
       :sps ->
         SchemeParser.parse_with_scheme(nalu_body, Schemes.SPS, state)
