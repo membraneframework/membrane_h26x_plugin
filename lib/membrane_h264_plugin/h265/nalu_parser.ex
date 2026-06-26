@@ -19,6 +19,7 @@ defmodule Membrane.H265.NALuParser do
 
   @impl true
   def parse_nalu_header(nalu_header, state) do
+    # Parsing of the header cannot ever fail.
     {:ok, parsed_fields, state} =
       SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
 
