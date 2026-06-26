@@ -37,7 +37,9 @@ defmodule Membrane.H26x.NALuParser.Scheme do
              to: SchemeParser.value_provider(integer())
            ], t()}
   @type calculate :: {any(), SchemeParser.value_provider(any())}
-  @type execute :: (binary(), SchemeParser.t(), list(integer()) -> {binary(), SchemeParser.t()})
+  @type execute ::
+          (bitstring(), SchemeParser.t(), list(integer()) ->
+             {:ok, bitstring(), SchemeParser.t()} | {:error, SchemeParser.t()})
   @type save_as_global_state :: SchemeParser.value_provider(any())
 
   @type directive ::

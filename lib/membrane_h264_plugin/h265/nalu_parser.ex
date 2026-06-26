@@ -19,7 +19,10 @@ defmodule Membrane.H265.NALuParser do
 
   @impl true
   def parse_nalu_header(nalu_header, state) do
-    SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+    {:ok, parsed_fields, state} =
+      SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+
+    {parsed_fields, state}
   end
 
   @impl true
@@ -27,19 +30,13 @@ defmodule Membrane.H265.NALuParser do
 
   @impl true
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
-    {:ok, parsed_fields, state}
+    do_parse_proper_nalu_type(nalu_body, nalu_type, state)
   rescue
     error ->
       Membrane.Logger.warning(
         "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
       )
 
-      {:error, state}
-  catch
-    # We throw the scheme parser state since we do need the parsed fields for
-    # acess unit splitter even if the parameter sets are not present
-    state ->
       {:error, state}
   end
 
@@ -58,7 +55,7 @@ defmodule Membrane.H265.NALuParser do
         if NALuTypes.is_vcl_nalu_type(type) do
           SchemeParser.parse_with_scheme(nalu_body, Schemes.Slice, state)
         else
-          {SchemeParser.get_local_state(state), state}
+          {:ok, SchemeParser.get_local_state(state), state}
         end
     end
   end

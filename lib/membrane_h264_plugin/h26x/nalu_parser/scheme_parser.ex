@@ -7,6 +7,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
   use Bunch.Access
 
   alias Membrane.H26x.ExpGolombConverter
+  alias Membrane.H26x.NALuParser.Scheme
 
   @typedoc """
   A type defining the state of the scheme parser.
@@ -84,6 +85,13 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
     state.__local__
   end
 
+  @typedoc """
+  The result of parsing a scheme directive (or a whole scheme): either the
+  yet-unparsed `payload` with the updated state, or a failure carrying only the
+  state gathered so far.
+  """
+  @type parse_result :: {:ok, payload :: bitstring(), t()} | {:error, t()}
+
   @doc """
   Parses the binary stream representing a NALu, based
    on the scheme definition.
@@ -91,11 +99,12 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
   Removes the emulation prevention bytes (`<<0, 0, 3>>` sequences) from the
   payload before parsing.
 
-  Returns the parsed fields and the updated state
-  with the information fetched from the NALu.
+  Returns `{:ok, parsed_fields, state}` with the information fetched from the
+  NALu, or `{:error, state}` if parsing was aborted (the state still holds the
+  fields parsed so far).
   """
   @spec parse_with_scheme(binary(), module(), t(), list(integer())) ::
-          {map(), t()}
+          {:ok, map(), t()} | {:error, t()}
   def parse_with_scheme(
         payload,
         scheme_module,
@@ -108,60 +117,80 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
     scheme = scheme_module.scheme()
     defaults_map = Map.new(scheme_module.defaults())
     state = Map.update!(state, :__local__, &Map.merge(defaults_map, &1))
-    {_remaining_payload, state} = do_parse_with_scheme(payload, scheme, state, iterators)
-    {get_local_state(state), state}
+
+    case do_parse_with_scheme(payload, scheme, state, iterators) do
+      {:error, state} -> {:error, state}
+      {:ok, _remaining_payload, state} -> {:ok, get_local_state(state), state}
+    end
   end
 
-  defp do_parse_with_scheme(
-         payload,
-         scheme,
-         state,
-         iterators
-       ) do
-    Enum.reduce(scheme, {payload, state}, fn {operator, arguments}, {payload, state} ->
-      case {operator, arguments} do
-        {:field, {name, type}} ->
-          {field_value, payload} = parse_field(payload, state, type)
+  @spec do_parse_with_scheme(bitstring(), Scheme.t(), t(), list(integer())) :: parse_result()
+  defp do_parse_with_scheme(payload, scheme, state, iterators) do
+    reduce_directives(scheme, payload, state, fn directive, payload, state ->
+      parse_directive(directive, payload, state, iterators)
+    end)
+  end
 
-          {payload,
-           insert_into_parser_state(state, field_value, [:__local__] ++ [name] ++ iterators)}
-
-        {:if, {condition, scheme}} ->
-          run_conditionally(payload, state, scheme, condition)
-
-        {:for, {[iterator: iterator_name, from: min_value, to: max_value], scheme}} ->
-          loop(payload, state, scheme, iterators, iterator_name, min_value, max_value)
-
-        {:calculate, {name, to_calculate}} ->
-          {function, args_list} = make_function(to_calculate)
-
-          {payload,
-           Bunch.Access.put_in(
-             state,
-             [:__local__, name],
-             apply(function, get_args(args_list, state.__local__))
-           )}
-
-        {:execute, function} ->
-          function.(payload, state, iterators)
-
-        {:save_state_as_global_state, key_generator} ->
-          {key_generating_function, args_list} = make_function(key_generator)
-          key = apply(key_generating_function, get_args(args_list, state.__local__))
-
-          {payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
+  # Threads the `payload`/`state` accumulator through `fun`, stopping as soon as
+  # `fun` returns `{:error, state}`.
+  @spec reduce_directives(Enumerable.t(), bitstring(), t(), (term(), bitstring(), t() ->
+                                                               parse_result())) :: parse_result()
+  defp reduce_directives(enum, payload, state, fun) do
+    Enum.reduce_while(enum, {:ok, payload, state}, fn elem, {:ok, payload, state} ->
+      case fun.(elem, payload, state) do
+        {:ok, payload, state} -> {:cont, {:ok, payload, state}}
+        {:error, state} -> {:halt, {:error, state}}
       end
     end)
   end
 
+  @spec parse_directive(Scheme.directive(), bitstring(), t(), list(integer())) :: parse_result()
+  defp parse_directive({:field, {name, type}}, payload, state, iterators) do
+    {field_value, payload} = parse_field(payload, state, type)
+    {:ok, payload, insert_into_parser_state(state, field_value, [:__local__, name] ++ iterators)}
+  end
+
+  defp parse_directive({:if, {condition, scheme}}, payload, state, _iterators) do
+    run_conditionally(payload, state, scheme, condition)
+  end
+
+  defp parse_directive(
+         {:for, {[iterator: iterator_name, from: min_value, to: max_value], scheme}},
+         payload,
+         state,
+         iterators
+       ) do
+    loop(payload, state, scheme, iterators, iterator_name, min_value, max_value)
+  end
+
+  defp parse_directive({:calculate, {name, to_calculate}}, payload, state, _iterators) do
+    {function, args_list} = make_function(to_calculate)
+    value = apply(function, get_args(args_list, state.__local__))
+    {:ok, payload, Bunch.Access.put_in(state, [:__local__, name], value)}
+  end
+
+  defp parse_directive({:execute, function}, payload, state, iterators) do
+    function.(payload, state, iterators)
+  end
+
+  defp parse_directive({:save_state_as_global_state, key_generator}, payload, state, _iterators) do
+    {key_generating_function, args_list} = make_function(key_generator)
+    key = apply(key_generating_function, get_args(args_list, state.__local__))
+    {:ok, payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
+  end
+
+  @spec run_conditionally(bitstring(), t(), Scheme.t(), value_provider(boolean())) ::
+          parse_result()
   defp run_conditionally(payload, state, scheme, condition) do
     {condition_function, args_list} = make_function(condition)
 
     if apply(condition_function, get_args(args_list, state.__local__)),
       do: do_parse_with_scheme(payload, scheme, state, []),
-      else: {payload, state}
+      else: {:ok, payload, state}
   end
 
+  @spec loop(bitstring(), t(), Scheme.t(), list(integer()), atom(), term(), term()) ::
+          parse_result()
   defp loop(payload, state, scheme, previous_iterators, iterator_name, min_value, max_value) do
     {min_value, min_args_list} = make_function(min_value)
     {max_value, max_args_list} = make_function(max_value)
@@ -171,24 +200,19 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
       apply(max_value, get_args(max_args_list, state.__local__))
     }
 
-    {payload, state} =
-      Enum.reduce(
-        if(min_value > max_value, do: [], else: min_value..max_value),
-        {payload, state},
-        fn iterator, {payload, state} ->
-          state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
+    range = if min_value > max_value, do: [], else: min_value..max_value
 
-          do_parse_with_scheme(
-            payload,
-            scheme,
-            state,
-            previous_iterators ++ [iterator]
-          )
-        end
-      )
+    reduce_directives(range, payload, state, fn iterator, payload, state ->
+      state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
+      do_parse_with_scheme(payload, scheme, state, previous_iterators ++ [iterator])
+    end)
+    |> case do
+      {:error, state} ->
+        {:error, state}
 
-    state = Bunch.Access.delete_in(state, [:__local__, iterator_name])
-    {payload, state}
+      {:ok, payload, state} ->
+        {:ok, payload, Bunch.Access.delete_in(state, [:__local__, iterator_name])}
+    end
   end
 
   defp get_args(args_names, state) do

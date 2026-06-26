@@ -18,7 +18,10 @@ defmodule Membrane.H264.NALuParser do
 
   @impl true
   def parse_nalu_header(nalu_header, state) do
-    SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+    {:ok, parsed_fields, state} =
+      SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+
+    {parsed_fields, state}
   end
 
   @impl true
@@ -26,8 +29,7 @@ defmodule Membrane.H264.NALuParser do
 
   @impl true
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
-    {:ok, parsed_fields, state}
+    do_parse_proper_nalu_type(nalu_body, nalu_type, state)
   rescue
     error ->
       Membrane.Logger.warning(
@@ -52,7 +54,7 @@ defmodule Membrane.H264.NALuParser do
         SchemeParser.parse_with_scheme(nalu_body, Schemes.Slice, state)
 
       _unknown_nalu_type ->
-        {%{}, state}
+        {:ok, %{}, state}
     end
   end
 end
