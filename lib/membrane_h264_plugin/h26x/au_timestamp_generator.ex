@@ -163,7 +163,12 @@ defmodule Membrane.H26x.AUTimestampGenerator do
         # exceeds the DTS offset window (which keeps PTS >= DTS when the offset is on).
         state =
           if poc == 0 or state.buffer_depth == nil do
-            depth = min(reorder_buffer_depth(first_vcl_nalu, state), unquote(__MODULE__).max_frame_reorder())
+            depth =
+              min(
+                reorder_buffer_depth(first_vcl_nalu, state),
+                unquote(__MODULE__).max_frame_reorder()
+              )
+
             %{state | buffer_depth: depth}
           else
             state

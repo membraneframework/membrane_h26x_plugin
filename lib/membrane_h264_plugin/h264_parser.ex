@@ -154,7 +154,9 @@ defmodule Membrane.H264.Parser do
                 small, constant latency. This only happens when the stream can actually
                 reorder frames; when it can't (baseline / constrained baseline profile,
                 or `pic_order_cnt_type == 2`) the buffering is disabled and no latency
-                is added.
+                is added. When the SPS VUI provides `max_num_reorder_frames`, it is used
+                as the exact buffer depth, keeping the latency as low as the stream
+                allows; otherwise a safe maximum is assumed.
 
                 By default, the parser adds negative DTS offset to the timestamps,
                 so that in case of frame reorder (which always happens when B frames

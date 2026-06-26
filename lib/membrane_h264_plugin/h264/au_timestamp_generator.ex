@@ -15,14 +15,25 @@ defmodule Membrane.H264.AUTimestampGenerator do
   # not reordered:
   #   * baseline / constrained baseline profiles forbid B-slices,
   #   * pic_order_cnt_type == 2 implies the output order equals the decode order.
-  # Otherwise we fall back to the maximal reorder allowed by the spec.
+  # When the SPS carries the VUI `max_num_reorder_frames` (gated by the VUI
+  # presence and bitstream restriction flags), it gives the exact reorder depth,
+  # which keeps the added latency as low as the stream allows. Without it we fall
+  # back to the maximal reorder allowed by the spec.
   def reorder_buffer_depth(vcl_nalu, _state) do
     fields = vcl_nalu.parsed_fields
 
     cond do
-      fields.profile in [:baseline, :constrained_baseline] -> 0
-      fields.pic_order_cnt_type == 2 -> 0
-      true -> Membrane.H26x.AUTimestampGenerator.max_frame_reorder()
+      fields.profile in [:baseline, :constrained_baseline] ->
+        0
+
+      fields.pic_order_cnt_type == 2 ->
+        0
+
+      fields[:vui_parameters_present_flag] == 1 and fields[:bitstream_restriction_flag] == 1 ->
+        fields.max_num_reorder_frames
+
+      true ->
+        Membrane.H26x.AUTimestampGenerator.max_frame_reorder()
     end
   end
 
