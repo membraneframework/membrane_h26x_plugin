@@ -6,6 +6,8 @@ defmodule Membrane.H264.NALuParser do
 
   use Membrane.H26x.NALuParser
 
+  require Membrane.Logger
+
   alias Membrane.H264.NALuParser.Schemes
   alias Membrane.H264.NALuTypes
   alias Membrane.H26x.NALuParser.SchemeParser
@@ -24,13 +26,15 @@ defmodule Membrane.H264.NALuParser do
 
   @impl true
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    try do
-      {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
-      {:ok, parsed_fields, state}
-    catch
-      "Cannot load information from SPS" ->
-        {:error, state}
-    end
+    {parsed_fields, state} = do_parse_proper_nalu_type(nalu_body, nalu_type, state)
+    {:ok, parsed_fields, state}
+  rescue
+    error ->
+      Membrane.Logger.warning(
+        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
+      )
+
+      {:error, state}
   end
 
   defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do

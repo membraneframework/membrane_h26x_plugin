@@ -88,7 +88,10 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
   Parses the binary stream representing a NALu, based
    on the scheme definition.
 
-  Returns the remaining bitstring and the stated updated
+  Removes the emulation prevention bytes (`<<0, 0, 3>>` sequences) from the
+  payload before parsing.
+
+  Returns the parsed fields and the updated state
   with the information fetched from the NALu.
   """
   @spec parse_with_scheme(binary(), module(), t(), list(integer())) ::
@@ -99,6 +102,9 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
         state \\ new(),
         iterators \\ []
       ) do
+    # delete prevention emulation 3 bytes
+    payload = :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
+
     scheme = scheme_module.scheme()
     defaults_map = Map.new(scheme_module.defaults())
     state = Map.update!(state, :__local__, &Map.merge(defaults_map, &1))

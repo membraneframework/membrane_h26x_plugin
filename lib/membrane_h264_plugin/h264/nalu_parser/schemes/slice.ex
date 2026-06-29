@@ -64,7 +64,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
 
       {payload, state}
     else
-      _error -> throw("Cannot load information from SPS")
+      _error -> raise "Cannot load information from SPS"
     end
   end
 end

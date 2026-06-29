@@ -95,8 +95,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "when bytestream has variable parameter sets" do
-      in_path = "./test/fixtures/h264/input-30-240p-vp-sps-pps.h264"
-      ref_path = "./test/fixtures/h264/reference-30-240p-vp-sps-pps.h264"
+      in_path = "./test/fixtures/h264/input-vp-sps-pps.h264"
+      ref_path = "./test/fixtures/h264/reference-vp-sps-pps.h264"
 
       source = %H26x.Support.TestSource{mode: :bytestream}
       pid = make_pipeline(source)
@@ -116,6 +116,20 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
       assert_end_of_stream(pid, :sink, :input, 3_000)
       Pipeline.terminate(pid)
+    end
+  end
+
+  describe "A malformed parameter set" do
+    test "is tolerated and marked as erroneous instead of crashing the parser" do
+      payload = File.read!("./test/fixtures/h264/input-30-240p-vp-sps-pps.h264")
+      {nalus_payloads, _splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
+
+      {nalus, _state} = H264.NALuParser.parse_nalus(nalus_payloads, H264.NALuParser.new())
+
+      spss = Enum.filter(nalus, &(&1.type == :sps))
+
+      assert Enum.any?(spss, &(&1.status == :valid))
+      assert Enum.any?(spss, &(&1.status == :error))
     end
   end
 end

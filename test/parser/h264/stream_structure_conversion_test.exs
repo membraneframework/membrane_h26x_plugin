@@ -12,7 +12,14 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
   @annexb_fixtures "test/fixtures/h264/*.h264"
                    |> Path.wildcard()
-                   |> Enum.reject(&String.contains?(&1, ["no-sps", "no-pps", "sps-pps-non-idr"]))
+                   |> Enum.reject(
+                     &String.contains?(&1, [
+                       "no-sps",
+                       "no-pps",
+                       "sps-pps-non-idr",
+                       "30-240p-vp-sps-pps"
+                     ])
+                   )
 
   @avc1_au_fixtures "test/fixtures/h264/msr/*-avc1-au.msr" |> Path.wildcard()
   @avc1_nalu_fixtures "test/fixtures/h264/msr/*-avc1-nalu.msr" |> Path.wildcard()
