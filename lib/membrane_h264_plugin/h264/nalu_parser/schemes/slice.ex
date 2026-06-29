@@ -66,9 +66,9 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
-      {payload, state}
+      {:ok, payload, state}
     else
-      _error -> throw("Cannot load information from SPS")
+      _error -> {:error, state}
     end
   end
 end

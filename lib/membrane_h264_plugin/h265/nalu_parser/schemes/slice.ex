@@ -84,9 +84,9 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
 
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
-      {payload, state}
+      {:ok, payload, state}
     else
-      _error -> throw(state)
+      _error -> {:error, state}
     end
   end
 end
