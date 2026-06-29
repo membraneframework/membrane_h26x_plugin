@@ -114,10 +114,13 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
         ]
 
   defp scaling_list(payload, state, _iterators) do
-    0..3
-    |> Enum.reduce({payload, state}, fn i, {payload, state} ->
-      read_scaling_list(payload, state, i)
-    end)
+    {payload, state} =
+      Enum.reduce(0..3, {payload, state}, fn i, {payload, state} ->
+        {payload, state, _next_coeff} = read_scaling_list(payload, state, i)
+        {payload, state}
+      end)
+
+    {:ok, payload, state}
   end
 
   defp read_scaling_list(payload, state, idx) do
@@ -165,7 +168,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
          %{__local__: %{num_short_term_ref_pic_sets: 0}} = state,
          _iterators
        ),
-       do: {payload, state}
+       do: {:ok, payload, state}
 
   defp st_ref_pic_set(payload, state, _iterators) do
     {payload, ref_pic_set} =
@@ -238,7 +241,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
         end
       end)
 
-    {payload, put_in(state, [:__local__, :st_ref_pic_set], ref_pic_set)}
+    {:ok, payload, put_in(state, [:__local__, :st_ref_pic_set], ref_pic_set)}
   end
 
   defp read_delta_poc(payload, 0), do: {payload, [], []}
@@ -335,7 +338,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
       |> ceil()
 
     state = put_in(state, [:__local__, :segment_addr_length], segment_addr_length)
-    {payload, state}
+    {:ok, payload, state}
   end
 
   defp load_timing_info_from_vps(payload, state, _iterators) do
@@ -350,9 +353,9 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
           vui_timing_info_present_flag: 1
         })
 
-      {payload, state}
+      {:ok, payload, state}
     else
-      _other -> {payload, state}
+      _other -> {:ok, payload, state}
     end
   end
 
@@ -379,7 +382,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
 
     profile = parse_profile(sps)
 
-    {payload,
+    {:ok, payload,
      Map.update(
        state,
        :__local__,

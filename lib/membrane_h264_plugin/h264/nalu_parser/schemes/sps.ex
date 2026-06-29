@@ -202,7 +202,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
         {payload, state, last_scale, next_scale}
       end)
 
-    {payload, state}
+    {:ok, payload, state}
   end
 
   defp resolution_and_profile(payload, state, _iterators) do
@@ -240,7 +240,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
 
     profile = parse_profile(sps)
 
-    {payload,
+    {:ok, payload,
      Map.update(
        state,
        :__local__,
