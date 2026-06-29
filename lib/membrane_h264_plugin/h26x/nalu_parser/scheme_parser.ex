@@ -207,11 +207,11 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
       do_parse_with_scheme(payload, scheme, state, previous_iterators ++ [iterator])
     end)
     |> case do
-      {:error, state} ->
-        {:error, state}
-
       {:ok, payload, state} ->
         {:ok, payload, Bunch.Access.delete_in(state, [:__local__, iterator_name])}
+
+      {:error, state} ->
+        {:error, state}
     end
   end
 

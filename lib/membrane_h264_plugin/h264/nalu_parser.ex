@@ -30,17 +30,6 @@ defmodule Membrane.H264.NALuParser do
 
   @impl true
   def parse_proper_nalu_type(nalu_body, nalu_type, state) do
-    do_parse_proper_nalu_type(nalu_body, nalu_type, state)
-  rescue
-    error ->
-      Membrane.Logger.warning(
-        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
-      )
-
-      {:error, state}
-  end
-
-  defp do_parse_proper_nalu_type(nalu_body, nalu_type, state) do
     case nalu_type do
       :sps ->
         SchemeParser.parse_with_scheme(nalu_body, Schemes.SPS, state)
@@ -57,5 +46,12 @@ defmodule Membrane.H264.NALuParser do
       _unknown_nalu_type ->
         {:ok, %{}, state}
     end
+  rescue
+    error ->
+      Membrane.Logger.warning(
+        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
+      )
+
+      {:error, state}
   end
 end
