@@ -422,37 +422,31 @@ defmodule Membrane.H26x.Parser do
     prepare_actions_for_aus(access_units ++ flushed_aus, ctx, state)
   end
 
-  # Runs the access units through the timestamp-generation pillar (only active in
-  # the bytestream mode with `generate_best_effort_timestamps` set). The generated
-  # timestamps are written onto each access unit, so `prepare_timestamps/2` reads
-  # them like in every other mode.
+  defguardp is_timestamp_generator_active(state)
+            when is_map(state) and state.mode == :bytestream and
+                   not is_nil(state.au_timestamp_generator)
+
   @spec maybe_generate_timestamps([AUSplitter.access_unit()], state()) ::
           {[AUSplitter.access_unit()], state()}
+  defp maybe_generate_timestamps(aus, state) when is_timestamp_generator_active(state) do
+    {aus, generator} =
+      state.au_timestamp_generator_mod.generate_timestamps(aus, state.au_timestamp_generator)
+
+    {aus, %{state | au_timestamp_generator: generator}}
+  end
+
   defp maybe_generate_timestamps(aus, state) do
-    if timestamp_generator_active?(state) do
-      {aus, generator} =
-        state.au_timestamp_generator_mod.generate_timestamps(aus, state.au_timestamp_generator)
-
-      {aus, %{state | au_timestamp_generator: generator}}
-    else
-      {aus, state}
-    end
+    {aus, state}
   end
 
-  # Drains the access units still buffered by the timestamp-generation pillar.
   @spec maybe_flush_timestamps(state()) :: {[AUSplitter.access_unit()], state()}
-  defp maybe_flush_timestamps(state) do
-    if timestamp_generator_active?(state) do
-      {aus, generator} = state.au_timestamp_generator_mod.flush(state.au_timestamp_generator)
-      {aus, %{state | au_timestamp_generator: generator}}
-    else
-      {[], state}
-    end
+  defp maybe_flush_timestamps(state) when is_timestamp_generator_active(state) do
+    {aus, generator} = state.au_timestamp_generator_mod.flush(state.au_timestamp_generator)
+    {aus, %{state | au_timestamp_generator: generator}}
   end
 
-  @spec timestamp_generator_active?(state()) :: boolean()
-  defp timestamp_generator_active?(state) do
-    state.mode == :bytestream and state.au_timestamp_generator != nil
+  defp maybe_flush_timestamps(state) do
+    {[], state}
   end
 
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::

@@ -5,20 +5,14 @@ defmodule Membrane.H264.AUTimestampGenerator do
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
+  @max_frame_reorder 15
+
   @impl true
   def get_first_vcl_nalu(au) do
     Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
   end
 
   @impl true
-  # The buffer is disabled (depth 0) whenever the bitstream guarantees frames are
-  # not reordered:
-  #   * baseline / constrained baseline profiles forbid B-slices,
-  #   * pic_order_cnt_type == 2 implies the output order equals the decode order.
-  # When the SPS carries the VUI `max_num_reorder_frames` (gated by the VUI
-  # presence and bitstream restriction flags), it gives the exact reorder depth,
-  # which keeps the added latency as low as the stream allows. Without it we fall
-  # back to the maximal reorder allowed by the spec.
   def reorder_buffer_depth(vcl_nalu, _state) do
     fields = vcl_nalu.parsed_fields
 
@@ -33,7 +27,7 @@ defmodule Membrane.H264.AUTimestampGenerator do
         fields.max_num_reorder_frames
 
       true ->
-        Membrane.H26x.AUTimestampGenerator.max_frame_reorder()
+        @max_frame_reorder
     end
   end
 

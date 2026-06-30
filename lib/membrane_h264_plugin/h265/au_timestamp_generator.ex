@@ -11,10 +11,6 @@ defmodule Membrane.H265.AUTimestampGenerator do
   end
 
   @impl true
-  # The reorder buffer depth is taken directly from the SPS field
-  # sps_max_num_reorder_pics (for the highest temporal sub-layer), which states
-  # the maximal number of pictures that can precede any picture in decode order
-  # and follow it in output order. A value of 0 disables buffering.
   def reorder_buffer_depth(vcl_nalu, _state) do
     Map.get(vcl_nalu.parsed_fields, :sps_max_num_reorder_pics) || 0
   end
