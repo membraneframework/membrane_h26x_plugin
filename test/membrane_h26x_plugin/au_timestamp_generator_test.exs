@@ -10,6 +10,9 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     use Membrane.H26x.AUTimestampGenerator
 
     @impl true
+    def max_frame_reorder(), do: 15
+
+    @impl true
     def get_first_vcl_nalu(au), do: Enum.find(au, &(&1.parsed_fields[:poc] != nil))
 
     @impl true

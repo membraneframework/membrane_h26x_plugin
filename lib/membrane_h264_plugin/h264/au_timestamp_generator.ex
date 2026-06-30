@@ -5,7 +5,8 @@ defmodule Membrane.H264.AUTimestampGenerator do
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
-  @max_frame_reorder 15
+  @impl true
+  def max_frame_reorder(), do: 15
 
   @impl true
   def get_first_vcl_nalu(au) do
@@ -27,7 +28,7 @@ defmodule Membrane.H264.AUTimestampGenerator do
         fields.max_num_reorder_frames
 
       true ->
-        @max_frame_reorder
+        max_frame_reorder()
     end
   end
 
