@@ -34,10 +34,9 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     aus = Enum.map(pocs, &au(&1, depth))
     state = FakeGenerator.new(Map.merge(%{framerate: {1, 1}}, config))
 
-    {emitted, state} = FakeGenerator.generate_timestamps(aus, state)
-    {flushed, _state} = FakeGenerator.flush(state)
+    {emitted, _state} = FakeGenerator.generate_timestamps(aus, true, state)
 
-    (emitted ++ flushed)
+    emitted
     |> Enum.map(fn au ->
       nalu = hd(au)
       {pts, dts} = nalu.timestamps
@@ -45,7 +44,7 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     end)
   end
 
-  describe "generate_timestamps/2 with no reordering (depth 0)" do
+  describe "generate_timestamps/3 with no reordering (depth 0)" do
     test "produces consecutive PTS even when POC advances by a step other than 1" do
       # POC stepping by 2 - the case the old implementation got wrong.
       result = run(%{add_dts_offset: false}, 0, [0, 2, 4, 6])
@@ -65,7 +64,7 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     end
   end
 
-  describe "generate_timestamps/2 with reordering" do
+  describe "generate_timestamps/3 with reordering" do
     test "assigns PTS by presentation (POC) order while emitting in decode order" do
       # Decode order POCs: I=0, P=2, B=1 with reorder depth 1.
       result = run(%{add_dts_offset: false}, 1, [0, 2, 1])

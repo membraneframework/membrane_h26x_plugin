@@ -104,25 +104,28 @@ defmodule Membrane.H26x.AUTimestampGenerator do
 
       An access unit is held back until enough following access units have been
       seen to determine its presentation order.
-      """
-      @spec generate_timestamps([AUSplitter.access_unit()], unquote(__MODULE__).state()) ::
-              {[AUSplitter.access_unit()], unquote(__MODULE__).state()}
-      def generate_timestamps(access_units, state) do
-        Enum.flat_map_reduce(access_units, state, fn au, state ->
-          {ready, state} = put_access_unit(au, state)
-          {Enum.map(ready, fn {au, timestamps} -> put_timestamps(au, timestamps) end), state}
-        end)
-      end
 
-      @doc """
-      Drains all buffered access units, assigning them their timestamps. To be
-      called on end of stream or when the generator is no longer going to be used.
+      If `flush?` is set to `true`, all the access units still buffered after
+      feeding the input are drained and returned as well. To be done on end of
+      stream or when the generator is no longer going to be used.
       """
-      @spec flush(unquote(__MODULE__).state()) ::
-              {[AUSplitter.access_unit()], unquote(__MODULE__).state()}
-      def flush(state) do
-        {ready, state} = drain(state)
-        {Enum.map(ready, fn {au, timestamps} -> put_timestamps(au, timestamps) end), state}
+      @spec generate_timestamps(
+              [AUSplitter.access_unit()],
+              flush? :: boolean(),
+              unquote(__MODULE__).state()
+            ) :: {[AUSplitter.access_unit()], unquote(__MODULE__).state()}
+      def generate_timestamps(access_units, flush? \\ false, state) do
+        {ready, state} =
+          Enum.flat_map_reduce(access_units, state, fn au, state ->
+            put_access_unit(au, state)
+          end)
+
+        {drained, state} = if flush?, do: drain(state), else: {[], state}
+
+        outputs =
+          Enum.map(ready ++ drained, fn {au, timestamps} -> put_timestamps(au, timestamps) end)
+
+        {outputs, state}
       end
 
       # Pushes a single access unit into the reorder buffer and returns the access
@@ -152,15 +155,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
         {poc, state} = calculate_poc(first_vcl_nalu, state)
         dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
 
-        # A POC equal to 0 marks the beginning of a new coded video sequence whose
-        # POCs restart from 0, so the previous sequence's buffer must be drained
-        # first, otherwise the new low POCs would sort against the old high POCs.
         {flushed, state} =
           if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
 
-        # The reorder depth is read from the (possibly new) SPS at the start of each
-        # coded video sequence. It's clamped to the maximal reorder so it never
-        # exceeds the DTS offset window (which keeps PTS >= DTS when the offset is on).
         state =
           if poc == 0 or state.buffer_depth == nil do
             depth =
