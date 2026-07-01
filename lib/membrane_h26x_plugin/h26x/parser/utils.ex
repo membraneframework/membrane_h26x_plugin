@@ -11,7 +11,7 @@ defmodule Membrane.H26x.Parser.Utils do
 
   alias Membrane.Buffer
   alias Membrane.H26x.{AUSplitter, NALuParser}
-  alias Membrane.H26x.Parser
+  alias Membrane.H26x.Parser.Core
 
   @doc """
   Decides whether the given access unit should be forwarded downstream.
@@ -43,7 +43,7 @@ defmodule Membrane.H26x.Parser.Utils do
           Membrane.Time.t(),
           boolean(),
           :au | :nalu,
-          Parser.stream_structure(),
+          Core.stream_structure(),
           atom()
         ) :: Buffer.t() | [Buffer.t()]
   def wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do

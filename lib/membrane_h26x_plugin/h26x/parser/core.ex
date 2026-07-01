@@ -21,7 +21,9 @@ defmodule Membrane.H26x.Parser.Core do
   # record has to be built.
 
   alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALu, NALuParser, NALuSplitter}
-  alias Membrane.H26x.Parser
+
+  @type stream_structure ::
+          Membrane.H264.Parser.stream_structure() | Membrane.H265.Parser.stream_structure()
 
   @type mode :: :bytestream | :nalu_aligned | :au_aligned
   @type timestamps :: {pts :: integer() | nil, dts :: integer() | nil}
@@ -32,7 +34,7 @@ defmodule Membrane.H26x.Parser.Core do
           au_splitter_mod: module(),
           au_timestamp_generator_mod: module(),
           generate_best_effort_timestamps: false | AUTimestampGenerator.config(),
-          output_stream_structure: Parser.stream_structure() | nil
+          output_stream_structure: stream_structure() | nil
         }
 
   @type t :: %__MODULE__{
@@ -45,8 +47,8 @@ defmodule Membrane.H26x.Parser.Core do
           previous_buffer_timestamps: timestamps() | nil,
           frame_prefix: binary(),
           cached_parameter_sets: [NALu.t()],
-          input_stream_structure: Parser.stream_structure() | nil,
-          output_stream_structure: Parser.stream_structure() | nil,
+          input_stream_structure: stream_structure() | nil,
+          output_stream_structure: stream_structure() | nil,
           nalu_parser_mod: module(),
           au_splitter_mod: module(),
           au_timestamp_generator_mod: module()
@@ -108,8 +110,8 @@ defmodule Membrane.H26x.Parser.Core do
   in the middle of a stream (only the NALu prefix length may change, not the codec tag).
   """
   @spec input_stream_structure_change_allowed?(
-          Parser.stream_structure(),
-          Parser.stream_structure()
+          stream_structure(),
+          stream_structure()
         ) :: boolean()
   def input_stream_structure_change_allowed?(:annexb, :annexb), do: true
 
@@ -124,10 +126,10 @@ defmodule Membrane.H26x.Parser.Core do
   @spec mode(t()) :: mode() | nil
   def mode(%__MODULE__{mode: mode}), do: mode
 
-  @spec input_stream_structure(t()) :: Parser.stream_structure() | nil
+  @spec input_stream_structure(t()) :: stream_structure() | nil
   def input_stream_structure(%__MODULE__{input_stream_structure: structure}), do: structure
 
-  @spec output_stream_structure(t()) :: Parser.stream_structure() | nil
+  @spec output_stream_structure(t()) :: stream_structure() | nil
   def output_stream_structure(%__MODULE__{output_stream_structure: structure}), do: structure
 
   @spec framerate(t()) :: AUTimestampGenerator.framerate() | nil
@@ -144,7 +146,7 @@ defmodule Membrane.H26x.Parser.Core do
   @spec init_input_structure(
           t(),
           mode(),
-          Parser.stream_structure(),
+          stream_structure(),
           AUTimestampGenerator.framerate() | nil
         ) :: t()
   def init_input_structure(core, mode, input_stream_structure, framerate) do
