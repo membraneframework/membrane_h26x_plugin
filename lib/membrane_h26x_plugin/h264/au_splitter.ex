@@ -15,13 +15,20 @@ defmodule Membrane.H264.AUSplitter do
   VCL NALu is a new primary coded picture. That condition is whether the picture
   is a keyframe or not.
   """
-  use Membrane.H26x.AUSplitter
+  @behaviour Membrane.H26x.AUSplitter
 
   require Membrane.Logger
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
   alias Membrane.H26x.AUSplitter
+
+  defdelegate new(), to: AUSplitter
+
+  @spec split([Membrane.H26x.NALu.t()], boolean(), AUSplitter.t()) ::
+          {[AUSplitter.access_unit()], AUSplitter.t()}
+  def split(nalus, assume_au_aligned, state),
+    do: AUSplitter.split(__MODULE__, nalus, assume_au_aligned, state)
 
   @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
   @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]

@@ -17,37 +17,6 @@ defmodule Membrane.H26x.NALuParser do
   @callback parse_proper_nalu_type(binary(), nalu_type(), SchemeParser.t()) ::
               {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
 
-  defmacro __using__(_options) do
-    quote location: :keep do
-      @behaviour unquote(__MODULE__)
-
-      alias Membrane.H26x.{NALu, NALuParser}
-
-      defdelegate new(input_stream_structure \\ :annexb), to: NALuParser
-
-      @spec parse_nalus([binary()], NALu.timestamps(), boolean(), NALuParser.t()) ::
-              {[NALu.t()], NALuParser.t()}
-      def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
-        NALuParser.parse_nalus(__MODULE__, nalus_payloads, timestamps, payload_prefixed?, state)
-      end
-
-      @spec parse(binary(), NALu.timestamps(), boolean(), NALuParser.t()) ::
-              {NALu.t(), NALuParser.t()}
-      def parse(nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
-        NALuParser.parse(__MODULE__, nalu_payload, timestamps, payload_prefixed?, state)
-      end
-
-      defdelegate get_prefixed_nalu_payload(
-                    nalu,
-                    output_stream_structure,
-                    stable_prefixing? \\ true
-                  ),
-                  to: NALuParser
-
-      defdelegate prefix_nalus_payloads(nalus, input_stream_structure), to: NALuParser
-    end
-  end
-
   @typedoc """
   A structure holding the state of the NALu parser.
   """

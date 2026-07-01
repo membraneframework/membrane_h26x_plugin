@@ -38,26 +38,6 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   @callback calculate_poc(NALu.t(), state()) :: {integer(), state()}
   @callback reorder_buffer_depth(NALu.t(), state()) :: non_neg_integer()
 
-  defmacro __using__(_options) do
-    quote location: :keep do
-      @behaviour unquote(__MODULE__)
-
-      alias Membrane.H26x.AUSplitter
-
-      @spec new(unquote(__MODULE__).config()) :: unquote(__MODULE__).state()
-      def new(config), do: unquote(__MODULE__).new(__MODULE__, config)
-
-      @spec generate_timestamps(
-              [AUSplitter.access_unit()],
-              flush? :: boolean(),
-              unquote(__MODULE__).state()
-            ) :: {[AUSplitter.access_unit()], unquote(__MODULE__).state()}
-      def generate_timestamps(access_units, flush? \\ false, state) do
-        unquote(__MODULE__).generate_timestamps(__MODULE__, access_units, flush?, state)
-      end
-    end
-  end
-
   @doc """
   Creates the initial state of the timestamp generator.
   """

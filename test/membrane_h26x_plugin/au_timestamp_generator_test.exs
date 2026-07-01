@@ -4,7 +4,14 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
 
   defmodule FakeGenerator do
     @moduledoc false
-    use Membrane.H26x.AUTimestampGenerator
+    @behaviour Membrane.H26x.AUTimestampGenerator
+
+    alias Membrane.H26x.AUTimestampGenerator
+
+    def new(config), do: AUTimestampGenerator.new(__MODULE__, config)
+
+    def generate_timestamps(access_units, flush? \\ false, state),
+      do: AUTimestampGenerator.generate_timestamps(__MODULE__, access_units, flush?, state)
 
     @impl true
     def max_frame_reorder(), do: 15

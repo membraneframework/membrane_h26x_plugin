@@ -1,11 +1,6 @@
 defmodule Membrane.H26x.AUSplitter do
   @moduledoc """
-  A behaviour module to split NALus into access units.
-
-  The codec-specific modules that `use Membrane.H26x.AUSplitter` are only required to
-  implement the `c:do_split/2` callback, which drives the finite state machine detecting
-  the access unit boundaries. The generic bookkeeping (state struct, `new/0` and the
-  `split/3` wrapper) is provided by this module.
+  A behaviour module to split NALus into access units
   """
 
   alias Membrane.H26x.NALu
@@ -33,33 +28,11 @@ defmodule Membrane.H26x.AUSplitter do
   ]
   defstruct @enforce_keys
 
-  @doc """
-  Feeds the given list of NAL units through the codec-specific finite state machine,
-  returning the updated splitter state.
-  """
   @callback split([NALu.t()], t()) :: t()
 
-  defmacro __using__(_options) do
-    quote location: :keep do
-      @behaviour unquote(__MODULE__)
-
-      alias Membrane.H26x.AUSplitter
-
-      @spec new() :: AUSplitter.t()
-      defdelegate new(), to: AUSplitter
-
-      # No default on `assume_au_aligned`, as it would generate a `split/2` head
-      # that would clash with the `c:Membrane.H26x.AUSplitter.split/2` callback.
-      @spec split([Membrane.H26x.NALu.t()], boolean(), AUSplitter.t()) ::
-              {[AUSplitter.access_unit()], AUSplitter.t()}
-      def split(nalus, assume_au_aligned, state) do
-        AUSplitter.split(__MODULE__, nalus, assume_au_aligned, state)
-      end
-    end
-  end
-
   @doc """
-  Returns a structure holding a clear state of the access unit splitter.
+  Returns a structure holding a clear state of the
+  access unit splitter.
   """
   @spec new() :: t()
   def new() do
@@ -77,7 +50,7 @@ defmodule Membrane.H26x.AUSplitter do
   It can be used for a stream which is not completely available at the time of function invocation,
   as the function updates the state of the access unit splitter - the function can
   be invoked once more, with new NAL units and the updated state.
-  Under the hood, the codec-specific `c:split/2` defines a finite state machine
+  Under the hood, `split/2` defines a finite state machine
   with two states: `:first` and `:second`. The state `:first` describes the state before
   reaching the primary coded picture NALu of a given access unit. The state `:second`
   describes the state after processing the primary coded picture NALu of a given

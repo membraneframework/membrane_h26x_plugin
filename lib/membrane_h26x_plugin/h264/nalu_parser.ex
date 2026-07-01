@@ -4,13 +4,31 @@ defmodule Membrane.H264.NALuParser do
   H264 specific functions.
   """
 
-  use Membrane.H26x.NALuParser
+  @behaviour Membrane.H26x.NALuParser
 
   require Membrane.Logger
 
   alias Membrane.H264.NALuParser.Schemes
   alias Membrane.H264.NALuTypes
+  alias Membrane.H26x.{NALu, NALuParser}
   alias Membrane.H26x.NALuParser.SchemeParser
+
+  defdelegate new(input_stream_structure \\ :annexb), to: NALuParser
+
+  @spec parse_nalus([binary()], NALu.timestamps(), boolean(), NALuParser.t()) ::
+          {[NALu.t()], NALuParser.t()}
+  def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state),
+    do: NALuParser.parse_nalus(__MODULE__, nalus_payloads, timestamps, payload_prefixed?, state)
+
+  @spec parse(binary(), NALu.timestamps(), boolean(), NALuParser.t()) ::
+          {NALu.t(), NALuParser.t()}
+  def parse(nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state),
+    do: NALuParser.parse(__MODULE__, nalu_payload, timestamps, payload_prefixed?, state)
+
+  defdelegate get_prefixed_nalu_payload(nalu, output_stream_structure, stable_prefixing? \\ true),
+    to: NALuParser
+
+  defdelegate prefix_nalus_payloads(nalus, input_stream_structure), to: NALuParser
 
   @impl true
   def get_nalu_header_and_body(<<nalu_header::binary-size(1), nalu_body::binary>>),
