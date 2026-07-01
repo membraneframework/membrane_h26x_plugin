@@ -4,11 +4,6 @@ defmodule Membrane.H26x.Parser.Utils do
   # Membrane-coupled, but codec-agnostic, helpers shared by the `Membrane.H264.Parser`
   # and `Membrane.H265.Parser` elements.
   #
-  # Unlike `Membrane.H26x.Parser.Core`, these functions know about `Membrane.Buffer`s,
-  # buffer metadata and element actions - but they contain no codec-specific logic and
-  # take everything they need as explicit arguments (there is no callback dispatch back
-  # into the elements).
-
   alias Membrane.Buffer
   alias Membrane.H26x.{AUSplitter, NALuParser}
   alias Membrane.H26x.Parser.Core

@@ -240,7 +240,7 @@ defmodule Membrane.H264.Parser do
       )
 
     {stream_format_actions, state} =
-      process_stream_format_parameter_sets(
+      handle_stream_format_parameter_sets(
         incoming_parameter_sets,
         ctx.pads.output.stream_format,
         state
@@ -280,32 +280,43 @@ defmodule Membrane.H264.Parser do
           {[Membrane.Element.Action.t()], map()}
   defp process_access_units(access_units, ctx, state) do
     Enum.flat_map_reduce(access_units, state, fn au, state ->
-      {au, stream_format_actions, state} = process_au_parameter_sets(au, ctx, state)
+      {au, stream_format_actions, state} = handle_au_parameter_sets(au, ctx, state)
       {buffer_actions, state} = prepare_buffer_actions(au, keyframe?(au), state)
       {stream_format_actions ++ buffer_actions, state}
     end)
   end
 
-  defp process_au_parameter_sets(au, ctx, state) do
-    old_stream_format = ctx.pads.output.stream_format
+  defp handle_au_parameter_sets(au, ctx, state) do
     parameter_sets = get_parameter_sets(au)
 
     {stream_format_actions, state} =
-      process_new_parameter_sets(parameter_sets, old_stream_format, state)
+      cache_and_maybe_stream_format(parameter_sets, ctx.pads.output.stream_format, state)
 
     au =
-      if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
-        Core.remove_parameter_sets(au, parameter_sets)
-      else
-        au
-        |> maybe_add_parameter_sets(state)
-        |> maybe_dedup_parameter_sets()
-      end
+      Core.finalize_au_parameter_sets(state.core, au, parameter_sets,
+        strip?: remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)),
+        repeat?: state.repeat_parameter_sets,
+        keyframe?: keyframe?(au)
+      )
 
     {au, stream_format_actions, state}
   end
 
-  defp process_new_parameter_sets(parameter_sets, last_sent_stream_format, state) do
+  defp handle_stream_format_parameter_sets(parameter_sets, last_sent_stream_format, state) do
+    if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
+      {parsed_parameter_sets, core} = Core.parse_parameter_sets(state.core, parameter_sets)
+
+      cache_and_maybe_stream_format(parsed_parameter_sets, last_sent_stream_format, %{
+        state
+        | core: core
+      })
+    else
+      {[], %{state | core: Core.set_frame_prefix(state.core, parameter_sets)}}
+    end
+  end
+
+  # Caches the given parameter sets and emits a new stream format if they changed it.
+  defp cache_and_maybe_stream_format(parameter_sets, last_sent_stream_format, state) do
     state = %{state | core: Core.cache_parameter_sets(state.core, parameter_sets)}
 
     stream_format_candidate =
@@ -318,19 +329,6 @@ defmodule Membrane.H264.Parser do
     end
   end
 
-  defp process_stream_format_parameter_sets(parameter_sets, last_sent_stream_format, state) do
-    if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
-      {parsed_parameter_sets, core} = Core.parse_parameter_sets(state.core, parameter_sets)
-
-      process_new_parameter_sets(parsed_parameter_sets, last_sent_stream_format, %{
-        state
-        | core: core
-      })
-    else
-      {[], %{state | core: Core.set_frame_prefix(state.core, parameter_sets)}}
-    end
-  end
-
   defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
     do: state.initial_parameter_sets
 
@@ -338,16 +336,6 @@ defmodule Membrane.H264.Parser do
 
   defp incoming_parameter_sets(_structure, parameter_sets, _is_first, state),
     do: Core.filter_new_parameter_sets(state.core, parameter_sets)
-
-  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
-
-  defp maybe_add_parameter_sets(au, state) do
-    if keyframe?(au), do: Core.add_cached_parameter_sets(au, state.core), else: au
-  end
-
-  defp maybe_dedup_parameter_sets(au) do
-    if keyframe?(au), do: Core.dedup_parameter_sets(au), else: au
-  end
 
   defp prepare_buffer_actions(au, keyframe?, state) do
     {should_forward?, skip_until_keyframe?} =

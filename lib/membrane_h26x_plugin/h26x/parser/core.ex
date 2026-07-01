@@ -2,23 +2,6 @@ defmodule Membrane.H26x.Parser.Core do
   @moduledoc false
 
   # A pure, Membrane-agnostic core of the H26x parser.
-  #
-  # This module holds no codec-specific logic (it neither classifies NAL units, nor
-  # groups parameter sets, nor builds stream formats) and no Membrane concepts
-  # (no actions, no callback context, no `Membrane.Buffer`). It only orchestrates
-  # the shared building blocks - `Membrane.H26x.NALuSplitter`, `Membrane.H26x.NALuParser`,
-  # `Membrane.H26x.AUSplitter` and `Membrane.H26x.AUTimestampGenerator` - and keeps the
-  # bookkeeping that is common to every codec (parameter-set caching, frame prefixing,
-  # timestamp generation).
-  #
-  # The codec-specific Membrane elements (`Membrane.H264.Parser`, `Membrane.H265.Parser`)
-  # drive the core: they feed it payloads and read back plain access units, interleaving
-  # the codec-specific decisions themselves.
-  #
-  # Parameter sets are cached as a flat list of `Membrane.H26x.NALu` structs. Their
-  # payloads are unique across categories (SPS/PPS/VPS), so no per-category grouping is
-  # needed here; the elements regroup them by type only where a decoder configuration
-  # record has to be built.
 
   alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALu, NALuParser, NALuSplitter}
 
@@ -279,22 +262,32 @@ defmodule Membrane.H26x.Parser.Core do
   end
 
   @doc """
-  Prepends all cached parameter sets to the given access unit.
-  """
-  @spec add_cached_parameter_sets(AUSplitter.access_unit(), t()) :: AUSplitter.access_unit()
-  def add_cached_parameter_sets(au, core), do: core.cached_parameter_sets ++ au
+  Reconciles an access unit's parameter sets for output, given its extracted
+  `parameter_sets` and the output policy:
 
-  @doc """
-  Removes duplicate NALus (by payload) from the access unit.
+    * `strip?` - the output carries parameter sets out of band (e.g. in a DCR), so they
+      are removed from the access unit;
+    * otherwise, on a keyframe, the cached parameter sets are repeated (when `repeat?`)
+      and duplicates are removed.
   """
-  @spec dedup_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
-  def dedup_parameter_sets(au), do: Enum.uniq_by(au, & &1.payload)
+  @spec finalize_au_parameter_sets(t(), access_unit(), [NALu.t()],
+          strip?: boolean(),
+          repeat?: boolean(),
+          keyframe?: boolean()
+        ) :: access_unit()
+  def finalize_au_parameter_sets(core, au, parameter_sets, opts) do
+    cond do
+      opts[:strip?] ->
+        Enum.filter(au, &(&1 not in parameter_sets))
 
-  @doc """
-  Removes the given parameter-set NALus from the access unit.
-  """
-  @spec remove_parameter_sets(AUSplitter.access_unit(), [NALu.t()]) :: AUSplitter.access_unit()
-  def remove_parameter_sets(au, parameter_sets), do: Enum.filter(au, &(&1 not in parameter_sets))
+      opts[:keyframe?] ->
+        au = if opts[:repeat?], do: core.cached_parameter_sets ++ au, else: au
+        Enum.uniq_by(au, & &1.payload)
+
+      true ->
+        au
+    end
+  end
 
   defguardp is_timestamp_generator_active(core)
             when is_map(core) and core.mode == :bytestream and
