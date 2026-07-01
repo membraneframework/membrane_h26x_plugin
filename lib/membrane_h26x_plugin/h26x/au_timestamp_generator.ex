@@ -33,9 +33,24 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   @type timestamped_au ::
           {AUSplitter.access_unit(), pts :: timestamp(), dts :: timestamp()}
 
+  @doc """
+  Returns the maximum number of frames that may be reordered for the codec.
+  """
   @callback max_frame_reorder() :: pos_integer()
+
+  @doc """
+  Returns the first VCL (slice) NALu of the access unit, or `nil` if there is none.
+  """
   @callback get_first_vcl_nalu(AUSplitter.access_unit()) :: NALu.t() | nil
+
+  @doc """
+  Computes the picture order count of the given VCL NALu, returning it with the updated state.
+  """
   @callback calculate_poc(NALu.t(), state()) :: {integer(), state()}
+
+  @doc """
+  Returns the reorder buffer depth implied by the VCL NALu's parameters.
+  """
   @callback reorder_buffer_depth(NALu.t(), state()) :: non_neg_integer()
 
   @doc """

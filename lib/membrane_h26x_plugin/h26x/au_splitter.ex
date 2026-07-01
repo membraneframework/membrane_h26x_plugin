@@ -28,6 +28,10 @@ defmodule Membrane.H26x.AUSplitter do
   ]
   defstruct @enforce_keys
 
+  @doc """
+  Feeds NAL units through the codec's access-unit-detection state machine,
+  accumulating completed access units in the returned state.
+  """
   @callback split([NALu.t()], t()) :: t()
 
   @doc """

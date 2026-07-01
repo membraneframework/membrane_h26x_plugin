@@ -33,7 +33,7 @@ defmodule Membrane.H265.NALuParser do
   def get_first_vcl_nalu(au), do: Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
 
   @impl true
-  def parse_proper_nalu_type(nalu_body, nalu_type, state) do
+  def parse_nalu_body(nalu_body, nalu_type, state) do
     case nalu_type do
       :vps ->
         SchemeParser.parse_with_scheme(nalu_body, Schemes.VPS, state)

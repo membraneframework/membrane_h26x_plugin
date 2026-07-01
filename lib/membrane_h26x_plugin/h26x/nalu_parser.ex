@@ -11,11 +11,30 @@ defmodule Membrane.H26x.NALuParser do
 
   @type nalu_type :: atom()
 
+  @doc """
+  Splits an unprefixed NALu payload into its header and body binaries.
+  """
   @callback get_nalu_header_and_body(binary()) :: {binary(), binary()}
+
+  @doc """
+  Parses the NALu header binary into its fields, returning them with the updated scheme parser state.
+  """
   @callback parse_nalu_header(binary(), SchemeParser.t()) :: {map(), SchemeParser.t()}
+
+  @doc """
+  Maps the raw `nal_unit_type` integer to its NALu type atom.
+  """
   @callback get_nalu_type(non_neg_integer()) :: nalu_type()
-  @callback parse_proper_nalu_type(binary(), nalu_type(), SchemeParser.t()) ::
+
+  @doc """
+  Parses the fields carried in the NALu body, returning `:error` if it is malformed.
+  """
+  @callback parse_nalu_body(binary(), nalu_type(), SchemeParser.t()) ::
               {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
+
+  @doc """
+  Returns the first VCL (slice) NALu of the access unit, or `nil` if there is none.
+  """
   @callback get_first_vcl_nalu([NALu.t()]) :: NALu.t() | nil
 
   @typedoc """
@@ -83,7 +102,7 @@ defmodule Membrane.H26x.NALuParser do
     type = module.get_nalu_type(parsed_fields.nal_unit_type)
 
     {status, parsed_fields, scheme_parser_state} =
-      case module.parse_proper_nalu_type(nalu_body, type, scheme_parser_state) do
+      case module.parse_nalu_body(nalu_body, type, scheme_parser_state) do
         {:ok, parsed_fields, state} -> {:valid, parsed_fields, state}
         {:error, state} -> {:error, SchemeParser.get_local_state(state), state}
       end
