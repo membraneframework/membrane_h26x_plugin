@@ -35,7 +35,7 @@ defmodule Membrane.H26x.NALuSplitter do
 
   Takes a binary H264 stream as an input
   and produces a list of binaries, where each binary is
-  a complete NALu that can be passed to the `Membrane.H264.NALuParser.parse/4`.
+  a complete NALu that can be passed to `Membrane.H26x.NALuParser.parse_nalus/5`.
 
   If `assume_nalu_aligned` flag is set to `true`, input is assumed to form a complete set
   of NAL units and therefore all of them are returned. Otherwise, the NALu is not returned
