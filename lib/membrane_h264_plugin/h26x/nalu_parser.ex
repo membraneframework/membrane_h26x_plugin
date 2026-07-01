@@ -22,69 +22,19 @@ defmodule Membrane.H26x.NALuParser do
       @behaviour unquote(__MODULE__)
 
       alias Membrane.H26x.{NALu, NALuParser}
-      alias Membrane.H26x.NALuParser.SchemeParser
 
       defdelegate new(input_stream_structure \\ :annexb), to: NALuParser
 
-      @doc """
-      Parses a list of binaries, each representing a single NALu.
-
-      See `parse/4` for details.
-      """
       @spec parse_nalus([binary()], NALu.timestamps(), boolean(), NALuParser.t()) ::
               {[NALu.t()], NALuParser.t()}
       def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
-        Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
-          parse(nalu_payload, timestamps, payload_prefixed?, state)
-        end)
+        NALuParser.parse_nalus(__MODULE__, nalus_payloads, timestamps, payload_prefixed?, state)
       end
 
-      @doc """
-      Parses a binary representing a single NALu and removes it's prefix (if it exists).
-
-      Returns a structure that
-      contains parsed fields fetched from that NALu.
-      When `payload_prefixed?` is true the input binary is expected to contain one of:
-      * prefix defined as the *"Annex B"* in the H26x recommendation document.
-      * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
-      """
       @spec parse(binary(), NALu.timestamps(), boolean(), NALuParser.t()) ::
               {NALu.t(), NALuParser.t()}
       def parse(nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
-        {prefix, unprefixed_nalu_payload} =
-          if payload_prefixed? do
-            NALuParser.unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
-          else
-            {<<>>, nalu_payload}
-          end
-
-        {nalu_header, nalu_body} = get_nalu_header_and_body(unprefixed_nalu_payload)
-
-        new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
-
-        {parsed_fields, scheme_parser_state} =
-          parse_nalu_header(nalu_header, new_scheme_parser_state)
-
-        type = get_nalu_type(parsed_fields.nal_unit_type)
-
-        {status, parsed_fields, scheme_parser_state} =
-          case parse_proper_nalu_type(nalu_body, type, scheme_parser_state) do
-            {:ok, parsed_fields, state} -> {:valid, parsed_fields, state}
-            {:error, state} -> {:error, SchemeParser.get_local_state(state), state}
-          end
-
-        nalu = %NALu{
-          parsed_fields: parsed_fields,
-          type: type,
-          status: status,
-          stripped_prefix: prefix,
-          payload: unprefixed_nalu_payload,
-          timestamps: timestamps
-        }
-
-        state = %{state | scheme_parser_state: scheme_parser_state}
-
-        {nalu, state}
+        NALuParser.parse(__MODULE__, nalu_payload, timestamps, payload_prefixed?, state)
       end
 
       defdelegate get_prefixed_nalu_payload(
@@ -118,6 +68,73 @@ defmodule Membrane.H26x.NALuParser do
       input_stream_structure: input_stream_structure,
       scheme_parser_state: SchemeParser.new()
     }
+  end
+
+  @doc """
+  Parses a list of binaries, each representing a single NALu.
+
+  See `parse/5` for details.
+  """
+  @spec parse_nalus(module(), [binary()], NALu.timestamps(), boolean(), t()) ::
+          {[NALu.t()], t()}
+  def parse_nalus(
+        module,
+        nalus_payloads,
+        timestamps \\ {nil, nil},
+        payload_prefixed? \\ true,
+        state
+      ) do
+    Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
+      parse(module, nalu_payload, timestamps, payload_prefixed?, state)
+    end)
+  end
+
+  @doc """
+  Parses a binary representing a single NALu and removes it's prefix (if it exists).
+
+  Returns a structure that
+  contains parsed fields fetched from that NALu.
+  When `payload_prefixed?` is true the input binary is expected to contain one of:
+  * prefix defined as the *"Annex B"* in the H26x recommendation document.
+  * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
+  """
+  @spec parse(module(), binary(), NALu.timestamps(), boolean(), t()) ::
+          {NALu.t(), t()}
+  def parse(module, nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
+    {prefix, unprefixed_nalu_payload} =
+      if payload_prefixed? do
+        unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
+      else
+        {<<>>, nalu_payload}
+      end
+
+    {nalu_header, nalu_body} = module.get_nalu_header_and_body(unprefixed_nalu_payload)
+
+    new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
+
+    {parsed_fields, scheme_parser_state} =
+      module.parse_nalu_header(nalu_header, new_scheme_parser_state)
+
+    type = module.get_nalu_type(parsed_fields.nal_unit_type)
+
+    {status, parsed_fields, scheme_parser_state} =
+      case module.parse_proper_nalu_type(nalu_body, type, scheme_parser_state) do
+        {:ok, parsed_fields, state} -> {:valid, parsed_fields, state}
+        {:error, state} -> {:error, SchemeParser.get_local_state(state), state}
+      end
+
+    nalu = %NALu{
+      parsed_fields: parsed_fields,
+      type: type,
+      status: status,
+      stripped_prefix: prefix,
+      payload: unprefixed_nalu_payload,
+      timestamps: timestamps
+    }
+
+    state = %{state | scheme_parser_state: scheme_parser_state}
+
+    {nalu, state}
   end
 
   @doc """
