@@ -56,6 +56,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     end
   end
 
+  @doc """
+  Creates the initial state of the timestamp generator.
+  """
   @spec new(module(), config()) :: state()
   def new(module, config) do
     # To make sure that PTS >= DTS at all times, we take the maximal possible
@@ -81,14 +84,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
   those that are ready to be emitted (also in decode order) with their
   `{pts, dts}` written onto the first VCL NALu.
 
-  An access unit is held back until enough following access units have been
-  seen to determine its presentation order.
-
   If `flush?` is set to `true`, all the access units still buffered after
   feeding the input are drained and returned as well. To be done on end of
   stream or when the generator is no longer going to be used.
-
-  `module` is the codec module implementing the callbacks of this behaviour.
   """
   @spec generate_timestamps(module(), [AUSplitter.access_unit()], boolean(), state()) ::
           {[AUSplitter.access_unit()], state()}
@@ -119,6 +117,8 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     end
   end
 
+  @spec buffer_access_unit(module(), AUSplitter.access_unit(), NALu.t(), state()) ::
+          {[{AUSplitter.access_unit(), timestamps()}], state()}
   defp buffer_access_unit(module, au, first_vcl_nalu, state) do
     %{
       au_counter: au_counter,
@@ -133,10 +133,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
       if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
 
     state =
+      # we might need to update max_depth for a new GOP
       if poc == 0 or state.buffer_depth == nil do
-        depth =
-          min(module.reorder_buffer_depth(first_vcl_nalu, state), module.max_frame_reorder())
-
+        depth = module.reorder_buffer_depth(first_vcl_nalu, state)
         %{state | buffer_depth: depth}
       else
         state
@@ -146,12 +145,14 @@ defmodule Membrane.H26x.AUTimestampGenerator do
 
     state =
       %{state | buffer: state.buffer ++ [entry], au_counter: au_counter + 1}
-      |> assign_pts_while_full()
+      |> assign_pts()
 
     {ready, state} = pop_ready(state)
     {flushed ++ ready, state}
   end
 
+  @spec put_timestamps(module(), AUSplitter.access_unit(), timestamps()) ::
+          AUSplitter.access_unit()
   defp put_timestamps(module, au, timestamps) do
     first_vcl_nalu = module.get_first_vcl_nalu(au)
 
@@ -160,14 +161,16 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     end)
   end
 
-  defp assign_pts_while_full(state) do
+  @spec assign_pts(state()) :: state()
+  defp assign_pts(state) do
     unassigned = Enum.count(state.buffer, &(&1.pts == nil))
 
     if unassigned > state.buffer_depth,
-      do: state |> assign_next_pts() |> assign_pts_while_full(),
+      do: state |> assign_next_pts() |> assign_pts(),
       else: state
   end
 
+  @spec assign_next_pts(state()) :: state()
   defp assign_next_pts(state) do
     %{framerate: {frames, seconds}, pts_counter: pts_counter} = state
 
@@ -182,17 +185,20 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     %{state | buffer: buffer, pts_counter: pts_counter + 1}
   end
 
+  @spec pop_ready(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
   defp pop_ready(state) do
     {ready, rest} = Enum.split_while(state.buffer, &(&1.pts != nil))
     {Enum.map(ready, &{&1.au, {&1.pts, &1.dts}}), %{state | buffer: rest}}
   end
 
+  @spec drain(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
   defp drain(state) do
     state = assign_all_pts(state)
     outputs = Enum.map(state.buffer, &{&1.au, {&1.pts, &1.dts}})
     {outputs, %{state | buffer: []}}
   end
 
+  @spec assign_all_pts(state()) :: state()
   defp assign_all_pts(state) do
     if Enum.any?(state.buffer, &(&1.pts == nil)),
       do: state |> assign_next_pts() |> assign_all_pts(),
