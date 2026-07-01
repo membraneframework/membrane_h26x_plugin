@@ -132,8 +132,8 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     {flushed, state} =
       if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
 
+    # we might need to update max_depth for a new GOP
     state =
-      # we might need to update max_depth for a new GOP
       if poc == 0 or state.buffer_depth == nil do
         depth = module.reorder_buffer_depth(first_vcl_nalu, state)
         %{state | buffer_depth: depth}
@@ -143,9 +143,16 @@ defmodule Membrane.H26x.AUTimestampGenerator do
 
     entry = %{id: au_counter, au: au, poc: poc, dts: dts, pts: nil}
 
+    state = %{state | buffer: state.buffer ++ [entry], au_counter: au_counter + 1}
+
+    unassigned = Enum.reject(state.buffer, & &1.pts)
+
+    excess = Enum.drop(unassigned, state.buffer_depth)
+
     state =
-      %{state | buffer: state.buffer ++ [entry], au_counter: au_counter + 1}
-      |> assign_pts()
+      Enum.reduce(excess, state, fn _excess_entry, acc_state ->
+        assign_next_pts(acc_state)
+      end)
 
     {ready, state} = pop_ready(state)
     {flushed ++ ready, state}
@@ -161,28 +168,20 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     end)
   end
 
-  @spec assign_pts(state()) :: state()
-  defp assign_pts(state) do
-    unassigned = Enum.count(state.buffer, &(&1.pts == nil))
-
-    if unassigned > state.buffer_depth,
-      do: state |> assign_next_pts() |> assign_pts(),
-      else: state
-  end
-
   @spec assign_next_pts(state()) :: state()
   defp assign_next_pts(state) do
-    %{framerate: {frames, seconds}, pts_counter: pts_counter} = state
+    %{framerate: {frames, seconds}, pts_counter: pts_counter, buffer: buffer} = state
 
-    next = state.buffer |> Enum.filter(&(&1.pts == nil)) |> Enum.min_by(& &1.poc)
+    {_next, index} =
+      buffer
+      |> Enum.with_index()
+      |> Enum.reject(fn {entry, _idx} -> entry.pts end)
+      |> Enum.min_by(fn {entry, _idx} -> entry.poc end)
+
     pts = div(pts_counter * seconds * Membrane.Time.second(), frames)
+    updated_buffer = List.update_at(buffer, index, &%{&1 | pts: pts})
 
-    buffer =
-      Enum.map(state.buffer, fn entry ->
-        if entry.id == next.id, do: %{entry | pts: pts}, else: entry
-      end)
-
-    %{state | buffer: buffer, pts_counter: pts_counter + 1}
+    %{state | buffer: updated_buffer, pts_counter: pts_counter + 1}
   end
 
   @spec pop_ready(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
@@ -193,15 +192,14 @@ defmodule Membrane.H26x.AUTimestampGenerator do
 
   @spec drain(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
   defp drain(state) do
-    state = assign_all_pts(state)
+    state =
+      state.buffer
+      |> Enum.reject(& &1.pts)
+      |> Enum.reduce(state, fn _unassigned_entry, acc_state ->
+        assign_next_pts(acc_state)
+      end)
+
     outputs = Enum.map(state.buffer, &{&1.au, {&1.pts, &1.dts}})
     {outputs, %{state | buffer: []}}
-  end
-
-  @spec assign_all_pts(state()) :: state()
-  defp assign_all_pts(state) do
-    if Enum.any?(state.buffer, &(&1.pts == nil)),
-      do: state |> assign_next_pts() |> assign_all_pts(),
-      else: state
   end
 end

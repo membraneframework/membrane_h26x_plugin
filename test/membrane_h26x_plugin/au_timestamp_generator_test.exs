@@ -34,7 +34,9 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     |> Enum.map(fn au ->
       nalu = hd(au)
       {pts, dts} = nalu.timestamps
-      {nalu.parsed_fields.poc, Membrane.Time.as_seconds(pts, :round), Membrane.Time.as_seconds(dts, :round)}
+
+      {nalu.parsed_fields.poc, Membrane.Time.as_seconds(pts, :round),
+       Membrane.Time.as_seconds(dts, :round)}
     end)
   end
 
@@ -71,6 +73,7 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
     test "keeps PTS >= DTS for reordered frames when add_dts_offset is enabled" do
       result = run(%{add_dts_offset: true}, 2, [0, 4, 2, 1, 3])
       assert Enum.all?(result, fn {_poc, pts, dts} -> pts >= dts end)
+
       assert Enum.map(result, fn {poc, pts, _dts} -> {poc, pts} end) ==
                [{0, 0}, {4, 4}, {2, 2}, {1, 1}, {3, 3}]
     end
