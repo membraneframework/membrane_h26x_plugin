@@ -46,20 +46,6 @@ defmodule Membrane.H26x.AUSplitter do
 
   @doc """
   Splits the given list of NAL units into the access units.
-
-  It can be used for a stream which is not completely available at the time of function invocation,
-  as the function updates the state of the access unit splitter - the function can
-  be invoked once more, with new NAL units and the updated state.
-  Under the hood, `split/2` defines a finite state machine
-  with two states: `:first` and `:second`. The state `:first` describes the state before
-  reaching the primary coded picture NALu of a given access unit. The state `:second`
-  describes the state after processing the primary coded picture NALu of a given
-  access unit.
-
-  If `assume_au_aligned` flag is set to `true`, input is assumed to form a complete set
-  of access units and therefore all of them are returned. Otherwise, the last access unit
-  is not returned until another access unit starts, as it's the only way to prove that
-  the access unit is complete.
   """
   @spec split(module(), [NALu.t()], boolean(), t()) :: {[access_unit()], t()}
   def split(module, nalus, assume_au_aligned \\ false, state) do
