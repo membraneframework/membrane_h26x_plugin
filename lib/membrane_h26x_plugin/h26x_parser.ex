@@ -2,7 +2,7 @@ defmodule Membrane.H26x.Parser do
   @moduledoc false
 
   alias Membrane.Buffer
-  alias Membrane.H26x.{AUSplitter, NALuSplitter}
+  alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALuParser, NALuSplitter}
 
   @typedoc """
   A type of a module implementing `Membrane.H26x.Parser` behaviour.
@@ -89,7 +89,7 @@ defmodule Membrane.H26x.Parser do
       %{
         nalu_splitter: nil,
         nalu_parser: nil,
-        au_splitter: au_splitter.new(),
+        au_splitter: AUSplitter.new(),
         au_timestamp_generator: au_timestamp_generator,
         framerate: framerate,
         mode: nil,
@@ -135,7 +135,7 @@ defmodule Membrane.H26x.Parser do
              state
              | mode: mode,
                nalu_splitter: NALuSplitter.new(input_stream_structure),
-               nalu_parser: state.nalu_parser_mod.new(input_stream_structure),
+               nalu_parser: NALuParser.new(input_stream_structure),
                input_stream_structure: input_stream_structure,
                output_stream_structure: output_stream_structure,
                framerate: Map.get(stream_format, :framerate) || state.framerate
@@ -191,12 +191,12 @@ defmodule Membrane.H26x.Parser do
     timestamps = {buffer.pts, buffer.dts}
 
     {nalus, nalu_parser} =
-      state.nalu_parser_mod.parse_nalus(nalus_payloads, timestamps, state.nalu_parser)
+      NALuParser.parse_nalus(state.nalu_parser_mod, nalus_payloads, timestamps, state.nalu_parser)
 
     is_au_aligned = state.mode == :au_aligned
 
     {access_units, au_splitter} =
-      state.au_splitter_mod.split(nalus, is_au_aligned, state.au_splitter)
+      AUSplitter.split(state.au_splitter_mod, nalus, is_au_aligned, state.au_splitter)
 
     state = %{
       state
@@ -215,13 +215,15 @@ defmodule Membrane.H26x.Parser do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
 
     {nalus, nalu_parser} =
-      state.nalu_parser_mod.parse_nalus(
+      NALuParser.parse_nalus(
+        state.nalu_parser_mod,
         nalus_payloads,
         state.previous_buffer_timestamps,
         state.nalu_parser
       )
 
-    {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
+    {access_units, au_splitter} =
+      AUSplitter.split(state.au_splitter_mod, nalus, true, state.au_splitter)
 
     state = %{
       state
@@ -243,7 +245,7 @@ defmodule Membrane.H26x.Parser do
     if state.module.remove_parameter_sets_from_stream?(state.output_stream_structure) do
       {parsed_parameter_sets, nalu_parser} =
         Enum.map_reduce(Tuple.to_list(parameter_sets), state.nalu_parser, fn ps, nalu_parser ->
-          state.nalu_parser_mod.parse_nalus(ps, {nil, nil}, false, nalu_parser)
+          NALuParser.parse_nalus(state.nalu_parser_mod, ps, {nil, nil}, false, nalu_parser)
         end)
 
       state = %{state | nalu_parser: nalu_parser}
@@ -255,7 +257,7 @@ defmodule Membrane.H26x.Parser do
       )
     else
       frame_prefix =
-        state.nalu_parser_mod.prefix_nalus_payloads(
+        NALuParser.prefix_nalus_payloads(
           flatten_parameter_sets(parameter_sets),
           state.input_stream_structure
         )
@@ -401,13 +403,15 @@ defmodule Membrane.H26x.Parser do
     {nalus_payloads, nalu_splitter} = NALuSplitter.split(<<>>, true, state.nalu_splitter)
 
     {nalus, nalu_parser} =
-      state.nalu_parser_mod.parse_nalus(
+      NALuParser.parse_nalus(
+        state.nalu_parser_mod,
         nalus_payloads,
         state.previous_buffer_timestamps,
         state.nalu_parser
       )
 
-    {access_units, au_splitter} = state.au_splitter_mod.split(nalus, true, state.au_splitter)
+    {access_units, au_splitter} =
+      AUSplitter.split(state.au_splitter_mod, nalus, true, state.au_splitter)
 
     state = %{
       state
@@ -431,7 +435,8 @@ defmodule Membrane.H26x.Parser do
   defp maybe_generate_timestamps(aus, flush?, state)
        when is_timestamp_generator_active(state) do
     {aus, generator} =
-      state.au_timestamp_generator_mod.generate_timestamps(
+      AUTimestampGenerator.generate_timestamps(
+        state.au_timestamp_generator_mod,
         aus,
         flush?,
         state.au_timestamp_generator
@@ -463,17 +468,7 @@ defmodule Membrane.H26x.Parser do
   end
 
   @spec first_vcl_nalu(AUSplitter.access_unit(), state()) :: Membrane.H26x.NALu.t() | nil
-  defp first_vcl_nalu(au, state) do
-    case state.nalu_parser_mod do
-      Membrane.H264.NALuParser ->
-        require Membrane.H264.NALuTypes, as: NALuTypes
-        Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
-
-      Membrane.H265.NALuParser ->
-        require Membrane.H265.NALuTypes, as: NALuTypes
-        Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
-    end
-  end
+  defp first_vcl_nalu(au, state), do: state.nalu_parser_mod.get_first_vcl_nalu(au)
 
   @spec wrap_into_buffer(
           AUSplitter.access_unit(),
@@ -484,7 +479,7 @@ defmodule Membrane.H26x.Parser do
         ) :: Buffer.t() | [Buffer.t()]
   defp wrap_into_buffer(access_unit, pts, dts, key_frame?, %{output_alignment: :au} = state) do
     Enum.reduce(access_unit, <<>>, fn nalu, acc ->
-      acc <> state.nalu_parser_mod.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
+      acc <> NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
     end)
     |> then(fn payload ->
       %Buffer{
@@ -501,8 +496,7 @@ defmodule Membrane.H26x.Parser do
     |> Enum.zip(prepare_nalus_metadata(access_unit, key_frame?, state.metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload:
-          state.nalu_parser_mod.get_prefixed_nalu_payload(nalu, state.output_stream_structure),
+        payload: NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure),
         metadata: metadata,
         pts: pts,
         dts: dts
@@ -552,7 +546,7 @@ defmodule Membrane.H26x.Parser do
   defp get_timestamp_generator(false, _au_timestamp_generator), do: {nil, nil}
 
   defp get_timestamp_generator(generate_best_effort_timestamps, au_timestamp_generator) do
-    {au_timestamp_generator.new(generate_best_effort_timestamps),
+    {AUTimestampGenerator.new(au_timestamp_generator, generate_best_effort_timestamps),
      generate_best_effort_timestamps.framerate}
   end
 

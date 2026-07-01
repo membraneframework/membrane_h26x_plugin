@@ -5,16 +5,6 @@ defmodule Membrane.H265.AUTimestampGenerator do
 
   require Membrane.H265.NALuTypes, as: NALuTypes
 
-  alias Membrane.H26x.{AUSplitter, AUTimestampGenerator}
-
-  @spec new(AUTimestampGenerator.config()) :: AUTimestampGenerator.state()
-  def new(config), do: AUTimestampGenerator.new(__MODULE__, config)
-
-  @spec generate_timestamps([AUSplitter.access_unit()], boolean(), AUTimestampGenerator.state()) ::
-          {[AUSplitter.access_unit()], AUTimestampGenerator.state()}
-  def generate_timestamps(access_units, flush? \\ false, state),
-    do: AUTimestampGenerator.generate_timestamps(__MODULE__, access_units, flush?, state)
-
   @impl true
   def max_frame_reorder(), do: 15
 

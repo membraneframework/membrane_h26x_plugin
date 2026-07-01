@@ -16,6 +16,7 @@ defmodule Membrane.H26x.NALuParser do
   @callback get_nalu_type(non_neg_integer()) :: nalu_type()
   @callback parse_proper_nalu_type(binary(), nalu_type(), SchemeParser.t()) ::
               {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
+  @callback get_first_vcl_nalu([NALu.t()]) :: NALu.t() | nil
 
   @typedoc """
   A structure holding the state of the NALu parser.
@@ -32,7 +33,7 @@ defmodule Membrane.H26x.NALuParser do
   determines the prefixes of input NALU payloads.
   """
   @spec new(Membrane.H264.Parser.stream_structure()) :: t()
-  def new(input_stream_structure) do
+  def new(input_stream_structure \\ :annexb) do
     %__MODULE__{
       input_stream_structure: input_stream_structure,
       scheme_parser_state: SchemeParser.new()

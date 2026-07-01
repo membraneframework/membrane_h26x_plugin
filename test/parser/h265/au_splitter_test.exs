@@ -24,14 +24,17 @@ defmodule Membrane.H265.AUSplitterTest do
 
   defmodule FullBinaryParser do
     @moduledoc false
-    alias Membrane.H265.{AUSplitter, NALuParser}
-    alias Membrane.H26x.NALuSplitter
+    alias Membrane.H265
+    alias Membrane.H26x.{AUSplitter, NALuParser, NALuSplitter}
 
-    @spec parse(binary()) :: AUSplitter.access_unit_t()
+    @spec parse(binary()) :: AUSplitter.access_unit()
     def parse(payload) do
       {nalus_payloads, _nalu_splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
-      {nalus, _nalu_parser} = NALuParser.parse_nalus(nalus_payloads, NALuParser.new())
-      {aus, _au_splitter} = AUSplitter.split(nalus, true, AUSplitter.new())
+
+      {nalus, _nalu_parser} =
+        NALuParser.parse_nalus(H265.NALuParser, nalus_payloads, NALuParser.new())
+
+      {aus, _au_splitter} = AUSplitter.split(H265.AUSplitter, nalus, true, AUSplitter.new())
       aus
     end
   end

@@ -15,13 +15,6 @@ defmodule Membrane.H265.AUSplitter do
   alias Membrane.H265.NALuTypes
   alias Membrane.H26x.{AUSplitter, NALu}
 
-  defdelegate new(), to: AUSplitter
-
-  @spec split([NALu.t()], boolean(), AUSplitter.t()) ::
-          {[AUSplitter.access_unit()], AUSplitter.t()}
-  def split(nalus, assume_au_aligned, state),
-    do: AUSplitter.split(__MODULE__, nalus, assume_au_aligned, state)
-
   @non_vcl_nalus_at_au_beginning [:vps, :sps, :pps, :prefix_sei]
   @non_vcl_nalus_at_au_end [:fd, :eos, :eob, :suffix_sei]
 
