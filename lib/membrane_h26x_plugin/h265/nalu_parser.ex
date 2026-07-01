@@ -21,11 +21,6 @@ defmodule Membrane.H265.NALuParser do
   def parse_nalus(nalus_payloads, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state),
     do: NALuParser.parse_nalus(__MODULE__, nalus_payloads, timestamps, payload_prefixed?, state)
 
-  @spec parse(binary(), NALu.timestamps(), boolean(), NALuParser.t()) ::
-          {NALu.t(), NALuParser.t()}
-  def parse(nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state),
-    do: NALuParser.parse(__MODULE__, nalu_payload, timestamps, payload_prefixed?, state)
-
   defdelegate get_prefixed_nalu_payload(nalu, output_stream_structure, stable_prefixing? \\ true),
     to: NALuParser
 

@@ -40,9 +40,13 @@ defmodule Membrane.H26x.NALuParser do
   end
 
   @doc """
-  Parses a list of binaries, each representing a single NALu.
+  Parses a list of binaries, each representing a single NALu, removing their prefixes
+  (if they exist).
 
-  See `parse/5` for details.
+  Each returned structure contains parsed fields fetched from the corresponding NALu.
+  When `payload_prefixed?` is true each input binary is expected to contain one of:
+  * prefix defined as the *"Annex B"* in the H26x recommendation document.
+  * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
   """
   @spec parse_nalus(module(), [binary()], NALu.timestamps(), boolean(), t()) ::
           {[NALu.t()], t()}
@@ -54,22 +58,13 @@ defmodule Membrane.H26x.NALuParser do
         state
       ) do
     Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
-      parse(module, nalu_payload, timestamps, payload_prefixed?, state)
+      parse_nalu(module, nalu_payload, timestamps, payload_prefixed?, state)
     end)
   end
 
-  @doc """
-  Parses a binary representing a single NALu and removes it's prefix (if it exists).
-
-  Returns a structure that
-  contains parsed fields fetched from that NALu.
-  When `payload_prefixed?` is true the input binary is expected to contain one of:
-  * prefix defined as the *"Annex B"* in the H26x recommendation document.
-  * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
-  """
-  @spec parse(module(), binary(), NALu.timestamps(), boolean(), t()) ::
+  @spec parse_nalu(module(), binary(), NALu.timestamps(), boolean(), t()) ::
           {NALu.t(), t()}
-  def parse(module, nalu_payload, timestamps \\ {nil, nil}, payload_prefixed? \\ true, state) do
+  defp parse_nalu(module, nalu_payload, timestamps, payload_prefixed?, state) do
     {prefix, unprefixed_nalu_payload} =
       if payload_prefixed? do
         unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
