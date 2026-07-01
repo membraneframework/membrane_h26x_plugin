@@ -30,13 +30,13 @@ defmodule Membrane.H265.Parser do
   * hev1, `:hev1` - The same as hvc1, only that parameter sets may be also present in the stream (in-band).
   """
 
-  @behaviour Membrane.H26x.Parser
   use Membrane.Filter
 
   require Membrane.H265.NALuTypes, as: NALuTypes
 
   alias Membrane.{H265, RemoteStream}
   alias Membrane.H265.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
+  alias Membrane.H26x.Parser.{Core, Utils}
 
   @nalu_length_size 4
   @metadata_key :h265
@@ -171,7 +171,7 @@ defmodule Membrane.H265.Parser do
           :annexb | {codec_tag :: :hvc1 | :hev1, nalu_length_size :: pos_integer()}
 
   @impl true
-  def handle_init(ctx, opts) do
+  def handle_init(_ctx, opts) do
     output_stream_structure =
       case opts.output_stream_structure do
         :hvc1 -> {:hvc1, @nalu_length_size}
@@ -179,39 +179,87 @@ defmodule Membrane.H265.Parser do
         stream_structure -> stream_structure
       end
 
-    initial_parameter_sets = {opts.vpss, opts.spss, opts.ppss}
+    core =
+      Core.new(%{
+        nalu_parser_mod: NALuParser,
+        au_splitter_mod: AUSplitter,
+        au_timestamp_generator_mod: AUTimestampGenerator,
+        generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
+        output_stream_structure: output_stream_structure
+      })
 
-    opts =
-      Map.from_struct(opts)
-      |> Map.drop([:vpss, :spss, :ppss])
-      |> Map.put(:output_stream_structure, output_stream_structure)
-      |> Map.put(:initial_parameter_sets, initial_parameter_sets)
+    state = %{
+      core: core,
+      output_alignment: opts.output_alignment,
+      skip_until_keyframe: opts.skip_until_keyframe,
+      repeat_parameter_sets: opts.repeat_parameter_sets,
+      initial_parameter_sets: opts.vpss ++ opts.spss ++ opts.ppss
+    }
 
-    Membrane.H26x.Parser.handle_init(
-      ctx,
-      opts,
-      __MODULE__,
-      AUTimestampGenerator,
-      NALuParser,
-      AUSplitter,
-      @metadata_key
-    )
+    {[], state}
   end
 
   @impl true
   def handle_stream_format(:input, stream_format, ctx, state) do
-    Membrane.H26x.Parser.handle_stream_format(stream_format, ctx, state)
+    {alignment, input_stream_structure, parameter_sets} =
+      parse_raw_input_stream_structure(stream_format)
+
+    is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
+    mode = Core.mode_from_alignment(alignment)
+
+    {au_actions, state} =
+      cond do
+        is_first_received_stream_format ->
+          framerate = Map.get(stream_format, :framerate) || Core.framerate(state.core)
+          core = Core.init_input_structure(state.core, mode, input_stream_structure, framerate)
+          {[], %{state | core: core}}
+
+        not Core.input_stream_structure_change_allowed?(
+          input_stream_structure,
+          Core.input_stream_structure(state.core)
+        ) ->
+          raise "stream structure cannot be fundamentally changed during stream"
+
+        mode != Core.mode(state.core) ->
+          {actions, state} = flush_and_process(ctx, state)
+          {actions, %{state | core: Core.set_mode(state.core, mode)}}
+
+        true ->
+          {[], state}
+      end
+
+    incoming_parameter_sets =
+      incoming_parameter_sets(
+        input_stream_structure,
+        parameter_sets,
+        is_first_received_stream_format,
+        state
+      )
+
+    {stream_format_actions, state} =
+      process_stream_format_parameter_sets(
+        incoming_parameter_sets,
+        ctx.pads.output.stream_format,
+        state
+      )
+
+    {au_actions ++ stream_format_actions, state}
   end
 
   @impl true
   def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state) do
-    Membrane.H26x.Parser.handle_buffer(buffer, ctx, state)
+    {access_units, core} =
+      Core.process_buffer(state.core, buffer.payload, {buffer.pts, buffer.dts})
+
+    process_access_units(access_units, ctx, %{state | core: core})
   end
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when state.mode != :au_aligned and ctx.pads.input.start_of_stream? do
-    Membrane.H26x.Parser.handle_end_of_stream(ctx, state)
+      when state.core.mode != :au_aligned and ctx.pads.input.start_of_stream? do
+    {actions, state} = flush_and_process(ctx, state)
+    actions = if Utils.stream_format_sent?(actions, ctx), do: actions, else: []
+    {actions ++ [end_of_stream: :output], state}
   end
 
   @impl true
@@ -219,8 +267,114 @@ defmodule Membrane.H265.Parser do
     {[end_of_stream: :output], state}
   end
 
-  @impl true
-  def parse_raw_input_stream_structure(stream_format) do
+  @spec flush_and_process(map(), map()) :: {[Membrane.Element.Action.t()], map()}
+  defp flush_and_process(ctx, state) do
+    {access_units, core} = Core.flush(state.core)
+    process_access_units(access_units, ctx, %{state | core: core})
+  end
+
+  @spec process_access_units([Core.access_unit()], map(), map()) ::
+          {[Membrane.Element.Action.t()], map()}
+  defp process_access_units(access_units, ctx, state) do
+    Enum.flat_map_reduce(access_units, state, fn au, state ->
+      {au, stream_format_actions, state} = process_au_parameter_sets(au, ctx, state)
+      {buffer_actions, state} = prepare_buffer_actions(au, keyframe?(au), state)
+      {stream_format_actions ++ buffer_actions, state}
+    end)
+  end
+
+  defp process_au_parameter_sets(au, ctx, state) do
+    old_stream_format = ctx.pads.output.stream_format
+    parameter_sets = get_parameter_sets(au)
+
+    {stream_format_actions, state} =
+      process_new_parameter_sets(parameter_sets, old_stream_format, state)
+
+    au =
+      if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
+        Core.remove_parameter_sets(au, parameter_sets)
+      else
+        au
+        |> maybe_add_parameter_sets(state)
+        |> maybe_dedup_parameter_sets()
+      end
+
+    {au, stream_format_actions, state}
+  end
+
+  defp process_new_parameter_sets(parameter_sets, last_sent_stream_format, state) do
+    state = %{state | core: Core.cache_parameter_sets(state.core, parameter_sets)}
+
+    stream_format_candidate =
+      generate_stream_format(parameter_sets, last_sent_stream_format, state)
+
+    if stream_format_candidate in [last_sent_stream_format, nil] do
+      {[], state}
+    else
+      {[stream_format: {:output, stream_format_candidate}], state}
+    end
+  end
+
+  defp process_stream_format_parameter_sets(parameter_sets, last_sent_stream_format, state) do
+    if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
+      {parsed_parameter_sets, core} = Core.parse_parameter_sets(state.core, parameter_sets)
+
+      process_new_parameter_sets(parsed_parameter_sets, last_sent_stream_format, %{
+        state
+        | core: core
+      })
+    else
+      {[], %{state | core: Core.set_frame_prefix(state.core, parameter_sets)}}
+    end
+  end
+
+  defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
+    do: state.initial_parameter_sets
+
+  defp incoming_parameter_sets(:annexb, _parameter_sets, false, _state), do: []
+
+  defp incoming_parameter_sets(_structure, parameter_sets, _is_first, state),
+    do: Core.filter_new_parameter_sets(state.core, parameter_sets)
+
+  defp maybe_add_parameter_sets(au, %{repeat_parameter_sets: false}), do: au
+
+  defp maybe_add_parameter_sets(au, state) do
+    if keyframe?(au), do: Core.add_cached_parameter_sets(au, state.core), else: au
+  end
+
+  defp maybe_dedup_parameter_sets(au) do
+    if keyframe?(au), do: Core.dedup_parameter_sets(au), else: au
+  end
+
+  defp prepare_buffer_actions(au, keyframe?, state) do
+    {should_forward?, skip_until_keyframe?} =
+      Utils.should_forward_au(au, keyframe?, state.skip_until_keyframe, NALuParser)
+
+    state = %{state | skip_until_keyframe: skip_until_keyframe?}
+
+    if should_forward? do
+      {pts, dts} = NALuParser.get_first_vcl_nalu(au).timestamps
+
+      buffers =
+        Utils.wrap_into_buffer(
+          au,
+          pts,
+          dts,
+          keyframe?,
+          state.output_alignment,
+          Core.output_stream_structure(state.core),
+          @metadata_key
+        )
+
+      {[buffer: {:output, buffers}], state}
+    else
+      {[], state}
+    end
+  end
+
+  # Codec-specific decisions, driven by this element.
+
+  defp parse_raw_input_stream_structure(stream_format) do
     {alignment, input_raw_stream_structure} =
       case stream_format do
         %RemoteStream{} ->
@@ -232,34 +386,34 @@ defmodule Membrane.H265.Parser do
 
     case input_raw_stream_structure do
       :annexb ->
-        {alignment, :annexb, {[], [], []}}
+        {alignment, :annexb, []}
 
       {hevc, dcr} ->
         %{nalu_length_size: nalu_length_size, vpss: vpss, spss: spss, ppss: ppss} =
           DecoderConfigurationRecord.parse(dcr)
 
-        {alignment, {hevc, nalu_length_size}, {vpss, spss, ppss}}
+        {alignment, {hevc, nalu_length_size}, vpss ++ spss ++ ppss}
     end
   end
 
-  @impl true
-  def remove_parameter_sets_from_stream?({:hvc1, _nalu_length_size}), do: true
-  def remove_parameter_sets_from_stream?(_stream_structure), do: false
+  defp remove_parameter_sets_from_stream?({:hvc1, _nalu_length_size}), do: true
+  defp remove_parameter_sets_from_stream?(_stream_structure), do: false
 
-  @impl true
-  def generate_stream_format(parameter_sets, last_sent_stream_format, state) do
-    latest_sps = List.last(elem(parameter_sets, 1))
+  defp generate_stream_format(parameter_sets, last_sent_stream_format, state) do
+    latest_sps = parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
 
     output_raw_stream_structure =
-      case state.output_stream_structure do
+      case Core.output_stream_structure(state.core) do
         :annexb ->
           :annexb
 
-        {hevc, _nalu_length_size} ->
-          {vpss, spss, ppss} = state.cached_parameter_sets
+        {hevc, _nalu_length_size} = output_stream_structure ->
+          cached = Core.cached_parameter_sets(state.core)
+          vpss = Enum.filter(cached, &(&1.type == :vps))
+          spss = Enum.filter(cached, &(&1.type == :sps))
+          ppss = Enum.filter(cached, &(&1.type == :pps))
 
-          {hevc,
-           DecoderConfigurationRecord.generate(vpss, spss, ppss, state.output_stream_structure)}
+          {hevc, DecoderConfigurationRecord.generate(vpss, spss, ppss, output_stream_structure)}
       end
 
     case {latest_sps, last_sent_stream_format} do
@@ -276,7 +430,7 @@ defmodule Membrane.H265.Parser do
           width: sps.width,
           height: sps.height,
           profile: sps.profile,
-          framerate: state.framerate,
+          framerate: Core.framerate(state.core),
           alignment: state.output_alignment,
           nalu_in_metadata?: true,
           stream_structure: output_raw_stream_structure
@@ -284,18 +438,12 @@ defmodule Membrane.H265.Parser do
     end
   end
 
-  @impl true
-  def get_parameter_sets(au) do
-    Enum.reduce(au, {[], [], []}, fn nalu, {vpss, spss, ppss} ->
-      case nalu.type do
-        :vps -> {vpss ++ [nalu], spss, ppss}
-        :sps -> {vpss, spss ++ [nalu], ppss}
-        :pps -> {vpss, spss, ppss ++ [nalu]}
-        _other -> {vpss, spss, ppss}
-      end
-    end)
+  defp get_parameter_sets(au) do
+    vpss = Enum.filter(au, &(&1.type == :vps))
+    spss = Enum.filter(au, &(&1.type == :sps))
+    ppss = Enum.filter(au, &(&1.type == :pps))
+    vpss ++ spss ++ ppss
   end
 
-  @impl true
-  def keyframe?(au), do: Enum.any?(au, &NALuTypes.is_irap_nalu_type(&1.type))
+  defp keyframe?(au), do: Enum.any?(au, &NALuTypes.is_irap_nalu_type(&1.type))
 end
