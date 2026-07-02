@@ -10,7 +10,7 @@ defmodule Membrane.H26x.Parser.Utils do
   # injected by the elements, so it never dispatches back into them and needs no behaviour.
 
   alias Membrane.Buffer
-  alias Membrane.H26x.{NALu, NALuParser}
+  alias Membrane.H26x.NALu
   alias Membrane.H26x.Parser.Core
 
   @typedoc """
@@ -53,8 +53,7 @@ defmodule Membrane.H26x.Parser.Utils do
           :input_stream_structure => Core.stream_structure() | nil,
           :output_stream_structure => Core.stream_structure() | nil,
           :framerate => term() | nil,
-          :cached_parameter_sets => [NALu.t()],
-          :frame_prefix => binary()
+          :cached_parameter_sets => [NALu.t()]
         }
 
   @type action :: Membrane.Element.Action.t()
@@ -81,8 +80,7 @@ defmodule Membrane.H26x.Parser.Utils do
       input_stream_structure: nil,
       output_stream_structure: opts[:output_stream_structure],
       framerate: framerate(opts[:generate_best_effort_timestamps]),
-      cached_parameter_sets: [],
-      frame_prefix: <<>>
+      cached_parameter_sets: []
     }
   end
 
@@ -143,13 +141,7 @@ defmodule Membrane.H26x.Parser.Utils do
   """
   @spec handle_buffer(Buffer.t(), map(), state()) :: {[action()], state()}
   def handle_buffer(buffer, ctx, state) do
-    {payload, state} =
-      case state.frame_prefix do
-        <<>> -> {buffer.payload, state}
-        prefix -> {prefix <> buffer.payload, %{state | frame_prefix: <<>>}}
-      end
-
-    {access_units, core} = Core.push(state.core, payload, {buffer.pts, buffer.dts})
+    {access_units, core} = Core.push(state.core, buffer.payload, {buffer.pts, buffer.dts})
     process_access_units(access_units, ctx, %{state | core: core})
   end
 
@@ -294,13 +286,10 @@ defmodule Membrane.H26x.Parser.Utils do
     end
   end
 
-  # Stores the incoming parameter sets as a prefix prepended to the next processed buffer.
-  # They are then parsed and cached (and stripped/repeated) as any other in-stream NALu.
-  defp prepend_parameter_sets(state, []), do: state
-
+  # Schedules the incoming parameter sets to be parsed before the next processed buffer,
+  # so they are cached (and stripped/repeated) as any other in-stream NALu.
   defp prepend_parameter_sets(state, parameter_sets) do
-    prefix = NALuParser.prefix_nalus_payloads(parameter_sets, state.input_stream_structure)
-    %{state | frame_prefix: state.frame_prefix <> prefix}
+    %{state | core: Core.prepend_nalus(state.core, parameter_sets)}
   end
 
   defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
@@ -375,7 +364,7 @@ defmodule Membrane.H26x.Parser.Utils do
   defp wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do
     payload =
       Enum.reduce(au, <<>>, fn nalu, acc ->
-        acc <> NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure)
+        acc <> Core.get_prefixed_nalu_payload(nalu, output_stream_structure)
       end)
 
     %Buffer{
@@ -391,7 +380,7 @@ defmodule Membrane.H26x.Parser.Utils do
     |> Enum.zip(prepare_nalus_metadata(au, keyframe?, metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: NALuParser.get_prefixed_nalu_payload(nalu, output_stream_structure),
+        payload: Core.get_prefixed_nalu_payload(nalu, output_stream_structure),
         metadata: metadata,
         pts: pts,
         dts: dts

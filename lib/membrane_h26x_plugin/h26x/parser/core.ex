@@ -37,7 +37,9 @@ defmodule Membrane.H26x.Parser.Core do
           au_splitter: AUSplitter.t(),
           au_timestamp_generator: AUTimestampGenerator.state() | nil,
           mode: mode(),
+          input_stream_structure: stream_structure(),
           previous_buffer_timestamps: timestamps() | nil,
+          pending_payload: binary(),
           nalu_parser_mod: module(),
           au_splitter_mod: module(),
           au_timestamp_generator_mod: module()
@@ -49,11 +51,12 @@ defmodule Membrane.H26x.Parser.Core do
     :au_splitter,
     :au_timestamp_generator,
     :mode,
+    :input_stream_structure,
     :nalu_parser_mod,
     :au_splitter_mod,
     :au_timestamp_generator_mod
   ]
-  defstruct @enforce_keys ++ [previous_buffer_timestamps: nil]
+  defstruct @enforce_keys ++ [previous_buffer_timestamps: nil, pending_payload: <<>>]
 
   @doc """
   Creates a parser for the given input stream structure and mode.
@@ -72,6 +75,7 @@ defmodule Membrane.H26x.Parser.Core do
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
       mode: config.mode,
+      input_stream_structure: config.input_stream_structure,
       nalu_parser_mod: config.nalu_parser_mod,
       au_splitter_mod: config.au_splitter_mod,
       au_timestamp_generator_mod: config.au_timestamp_generator_mod
@@ -86,12 +90,37 @@ defmodule Membrane.H26x.Parser.Core do
   def set_mode(core, mode), do: %{core | mode: mode}
 
   @doc """
+  Schedules raw (unprefixed) NALu payloads to be parsed just before the next pushed
+  payload, as if they preceded it in the stream.
+  """
+  @spec prepend_nalus(t(), [binary()]) :: t()
+  def prepend_nalus(core, []), do: core
+
+  def prepend_nalus(core, nalus_payloads) do
+    prefixed = NALuParser.prefix_nalus_payloads(nalus_payloads, core.input_stream_structure)
+    %{core | pending_payload: core.pending_payload <> prefixed}
+  end
+
+  @doc """
+  Returns the NALu's payload with the prefix fitting the given stream structure.
+  """
+  @spec get_prefixed_nalu_payload(Membrane.H26x.NALu.t(), stream_structure()) :: binary()
+  defdelegate get_prefixed_nalu_payload(nalu, stream_structure), to: NALuParser
+
+  @doc """
   Feeds a payload through the parser, returning the access units completed by it.
   """
   @spec push(t(), binary(), timestamps()) :: {[access_unit()], t()}
   def push(core, payload, timestamps \\ {nil, nil}) do
     {pts, dts} = timestamps
-    core = %{core | previous_buffer_timestamps: {pts || dts, dts || pts}}
+    payload = core.pending_payload <> payload
+
+    core = %{
+      core
+      | pending_payload: <<>>,
+        previous_buffer_timestamps: {pts || dts, dts || pts}
+    }
+
     parse(core, payload, timestamps, _flush? = false)
   end
 
