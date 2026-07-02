@@ -191,179 +191,48 @@ defmodule Membrane.H264.Parser do
         output_stream_structure: output_stream_structure
       })
 
-    state = %{
-      core: core,
-      output_alignment: opts.output_alignment,
-      skip_until_keyframe: opts.skip_until_keyframe,
-      repeat_parameter_sets: opts.repeat_parameter_sets,
-      initial_parameter_sets: opts.spss ++ opts.ppss
-    }
+    state =
+      Utils.init_state(core, codec(),
+        output_alignment: opts.output_alignment,
+        skip_until_keyframe: opts.skip_until_keyframe,
+        repeat_parameter_sets: opts.repeat_parameter_sets,
+        initial_parameter_sets: opts.spss ++ opts.ppss
+      )
 
     {[], state}
   end
 
   @impl true
-  def handle_stream_format(:input, stream_format, ctx, state) do
-    {alignment, input_stream_structure, parameter_sets} =
-      parse_raw_input_stream_structure(stream_format)
-
-    is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
-    mode = Core.mode_from_alignment(alignment)
-
-    {au_actions, state} =
-      cond do
-        is_first_received_stream_format ->
-          framerate = Map.get(stream_format, :framerate) || Core.framerate(state.core)
-          core = Core.init_input_structure(state.core, mode, input_stream_structure, framerate)
-          {[], %{state | core: core}}
-
-        not Core.input_stream_structure_change_allowed?(
-          input_stream_structure,
-          Core.input_stream_structure(state.core)
-        ) ->
-          raise "stream structure cannot be fundamentally changed during stream"
-
-        mode != Core.mode(state.core) ->
-          {actions, state} = flush_and_process(ctx, state)
-          {actions, %{state | core: Core.set_mode(state.core, mode)}}
-
-        true ->
-          {[], state}
-      end
-
-    incoming_parameter_sets =
-      incoming_parameter_sets(
-        input_stream_structure,
-        parameter_sets,
-        is_first_received_stream_format,
-        state
-      )
-
-    {stream_format_actions, state} =
-      handle_stream_format_parameter_sets(
-        incoming_parameter_sets,
-        ctx.pads.output.stream_format,
-        state
-      )
-
-    {au_actions ++ stream_format_actions, state}
-  end
+  def handle_stream_format(:input, stream_format, ctx, state),
+    do: Utils.handle_stream_format(stream_format, ctx, state)
 
   @impl true
-  def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state) do
-    {access_units, core} =
-      Core.process_buffer(state.core, buffer.payload, {buffer.pts, buffer.dts})
-
-    process_access_units(access_units, ctx, %{state | core: core})
-  end
+  def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state),
+    do: Utils.handle_buffer(buffer, ctx, state)
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when state.core.mode != :au_aligned and ctx.pads.input.start_of_stream? do
-    {actions, state} = flush_and_process(ctx, state)
-    actions = if Utils.stream_format_sent?(actions, ctx), do: actions, else: []
-    {actions ++ [end_of_stream: :output], state}
-  end
+      when state.core.mode != :au_aligned and ctx.pads.input.start_of_stream?,
+      do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
   end
 
-  @spec flush_and_process(map(), map()) :: {[Membrane.Element.Action.t()], map()}
-  defp flush_and_process(ctx, state) do
-    {access_units, core} = Core.flush(state.core)
-    process_access_units(access_units, ctx, %{state | core: core})
+  # Codec-specific decisions, injected into `Membrane.H26x.Parser.Utils`.
+
+  defp codec() do
+    %{
+      parse_raw_input_stream_structure: &parse_raw_input_stream_structure/1,
+      remove_parameter_sets_from_stream?: &remove_parameter_sets_from_stream?/1,
+      generate_stream_format: &generate_stream_format/3,
+      get_parameter_sets: &get_parameter_sets/1,
+      keyframe?: &keyframe?/1,
+      nalu_parser_mod: NALuParser,
+      metadata_key: @metadata_key
+    }
   end
-
-  @spec process_access_units([Core.access_unit()], map(), map()) ::
-          {[Membrane.Element.Action.t()], map()}
-  defp process_access_units(access_units, ctx, state) do
-    Enum.flat_map_reduce(access_units, state, fn au, state ->
-      {au, stream_format_actions, state} = handle_au_parameter_sets(au, ctx, state)
-      {buffer_actions, state} = prepare_buffer_actions(au, keyframe?(au), state)
-      {stream_format_actions ++ buffer_actions, state}
-    end)
-  end
-
-  defp handle_au_parameter_sets(au, ctx, state) do
-    parameter_sets = get_parameter_sets(au)
-
-    {stream_format_actions, state} =
-      cache_and_maybe_stream_format(parameter_sets, ctx.pads.output.stream_format, state)
-
-    au =
-      Core.finalize_au_parameter_sets(state.core, au, parameter_sets,
-        strip?: remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)),
-        repeat?: state.repeat_parameter_sets,
-        keyframe?: keyframe?(au)
-      )
-
-    {au, stream_format_actions, state}
-  end
-
-  defp handle_stream_format_parameter_sets(parameter_sets, last_sent_stream_format, state) do
-    if remove_parameter_sets_from_stream?(Core.output_stream_structure(state.core)) do
-      {parsed_parameter_sets, core} = Core.parse_parameter_sets(state.core, parameter_sets)
-
-      cache_and_maybe_stream_format(parsed_parameter_sets, last_sent_stream_format, %{
-        state
-        | core: core
-      })
-    else
-      {[], %{state | core: Core.set_frame_prefix(state.core, parameter_sets)}}
-    end
-  end
-
-  # Caches the given parameter sets and emits a new stream format if they changed it.
-  defp cache_and_maybe_stream_format(parameter_sets, last_sent_stream_format, state) do
-    state = %{state | core: Core.cache_parameter_sets(state.core, parameter_sets)}
-
-    stream_format_candidate =
-      generate_stream_format(parameter_sets, last_sent_stream_format, state)
-
-    if stream_format_candidate in [last_sent_stream_format, nil] do
-      {[], state}
-    else
-      {[stream_format: {:output, stream_format_candidate}], state}
-    end
-  end
-
-  defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
-    do: state.initial_parameter_sets
-
-  defp incoming_parameter_sets(:annexb, _parameter_sets, false, _state), do: []
-
-  defp incoming_parameter_sets(_structure, parameter_sets, _is_first, state),
-    do: Core.filter_new_parameter_sets(state.core, parameter_sets)
-
-  defp prepare_buffer_actions(au, keyframe?, state) do
-    {should_forward?, skip_until_keyframe?} =
-      Utils.should_forward_au(au, keyframe?, state.skip_until_keyframe, NALuParser)
-
-    state = %{state | skip_until_keyframe: skip_until_keyframe?}
-
-    if should_forward? do
-      {pts, dts} = NALuParser.get_first_vcl_nalu(au).timestamps
-
-      buffers =
-        Utils.wrap_into_buffer(
-          au,
-          pts,
-          dts,
-          keyframe?,
-          state.output_alignment,
-          Core.output_stream_structure(state.core),
-          @metadata_key
-        )
-
-      {[buffer: {:output, buffers}], state}
-    else
-      {[], state}
-    end
-  end
-
-  # Codec-specific decisions, driven by this element.
 
   defp parse_raw_input_stream_structure(stream_format) do
     {alignment, input_raw_stream_structure} =
