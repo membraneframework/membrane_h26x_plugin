@@ -26,24 +26,28 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
         }
 
   @doc """
-  Generates a DCR based on given PPSs and SPSs.
+  Generates a DCR based on the given parameter set NAL units.
   """
-  @spec generate([binary()], [binary()], Membrane.H264.Parser.stream_structure()) ::
+  @spec generate([Membrane.H26x.NALu.t()], Membrane.H264.Parser.stream_structure()) ::
           binary() | nil
-  def generate([], _ppss, _stream_structure) do
-    nil
-  end
+  def generate(parameter_sets, {avc, nalu_length_size}) do
+    spss = for %{type: :sps, payload: payload} <- parameter_sets, do: payload
+    ppss = for %{type: :pps, payload: payload} <- parameter_sets, do: payload
 
-  def generate(spss, ppss, {avc, nalu_length_size}) do
-    <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
+    case {spss, avc} do
+      {[], _avc} ->
+        nil
 
-    cond do
-      avc == :avc1 ->
+      {spss, :avc1} ->
+        <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
+
         <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, length(spss)::5-integer, encode_parameter_sets(spss)::binary,
           length(ppss)::8-integer, encode_parameter_sets(ppss)::binary>>
 
-      avc == :avc3 ->
+      {spss, :avc3} ->
+        <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
+
         <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, 0::5, 0::8>>
     end

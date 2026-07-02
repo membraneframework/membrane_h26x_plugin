@@ -46,15 +46,22 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
         }
 
   @doc """
-  Generates a DCR based on given PPSs, SPSs and VPSs.
+  Generates a DCR based on the given parameter set NAL units.
   """
-  @spec generate([NALu.t()], [NALu.t()], [NALu.t()], Membrane.H265.Parser.stream_structure()) ::
-          binary() | nil
-  def generate(_vpss, [], _ppss, _stream_structure) do
+  @spec generate([NALu.t()], Membrane.H265.Parser.stream_structure()) :: binary() | nil
+  def generate(parameter_sets, stream_structure) do
+    vpss = Enum.filter(parameter_sets, &(&1.type == :vps))
+    spss = Enum.filter(parameter_sets, &(&1.type == :sps))
+    ppss = Enum.filter(parameter_sets, &(&1.type == :pps))
+
+    do_generate(vpss, spss, ppss, stream_structure)
+  end
+
+  defp do_generate(_vpss, [], _ppss, _stream_structure) do
     nil
   end
 
-  def generate(vpss, spss, ppss, {avc, nalu_length_size}) do
+  defp do_generate(vpss, spss, ppss, {avc, nalu_length_size}) do
     %NALu{
       parsed_fields: %{
         profile_space: profile_space,

@@ -215,14 +215,14 @@ defmodule Membrane.H264.Parser do
     {[end_of_stream: :output], state}
   end
 
-  # Codec-specific decisions, injected into `Membrane.H26x.Parser.Utils`.
-
+  # Plain data describing the codec, injected into `Membrane.H26x.Parser.Utils`.
   defp codec() do
     %{
-      remove_parameter_sets_from_stream?: &remove_parameter_sets_from_stream?/1,
-      generate_stream_format: &generate_stream_format/3,
-      get_parameter_sets: &get_parameter_sets/1,
-      keyframe?: &keyframe?/1,
+      stream_format_module: H264,
+      dcr_module: DecoderConfigurationRecord,
+      keyframe_nalu_types: [:idr],
+      parameter_set_nalu_types: [:sps, :pps],
+      out_of_band_parameter_sets_codec_tags: [:avc1],
       nalu_parser_mod: NALuParser,
       au_splitter_mod: AUSplitter,
       au_timestamp_generator_mod: AUTimestampGenerator,
@@ -251,53 +251,4 @@ defmodule Membrane.H264.Parser do
         {alignment, {avc, nalu_length_size}, spss ++ ppss}
     end
   end
-
-  defp remove_parameter_sets_from_stream?({:avc1, _nalu_length_size}), do: true
-  defp remove_parameter_sets_from_stream?(_stream_structure), do: false
-
-  defp generate_stream_format(parameter_sets, last_sent_stream_format, state) do
-    latest_sps = parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
-
-    output_raw_stream_structure =
-      case state.output_stream_structure do
-        :annexb ->
-          :annexb
-
-        {avc, _nalu_length_size} = output_stream_structure ->
-          cached = state.cached_parameter_sets
-          spss = cached |> Enum.filter(&(&1.type == :sps)) |> Enum.map(& &1.payload)
-          ppss = cached |> Enum.filter(&(&1.type == :pps)) |> Enum.map(& &1.payload)
-
-          {avc, DecoderConfigurationRecord.generate(spss, ppss, output_stream_structure)}
-      end
-
-    case {latest_sps, last_sent_stream_format} do
-      {nil, nil} ->
-        nil
-
-      {nil, last_sent_stream_format} ->
-        %{last_sent_stream_format | stream_structure: output_raw_stream_structure}
-
-      {latest_sps, _last_sent_stream_format} ->
-        sps = latest_sps.parsed_fields
-
-        %H264{
-          width: sps.width,
-          height: sps.height,
-          profile: sps.profile,
-          framerate: state.framerate,
-          alignment: state.output_alignment,
-          nalu_in_metadata?: true,
-          stream_structure: output_raw_stream_structure
-        }
-    end
-  end
-
-  defp get_parameter_sets(au) do
-    spss = Enum.filter(au, &(&1.type == :sps))
-    ppss = Enum.filter(au, &(&1.type == :pps))
-    spss ++ ppss
-  end
-
-  defp keyframe?(au), do: Enum.any?(au, &(&1.type == :idr))
 end

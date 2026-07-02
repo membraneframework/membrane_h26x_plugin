@@ -14,15 +14,24 @@ defmodule Membrane.H26x.Parser.Utils do
   alias Membrane.H26x.Parser.Core
 
   @typedoc """
-  Codec-specific configuration injected by an element: the codec's pure decision functions
-  plus its NALu parser module and the metadata key used on output buffers.
+  Codec-specific configuration injected by an element - plain data describing the codec:
+
+    * `stream_format_module` - the stream format struct built on output (`Membrane.H264`/`Membrane.H265`),
+    * `dcr_module` - the codec's decoder configuration record module,
+    * `keyframe_nalu_types` - NALu types whose presence makes an access unit a keyframe,
+    * `parameter_set_nalu_types` - NALu types carrying parameter sets, in the order they
+      should be cached and repeated,
+    * `out_of_band_parameter_sets_codec_tags` - codec tags of the output stream structures
+      that carry parameter sets out of band (in the DCR), requiring them to be stripped
+      from the stream,
+    * the codec's pillar modules and the metadata key used on output buffers.
   """
   @type codec :: %{
-          remove_parameter_sets_from_stream?: (Core.stream_structure() -> boolean()),
-          generate_stream_format: ([NALu.t()], Membrane.StreamFormat.t() | nil, state() ->
-                                     Membrane.StreamFormat.t() | nil),
-          get_parameter_sets: (Core.access_unit() -> [NALu.t()]),
-          keyframe?: (Core.access_unit() -> boolean()),
+          stream_format_module: module(),
+          dcr_module: module(),
+          keyframe_nalu_types: [atom()],
+          parameter_set_nalu_types: [atom()],
+          out_of_band_parameter_sets_codec_tags: [atom()],
           nalu_parser_mod: module(),
           au_splitter_mod: module(),
           au_timestamp_generator_mod: module(),
@@ -193,18 +202,31 @@ defmodule Membrane.H26x.Parser.Utils do
   end
 
   defp handle_au_parameter_sets(au, ctx, state) do
-    parameter_sets = state.codec.get_parameter_sets.(au)
+    parameter_sets = get_parameter_sets(au, state.codec)
     {stream_format_actions, state} = cache_and_maybe_stream_format(parameter_sets, ctx, state)
 
     au =
       finalize_au_parameter_sets(au, parameter_sets, state.cached_parameter_sets,
-        strip?: state.codec.remove_parameter_sets_from_stream?.(state.output_stream_structure),
+        strip?: strip_parameter_sets?(state.output_stream_structure, state.codec),
         repeat?: state.repeat_parameter_sets,
-        keyframe?: state.codec.keyframe?.(au)
+        keyframe?: keyframe?(au, state.codec)
       )
 
     {au, stream_format_actions, state}
   end
+
+  defp keyframe?(au, codec), do: Enum.any?(au, &(&1.type in codec.keyframe_nalu_types))
+
+  defp get_parameter_sets(au, codec) do
+    Enum.flat_map(codec.parameter_set_nalu_types, fn type ->
+      Enum.filter(au, &(&1.type == type))
+    end)
+  end
+
+  defp strip_parameter_sets?(:annexb, _codec), do: false
+
+  defp strip_parameter_sets?({codec_tag, _nalu_length_size}, codec),
+    do: codec_tag in codec.out_of_band_parameter_sets_codec_tags
 
   # Caches the given parameter sets and emits a new stream format if they changed it.
   defp cache_and_maybe_stream_format(parameter_sets, ctx, state) do
@@ -212,12 +234,48 @@ defmodule Membrane.H26x.Parser.Utils do
     state = %{state | cached_parameter_sets: cache(state.cached_parameter_sets, parameter_sets)}
 
     stream_format_candidate =
-      state.codec.generate_stream_format.(parameter_sets, last_sent_stream_format, state)
+      generate_stream_format(parameter_sets, last_sent_stream_format, state)
 
     if stream_format_candidate in [last_sent_stream_format, nil] do
       {[], state}
     else
       {[stream_format: {:output, stream_format_candidate}], state}
+    end
+  end
+
+  # Generates a stream format based on the last SPS among the new parameter sets, with the
+  # DCR (built from all cached parameter sets) attached for non-Annex B output structures.
+  defp generate_stream_format(new_parameter_sets, last_sent_stream_format, state) do
+    latest_sps = new_parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
+
+    output_raw_stream_structure =
+      case state.output_stream_structure do
+        :annexb ->
+          :annexb
+
+        {codec_tag, _nalu_length_size} = structure ->
+          {codec_tag, state.codec.dcr_module.generate(state.cached_parameter_sets, structure)}
+      end
+
+    case {latest_sps, last_sent_stream_format} do
+      {nil, nil} ->
+        nil
+
+      {nil, last_sent_stream_format} ->
+        %{last_sent_stream_format | stream_structure: output_raw_stream_structure}
+
+      {latest_sps, _last_sent_stream_format} ->
+        sps = latest_sps.parsed_fields
+
+        struct!(state.codec.stream_format_module,
+          width: sps.width,
+          height: sps.height,
+          profile: sps.profile,
+          framerate: state.framerate,
+          alignment: state.output_alignment,
+          nalu_in_metadata?: true,
+          stream_structure: output_raw_stream_structure
+        )
     end
   end
 
@@ -276,7 +334,7 @@ defmodule Membrane.H26x.Parser.Utils do
   # into a buffer (`:au` alignment) or a list of buffers (`:nalu` alignment).
   @spec prepare_buffer_actions(Core.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
-    keyframe? = state.codec.keyframe?.(au)
+    keyframe? = keyframe?(au, state.codec)
     nalu_parser_mod = state.codec.nalu_parser_mod
 
     {should_forward?, skip_until_keyframe?} =
