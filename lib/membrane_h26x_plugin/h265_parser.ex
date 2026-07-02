@@ -193,8 +193,10 @@ defmodule Membrane.H265.Parser do
   end
 
   @impl true
-  def handle_stream_format(:input, stream_format, ctx, state),
-    do: Utils.handle_stream_format(stream_format, ctx, state)
+  def handle_stream_format(:input, stream_format, ctx, state) do
+    input = parse_raw_input_stream_structure(stream_format)
+    Utils.handle_stream_format(input, Map.get(stream_format, :framerate), ctx, state)
+  end
 
   @impl true
   def handle_buffer(:input, %Membrane.Buffer{} = buffer, ctx, state),
@@ -214,7 +216,6 @@ defmodule Membrane.H265.Parser do
 
   defp codec() do
     %{
-      parse_raw_input_stream_structure: &parse_raw_input_stream_structure/1,
       remove_parameter_sets_from_stream?: &remove_parameter_sets_from_stream?/1,
       generate_stream_format: &generate_stream_format/3,
       get_parameter_sets: &get_parameter_sets/1,

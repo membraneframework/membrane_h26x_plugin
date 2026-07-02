@@ -18,9 +18,6 @@ defmodule Membrane.H26x.Parser.Utils do
   plus its NALu parser module and the metadata key used on output buffers.
   """
   @type codec :: %{
-          parse_raw_input_stream_structure: (Membrane.StreamFormat.t() ->
-                                               {:bytestream | :nalu | :au,
-                                                Core.stream_structure(), [binary()]}),
           remove_parameter_sets_from_stream?: (Core.stream_structure() -> boolean()),
           generate_stream_format: ([NALu.t()], Membrane.StreamFormat.t() | nil, state() ->
                                      Membrane.StreamFormat.t() | nil),
@@ -82,19 +79,30 @@ defmodule Membrane.H26x.Parser.Utils do
 
   @doc """
   Handles a new input stream format.
-  """
-  @spec handle_stream_format(Membrane.StreamFormat.t(), map(), state()) :: {[action()], state()}
-  def handle_stream_format(stream_format, ctx, state) do
-    {alignment, input_stream_structure, parameter_sets} =
-      state.codec.parse_raw_input_stream_structure.(stream_format)
 
+  The element parses the raw stream format itself and passes the resulting input
+  alignment, stream structure and parameter sets (as raw payloads) along with the
+  stream's framerate (or `nil`).
+  """
+  @spec handle_stream_format(
+          {:bytestream | :nalu | :au, Core.stream_structure(), [binary()]},
+          term() | nil,
+          map(),
+          state()
+        ) :: {[action()], state()}
+  def handle_stream_format(
+        {alignment, input_stream_structure, parameter_sets},
+        framerate,
+        ctx,
+        state
+      ) do
     mode = mode_from_alignment(alignment)
     is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
 
     {au_actions, state} =
       cond do
         is_first_received_stream_format ->
-          {[], start_core(state, stream_format, mode, input_stream_structure)}
+          {[], start_core(state, framerate, mode, input_stream_structure)}
 
         not input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -147,9 +155,8 @@ defmodule Membrane.H26x.Parser.Utils do
     {actions ++ [end_of_stream: :output], state}
   end
 
-  @spec start_core(state(), Membrane.StreamFormat.t(), Core.mode(), Core.stream_structure()) ::
-          state()
-  defp start_core(state, stream_format, mode, input_stream_structure) do
+  @spec start_core(state(), term() | nil, Core.mode(), Core.stream_structure()) :: state()
+  defp start_core(state, framerate, mode, input_stream_structure) do
     core =
       Core.new(%{
         input_stream_structure: input_stream_structure,
@@ -166,7 +173,7 @@ defmodule Membrane.H26x.Parser.Utils do
         mode: mode,
         input_stream_structure: input_stream_structure,
         output_stream_structure: state.output_stream_structure || input_stream_structure,
-        framerate: Map.get(stream_format, :framerate) || state.framerate
+        framerate: framerate || state.framerate
     }
   end
 
