@@ -202,7 +202,6 @@ defmodule Membrane.H26x.Parser.Utils do
   defp strip_parameter_sets?({codec_tag, _nalu_length_size}, codec),
     do: codec_tag in codec.out_of_band_parameter_sets_codec_tags
 
-  # Caches the given parameter sets and emits a new stream format if they changed it.
   defp cache_and_maybe_stream_format(parameter_sets, ctx, state) do
     last_sent_stream_format = ctx.pads.output.stream_format
     state = %{state | cached_parameter_sets: cache(state.cached_parameter_sets, parameter_sets)}
@@ -217,8 +216,6 @@ defmodule Membrane.H26x.Parser.Utils do
     end
   end
 
-  # Generates a stream format based on the last SPS among the new parameter sets, with the
-  # DCR (built from all cached parameter sets) attached for non-Annex B output structures.
   defp generate_stream_format(new_parameter_sets, last_sent_stream_format, state) do
     latest_sps = new_parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
 
@@ -253,8 +250,6 @@ defmodule Membrane.H26x.Parser.Utils do
     end
   end
 
-  # Reconciles an access unit's parameter sets for output: they are either removed (when
-  # the output carries them out of band) or, on a keyframe, repeated and de-duplicated.
   defp finalize_au_parameter_sets(au, parameter_sets, cached, opts) do
     cond do
       opts[:strip?] ->
@@ -268,8 +263,6 @@ defmodule Membrane.H26x.Parser.Utils do
     end
   end
 
-  # Schedules the incoming parameter sets to be parsed before the next processed buffer,
-  # so they are cached (and stripped/repeated) as any other in-stream NALu.
   defp prepend_parameter_sets(state, parameter_sets) do
     %{state | core: Core.prepend_parameter_sets(state.core, parameter_sets)}
   end
@@ -298,11 +291,6 @@ defmodule Membrane.H26x.Parser.Utils do
   defp framerate(false), do: nil
   defp framerate(%{framerate: framerate}), do: framerate
 
-  # Turns an access unit into output buffer actions, updating the skip-until-keyframe flag.
-  #
-  # The access unit is dropped (no actions) when it contains an invalid NALu, when it has
-  # no VCL NALu, or while still skipping until the first keyframe. Otherwise it is wrapped
-  # into a buffer (`:au` alignment) or a list of buffers (`:nalu` alignment).
   @spec prepare_buffer_actions(Core.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
     keyframe? = keyframe?(au, state.codec)
@@ -370,8 +358,6 @@ defmodule Membrane.H26x.Parser.Utils do
     end)
   end
 
-  # Tells whether a stream format has been sent - either previously (present in `ctx`) or
-  # as one of the given actions.
   defp stream_format_sent?(actions, %{pads: %{output: %{stream_format: nil}}}),
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
