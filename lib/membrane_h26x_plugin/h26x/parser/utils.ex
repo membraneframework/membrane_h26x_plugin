@@ -364,7 +364,7 @@ defmodule Membrane.H26x.Parser.Utils do
 
     %Buffer{
       payload: payload,
-      metadata: prepare_au_metadata(au, keyframe?, metadata_key),
+      metadata: prepare_metadata(:au, au, keyframe?, metadata_key),
       pts: pts,
       dts: dts
     }
@@ -372,7 +372,7 @@ defmodule Membrane.H26x.Parser.Utils do
 
   defp wrap_into_buffer(au, pts, dts, keyframe?, :nalu, output_stream_structure, metadata_key) do
     au
-    |> Enum.zip(prepare_nalus_metadata(au, keyframe?, metadata_key))
+    |> Enum.zip(prepare_metadata(:nalu, au, keyframe?, metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
         payload: Core.get_prefixed_nalu_payload(nalu, output_stream_structure),
@@ -390,26 +390,15 @@ defmodule Membrane.H26x.Parser.Utils do
 
   defp stream_format_sent?(_actions, _ctx), do: true
 
-  defp prepare_au_metadata(nalus, keyframe?, metadata_key) do
+  defp prepare_metadata(:au, nalus, keyframe?, metadata_key) do
     nalus =
-      nalus
-      |> Enum.with_index()
-      |> Enum.map(fn {nalu, i} ->
-        %{metadata: Map.put(%{}, metadata_key, %{type: nalu.type})}
-        |> Bunch.then_if(
-          i == 0,
-          &put_in(&1, [:metadata, metadata_key, :new_access_unit], %{key_frame?: keyframe?})
-        )
-        |> Bunch.then_if(
-          i == length(nalus) - 1,
-          &put_in(&1, [:metadata, metadata_key, :end_access_unit], true)
-        )
-      end)
+      prepare_metadata(:nalu, nalus, keyframe?, metadata_key)
+      |> Enum.map(&%{metadata: &1})
 
     %{metadata_key => %{key_frame?: keyframe?, nalus: nalus}}
   end
 
-  defp prepare_nalus_metadata(nalus, keyframe?, metadata_key) do
+  defp prepare_metadata(:nalu, nalus, keyframe?, metadata_key) do
     nalus
     |> Enum.with_index()
     |> Enum.map(fn {nalu, i} ->
