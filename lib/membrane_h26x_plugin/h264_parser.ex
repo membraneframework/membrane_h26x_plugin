@@ -207,7 +207,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when state.mode != :au_aligned and ctx.pads.input.start_of_stream?,
+      when ctx.pads.input.start_of_stream? and state.core.mode != :au_aligned,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true

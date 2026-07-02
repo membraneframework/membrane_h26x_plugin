@@ -34,7 +34,6 @@ defmodule Membrane.H26x.Parser.Utils do
           :skip_until_keyframe => boolean(),
           :repeat_parameter_sets => boolean(),
           :initial_parameter_sets => [binary()],
-          :mode => Core.mode() | nil,
           :input_stream_structure => Core.stream_structure() | nil,
           :output_stream_structure => Core.stream_structure() | nil,
           :framerate => term() | nil,
@@ -61,7 +60,6 @@ defmodule Membrane.H26x.Parser.Utils do
       skip_until_keyframe: opts[:skip_until_keyframe],
       repeat_parameter_sets: opts[:repeat_parameter_sets],
       initial_parameter_sets: opts[:initial_parameter_sets],
-      mode: nil,
       input_stream_structure: nil,
       output_stream_structure: opts[:output_stream_structure],
       framerate: framerate(opts[:generate_best_effort_timestamps]),
@@ -102,9 +100,9 @@ defmodule Membrane.H26x.Parser.Utils do
         ) ->
           raise "stream structure cannot be fundamentally changed during stream"
 
-        mode != state.mode ->
+        mode != state.core.mode ->
           {actions, state} = flush_and_process(ctx, state)
-          {actions, %{state | core: Core.set_mode(state.core, mode), mode: mode}}
+          {actions, %{state | core: Core.set_mode(state.core, mode)}}
 
         true ->
           {[], state}
@@ -156,7 +154,6 @@ defmodule Membrane.H26x.Parser.Utils do
     %{
       state
       | core: core,
-        mode: mode,
         input_stream_structure: input_stream_structure,
         output_stream_structure: state.output_stream_structure || input_stream_structure,
         framerate: framerate || state.framerate
