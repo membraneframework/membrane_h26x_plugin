@@ -212,7 +212,6 @@ defmodule Membrane.H265.Parser do
     {[end_of_stream: :output], state}
   end
 
-  # Plain data describing the codec, injected into `Membrane.H26x.Parser.Utils`.
   defp codec() do
     %{
       stream_format_module: H265,
