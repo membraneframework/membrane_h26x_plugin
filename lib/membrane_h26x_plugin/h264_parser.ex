@@ -49,7 +49,7 @@ defmodule Membrane.H264.Parser do
 
   alias Membrane.{H264, RemoteStream}
   alias Membrane.H264.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
-  alias Membrane.H26x.Parser.{Core, Utils}
+  alias Membrane.H26x.Parser.Utils
 
   @nalu_length_size 4
   @metadata_key :h264
@@ -182,17 +182,10 @@ defmodule Membrane.H264.Parser do
         stream_structure -> stream_structure
       end
 
-    core =
-      Core.new(%{
-        nalu_parser_mod: NALuParser,
-        au_splitter_mod: AUSplitter,
-        au_timestamp_generator_mod: AUTimestampGenerator,
-        generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
-        output_stream_structure: output_stream_structure
-      })
-
     state =
-      Utils.init_state(core, codec(),
+      Utils.init_state(codec(),
+        output_stream_structure: output_stream_structure,
+        generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
         output_alignment: opts.output_alignment,
         skip_until_keyframe: opts.skip_until_keyframe,
         repeat_parameter_sets: opts.repeat_parameter_sets,
@@ -212,7 +205,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when state.core.mode != :au_aligned and ctx.pads.input.start_of_stream?,
+      when state.mode != :au_aligned and ctx.pads.input.start_of_stream?,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
@@ -230,6 +223,8 @@ defmodule Membrane.H264.Parser do
       get_parameter_sets: &get_parameter_sets/1,
       keyframe?: &keyframe?/1,
       nalu_parser_mod: NALuParser,
+      au_splitter_mod: AUSplitter,
+      au_timestamp_generator_mod: AUTimestampGenerator,
       metadata_key: @metadata_key
     }
   end
@@ -263,12 +258,12 @@ defmodule Membrane.H264.Parser do
     latest_sps = parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
 
     output_raw_stream_structure =
-      case Core.output_stream_structure(state.core) do
+      case state.output_stream_structure do
         :annexb ->
           :annexb
 
         {avc, _nalu_length_size} = output_stream_structure ->
-          cached = Core.cached_parameter_sets(state.core)
+          cached = state.cached_parameter_sets
           spss = cached |> Enum.filter(&(&1.type == :sps)) |> Enum.map(& &1.payload)
           ppss = cached |> Enum.filter(&(&1.type == :pps)) |> Enum.map(& &1.payload)
 
@@ -289,7 +284,7 @@ defmodule Membrane.H264.Parser do
           width: sps.width,
           height: sps.height,
           profile: sps.profile,
-          framerate: Core.framerate(state.core),
+          framerate: state.framerate,
           alignment: state.output_alignment,
           nalu_in_metadata?: true,
           stream_structure: output_raw_stream_structure
