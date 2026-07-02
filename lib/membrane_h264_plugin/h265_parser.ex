@@ -149,10 +149,11 @@ defmodule Membrane.H265.Parser do
                 produced by dropping a higher temporal sub-layer).
 
                 Recovering the presentation order requires buffering (reordering) a
-                bounded number of access units before emitting them, which introduces a
-                small, constant latency. The buffer depth is taken from the SPS
-                `sps_max_num_reorder_pics`, so when the stream can't reorder frames
-                (that value being 0) the buffering is disabled and no latency is added.
+                bounded number of access units before emitting them, which introduces
+                a constant latency of that many frame durations. The buffer depth is
+                taken from the SPS `sps_max_num_reorder_pics`, so the latency is as low
+                as the stream allows; when the stream can't reorder frames (that value
+                being 0) the buffering is disabled and no latency is added.
 
                 By default, the parser adds negative DTS offset to the timestamps,
                 so that in case of frame reorder (which always happens when B frames

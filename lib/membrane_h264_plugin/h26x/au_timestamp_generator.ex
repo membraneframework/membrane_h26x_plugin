@@ -29,7 +29,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
           prev_pic_order_cnt_msb: integer()
         }
 
-  @type timestamps :: {pts :: non_neg_integer(), dts :: non_neg_integer()}
+  @type timestamp :: non_neg_integer() | nil
+  @type timestamped_au ::
+          {AUSplitter.access_unit(), pts :: timestamp(), dts :: timestamp()}
 
   @callback max_frame_reorder() :: pos_integer()
   @callback get_first_vcl_nalu(AUSplitter.access_unit()) :: NALu.t() | nil
@@ -99,26 +101,26 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     {drained, state} = if flush?, do: drain(state), else: {[], state}
 
     outputs =
-      Enum.map(ready ++ drained, fn {au, timestamps} -> put_timestamps(module, au, timestamps) end)
+      Enum.map(ready ++ drained, fn {au, pts, dts} -> put_timestamps(module, au, pts, dts) end)
 
     {outputs, state}
   end
 
   @spec put_access_unit(module(), AUSplitter.access_unit(), state()) ::
-          {[{AUSplitter.access_unit(), timestamps()}], state()}
+          {[timestamped_au()], state()}
   defp put_access_unit(module, au, state) do
     first_vcl_nalu = module.get_first_vcl_nalu(au)
 
     if first_vcl_nalu == nil or Enum.any?(au, &(&1.status != :valid)) do
       # An access unit without a valid VCL NALu has no POC to compute.
-      {[{au, {nil, nil}}], state}
+      {[{au, nil, nil}], state}
     else
       buffer_access_unit(module, au, first_vcl_nalu, state)
     end
   end
 
   @spec buffer_access_unit(module(), AUSplitter.access_unit(), NALu.t(), state()) ::
-          {[{AUSplitter.access_unit(), timestamps()}], state()}
+          {[timestamped_au()], state()}
   defp buffer_access_unit(module, au, first_vcl_nalu, state) do
     %{
       au_counter: au_counter,
@@ -129,6 +131,9 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     {poc, state} = module.calculate_poc(first_vcl_nalu, state)
     dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
 
+    # The POC counter rolling over to 0 means a new GOP begins, so no
+    # access unit buffered so far can be reordered past this point and
+    # they all can be drained.
     {flushed, state} =
       if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
 
@@ -158,13 +163,13 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     {flushed ++ ready, state}
   end
 
-  @spec put_timestamps(module(), AUSplitter.access_unit(), timestamps()) ::
+  @spec put_timestamps(module(), AUSplitter.access_unit(), timestamp(), timestamp()) ::
           AUSplitter.access_unit()
-  defp put_timestamps(module, au, timestamps) do
+  defp put_timestamps(module, au, pts, dts) do
     first_vcl_nalu = module.get_first_vcl_nalu(au)
 
     Enum.map(au, fn nalu ->
-      if nalu == first_vcl_nalu, do: %{nalu | timestamps: timestamps}, else: nalu
+      if nalu == first_vcl_nalu, do: %{nalu | timestamps: {pts, dts}}, else: nalu
     end)
   end
 
@@ -184,13 +189,13 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     %{state | buffer: updated_buffer, pts_counter: pts_counter + 1}
   end
 
-  @spec pop_ready(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
+  @spec pop_ready(state()) :: {[timestamped_au()], state()}
   defp pop_ready(state) do
     {ready, rest} = Enum.split_while(state.buffer, &(&1.pts != nil))
-    {Enum.map(ready, &{&1.au, {&1.pts, &1.dts}}), %{state | buffer: rest}}
+    {Enum.map(ready, &{&1.au, &1.pts, &1.dts}), %{state | buffer: rest}}
   end
 
-  @spec drain(state()) :: {[{AUSplitter.access_unit(), timestamps()}], state()}
+  @spec drain(state()) :: {[timestamped_au()], state()}
   defp drain(state) do
     state =
       state.buffer
@@ -199,7 +204,7 @@ defmodule Membrane.H26x.AUTimestampGenerator do
         assign_next_pts(acc_state)
       end)
 
-    outputs = Enum.map(state.buffer, &{&1.au, {&1.pts, &1.dts}})
+    outputs = Enum.map(state.buffer, &{&1.au, &1.pts, &1.dts})
     {outputs, %{state | buffer: []}}
   end
 end

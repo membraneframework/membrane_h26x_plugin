@@ -150,13 +150,14 @@ defmodule Membrane.H264.Parser do
                 advances.
 
                 Recovering the presentation order requires buffering (reordering) a
-                bounded number of access units before emitting them, which introduces a
-                small, constant latency. This only happens when the stream can actually
-                reorder frames; when it can't (baseline / constrained baseline profile,
-                or `pic_order_cnt_type == 2`) the buffering is disabled and no latency
-                is added. When the SPS VUI provides `max_num_reorder_frames`, it is used
-                as the exact buffer depth, keeping the latency as low as the stream
-                allows; otherwise a safe maximum is assumed.
+                bounded number of access units before emitting them, which introduces
+                a constant latency of that many frame durations. This only happens when
+                the stream can actually reorder frames; when it can't (baseline /
+                constrained baseline profile, or `pic_order_cnt_type == 2`) the
+                buffering is disabled and no latency is added. When the SPS VUI provides
+                `max_num_reorder_frames`, it is used as the exact buffer depth, keeping
+                the latency as low as the stream allows; otherwise a safe maximum of 15
+                frames (half a second at 30 FPS) is assumed.
 
                 By default, the parser adds negative DTS offset to the timestamps,
                 so that in case of frame reorder (which always happens when B frames

@@ -15,7 +15,7 @@ defmodule Membrane.H265.AUTimestampGenerator do
 
   @impl true
   def reorder_buffer_depth(vcl_nalu, _state) do
-    Map.get(vcl_nalu.parsed_fields, :sps_max_num_reorder_pics) || 0
+    Map.get(vcl_nalu.parsed_fields, :sps_max_num_reorder_pics, 0)
   end
 
   @impl true
