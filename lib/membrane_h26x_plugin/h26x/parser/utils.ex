@@ -9,17 +9,7 @@ defmodule Membrane.H26x.Parser.Utils do
   alias Membrane.H26x.Parser.Core
 
   @typedoc """
-  Codec-specific configuration injected by an element - plain data describing the codec:
-
-    * `stream_format_module` - the stream format struct built on output (`Membrane.H264`/`Membrane.H265`),
-    * `dcr_module` - the codec's decoder configuration record module,
-    * `keyframe_nalu_types` - NALu types whose presence makes an access unit a keyframe,
-    * `parameter_set_nalu_types` - NALu types carrying parameter sets, in the order they
-      should be cached and repeated,
-    * `out_of_band_parameter_sets_codec_tags` - codec tags of the output stream structures
-      that carry parameter sets out of band (in the DCR), requiring them to be stripped
-      from the stream,
-    * the codec's pillar modules and the metadata key used on output buffers.
+  Codec-specific configuration injected by an element.
   """
   @type codec :: %{
           stream_format_module: module(),
