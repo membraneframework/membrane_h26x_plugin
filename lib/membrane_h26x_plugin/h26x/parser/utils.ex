@@ -3,11 +3,6 @@ defmodule Membrane.H26x.Parser.Utils do
 
   # The Membrane-aware (but codec-agnostic) driver of the parser, shared by the
   # `Membrane.H264.Parser` and `Membrane.H265.Parser` elements.
-  #
-  # It owns the whole element orchestration - the `Membrane.H26x.Parser.Core` lifecycle,
-  # parameter-set caching, stream-structure/mode tracking, action and buffer building - and
-  # delegates the handful of codec-specific decisions to a `codec` map (see `t:codec/0`)
-  # injected by the elements, so it never dispatches back into them and needs no behaviour.
 
   alias Membrane.Buffer
   alias Membrane.H26x.NALu
@@ -289,7 +284,7 @@ defmodule Membrane.H26x.Parser.Utils do
   # Schedules the incoming parameter sets to be parsed before the next processed buffer,
   # so they are cached (and stripped/repeated) as any other in-stream NALu.
   defp prepend_parameter_sets(state, parameter_sets) do
-    %{state | core: Core.prepend_nalus(state.core, parameter_sets)}
+    %{state | core: Core.prepend_parameter_sets(state.core, parameter_sets)}
   end
 
   defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),

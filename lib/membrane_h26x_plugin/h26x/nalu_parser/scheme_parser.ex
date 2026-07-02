@@ -216,27 +216,7 @@ defmodule Membrane.H26x.NALuParser.SchemeParser do
   end
 
   defp get_args(args_names, state) do
-    Enum.map(args_names, fn arg_name ->
-      lexems = Regex.scan(~r"\@.*?\@", Atom.to_string(arg_name))
-
-      variables =
-        lexems
-        |> Enum.map(fn lexem ->
-          variable_name = String.slice(lexem, 1..-2//-1)
-          Map.get(state, variable_name) |> Integer.to_string()
-        end)
-
-      arg_name = Atom.to_string(arg_name)
-
-      full_arg_name =
-        Enum.zip(lexems, variables)
-        |> Enum.reduce(arg_name, fn {lexem, variable}, arg_name ->
-          String.replace(arg_name, lexem, variable)
-        end)
-        |> String.to_atom()
-
-      Map.fetch!(state, full_arg_name)
-    end)
+    Enum.map(args_names, &Map.fetch!(state, &1))
   end
 
   defp parse_field(payload, state, type) do

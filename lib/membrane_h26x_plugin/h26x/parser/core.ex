@@ -1,17 +1,7 @@
 defmodule Membrane.H26x.Parser.Core do
   @moduledoc false
 
-  # A pure, Membrane-agnostic H26x parser: bytes in, access units out.
-  #
-  #     core = Core.new(config)
-  #     {access_units, core} = Core.push(core, payload, {pts, dts})
-  #     {access_units, core} = Core.flush(core)
-  #
-  # It orchestrates the shared building blocks - `Membrane.H26x.NALuSplitter`,
-  # `Membrane.H26x.NALuParser`, `Membrane.H26x.AUSplitter` and
-  # `Membrane.H26x.AUTimestampGenerator` - and nothing else. It holds no parameter-set
-  # cache, builds no stream formats, knows no codec specifics and no Membrane concepts;
-  # all of that lives in `Membrane.H26x.Parser.Utils` and the parser elements.
+  # A pure, Membrane-agnostic H26x parser: bytes in, access units out.;
 
   alias Membrane.H26x.{AUSplitter, AUTimestampGenerator, NALuParser, NALuSplitter}
 
@@ -90,14 +80,12 @@ defmodule Membrane.H26x.Parser.Core do
   def set_mode(core, mode), do: %{core | mode: mode}
 
   @doc """
-  Schedules raw (unprefixed) NALu payloads to be parsed just before the next pushed
-  payload, as if they preceded it in the stream.
+  Schedules raw (unprefixed) parameter set payloads to be parsed just before the next
+  pushed payload, as if they preceded it in the stream.
   """
-  @spec prepend_nalus(t(), [binary()]) :: t()
-  def prepend_nalus(core, []), do: core
-
-  def prepend_nalus(core, nalus_payloads) do
-    prefixed = NALuParser.prefix_nalus_payloads(nalus_payloads, core.input_stream_structure)
+  @spec prepend_parameter_sets(t(), [binary()]) :: t()
+  def prepend_parameter_sets(core, parameter_sets) do
+    prefixed = NALuParser.prefix_nalus_payloads(parameter_sets, core.input_stream_structure)
     %{core | pending_payload: core.pending_payload <> prefixed}
   end
 
@@ -158,11 +146,11 @@ defmodule Membrane.H26x.Parser.Core do
     maybe_generate_timestamps(access_units, flush?, core)
   end
 
-  defguardp timestamp_generator_active(core)
+  defguardp is_timestamp_generator_active(core)
             when core.mode == :bytestream and not is_nil(core.au_timestamp_generator)
 
   @spec maybe_generate_timestamps([access_unit()], boolean(), t()) :: {[access_unit()], t()}
-  defp maybe_generate_timestamps(aus, flush?, core) when timestamp_generator_active(core) do
+  defp maybe_generate_timestamps(aus, flush?, core) when is_timestamp_generator_active(core) do
     {aus, generator} =
       AUTimestampGenerator.generate_timestamps(
         core.au_timestamp_generator_mod,
