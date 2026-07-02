@@ -27,17 +27,17 @@ defmodule Membrane.H26x.Parser.Utils do
   Element state driven by this module.
   """
   @type state :: %{
-          :core => Core.t() | nil,
-          :codec => codec(),
-          :generate_best_effort_timestamps => false | map(),
-          :output_alignment => :au | :nalu,
-          :skip_until_keyframe => boolean(),
-          :repeat_parameter_sets => boolean(),
-          :initial_parameter_sets => [binary()],
-          :input_stream_structure => Core.stream_structure() | nil,
-          :output_stream_structure => Core.stream_structure() | nil,
-          :framerate => term() | nil,
-          :cached_parameter_sets => [NALu.t()]
+          core: Core.t() | nil,
+          codec: codec(),
+          generate_best_effort_timestamps: false | map(),
+          output_alignment: :au | :nalu,
+          skip_until_keyframe: boolean(),
+          repeat_parameter_sets: boolean(),
+          initial_parameter_sets: [binary()],
+          input_stream_structure: Core.stream_structure() | nil,
+          output_stream_structure: Core.stream_structure() | nil,
+          framerate: term() | nil,
+          cached_parameter_sets: [NALu.t()]
         }
 
   @type action :: Membrane.Element.Action.t()
