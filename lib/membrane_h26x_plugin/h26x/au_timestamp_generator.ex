@@ -203,3 +203,186 @@ defmodule Membrane.H26x.AUTimestampGenerator do
     {outputs, %{state | buffer: []}}
   end
 end
+
+defmodule Membrane.H264.AUTimestampGenerator do
+  @moduledoc false
+
+  @behaviour Membrane.H26x.AUTimestampGenerator
+
+  require Membrane.H264.NALuTypes, as: NALuTypes
+
+  @impl true
+  def max_frame_reorder(), do: 15
+
+  @impl true
+  def get_first_vcl_nalu(au) do
+    Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+  end
+
+  @impl true
+  def reorder_buffer_depth(vcl_nalu, _state) do
+    fields = vcl_nalu.parsed_fields
+
+    cond do
+      fields.profile in [:baseline, :constrained_baseline] ->
+        0
+
+      fields.pic_order_cnt_type == 2 ->
+        0
+
+      fields[:vui_parameters_present_flag] == 1 and fields[:bitstream_restriction_flag] == 1 ->
+        fields.max_num_reorder_frames
+
+      true ->
+        max_frame_reorder()
+    end
+  end
+
+  @impl true
+  # Calculate picture order count according to section 8.2.1 of the ITU-T H264 specification
+  def calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 0}} = vcl_nalu, state) do
+    max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)
+
+    {prev_pic_order_cnt_msb, prev_pic_order_cnt_lsb} =
+      if vcl_nalu.type == :idr do
+        {0, 0}
+      else
+        # As described in the spec, we should check for presence of the
+        # memory_management_control_operation syntax element equal to 5
+        # in the previous reference picture and calculate prev_pic_order_cnt_*sb
+        # values accordingly if it's there. Since getting to that information
+        # is quite a pain in the ass, we don't do that and assume it's not
+        # there and it seems to work ¯\_(ツ)_/¯ However, it may happen not to work
+        # for some streams and we may generate invalid timestamps because of that.
+        # If that happens, may have to implement the aforementioned lacking part.
+
+        previous_vcl_nalu = state.prev_pic_first_vcl_nalu || vcl_nalu
+        {state.prev_pic_order_cnt_msb, previous_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
+      end
+
+    pic_order_cnt_lsb = vcl_nalu.parsed_fields.pic_order_cnt_lsb
+
+    pic_order_cnt_msb =
+      cond do
+        pic_order_cnt_lsb < prev_pic_order_cnt_lsb and
+            prev_pic_order_cnt_lsb - pic_order_cnt_lsb >= max_pic_order_cnt_lsb / 2 ->
+          prev_pic_order_cnt_msb + max_pic_order_cnt_lsb
+
+        pic_order_cnt_lsb > prev_pic_order_cnt_lsb and
+            pic_order_cnt_lsb - prev_pic_order_cnt_lsb > max_pic_order_cnt_lsb / 2 ->
+          prev_pic_order_cnt_msb - max_pic_order_cnt_lsb
+
+        true ->
+          prev_pic_order_cnt_msb
+      end
+
+    pic_order_cnt =
+      if get_slice_type(vcl_nalu) == :frame do
+        top_field_order_cnt = pic_order_cnt_msb + pic_order_cnt_lsb
+
+        bottom_field_order_cnt =
+          top_field_order_cnt + vcl_nalu.parsed_fields.delta_pic_order_cnt_bottom
+
+        min(top_field_order_cnt, bottom_field_order_cnt)
+      else
+        pic_order_cnt_msb + pic_order_cnt_lsb
+      end
+
+    {div(pic_order_cnt, 2),
+     %{state | prev_pic_order_cnt_msb: pic_order_cnt_msb, prev_pic_first_vcl_nalu: vcl_nalu}}
+  end
+
+  @impl true
+  def calculate_poc(%{parsed_fields: %{pic_order_cnt_type: 1}}, _state) do
+    raise "Timestamp generation error: unsupported stream. Unsupported field value pic_order_cnt_type=1"
+  end
+
+  @impl true
+  def calculate_poc(
+        %{parsed_fields: %{pic_order_cnt_type: 2, frame_num: frame_num}} = vcl_nalu,
+        state
+      ) do
+    {frame_num, %{state | prev_pic_first_vcl_nalu: vcl_nalu}}
+  end
+
+  defp get_slice_type(vcl_nalu) do
+    case vcl_nalu.parsed_fields do
+      %{frame_mbs_only_flag: 1} -> :frame
+      %{field_pic_flag: 0} -> :frame
+      %{bottom_field_flag: 1} -> :bottom_field
+      _other -> :top_field
+    end
+  end
+end
+
+defmodule Membrane.H265.AUTimestampGenerator do
+  @moduledoc false
+
+  @behaviour Membrane.H26x.AUTimestampGenerator
+
+  require Membrane.H265.NALuTypes, as: NALuTypes
+
+  @impl true
+  def max_frame_reorder(), do: 15
+
+  @impl true
+  def get_first_vcl_nalu(au) do
+    Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+  end
+
+  @impl true
+  def reorder_buffer_depth(vcl_nalu, _state) do
+    Map.get(vcl_nalu.parsed_fields, :sps_max_num_reorder_pics, 0)
+  end
+
+  @impl true
+  # Calculate picture order count according to section 8.3.1 of the ITU-T H265 specification
+  def calculate_poc(vcl_nalu, state) do
+    max_pic_order_cnt_lsb = 2 ** (vcl_nalu.parsed_fields.log2_max_pic_order_cnt_lsb_minus4 + 4)
+
+    # We exclude CRA pictures from IRAP pictures since we have no way
+    # to assert the value of the flag NoRaslOutputFlag.
+    # If the CRA is the first access unit in the bytestream, the flag would be
+    # equal to 1 which reset the POC counter, and that condition is
+    # satisfied here since the initial value for prev_pic_order_cnt_msb and
+    # prev_pic_order_cnt_lsb are 0
+    {prev_pic_order_cnt_msb, prev_pic_order_cnt_lsb} =
+      if vcl_nalu.parsed_fields.nal_unit_type in 16..20 do
+        {0, 0}
+      else
+        {state.prev_pic_order_cnt_msb,
+         state.prev_pic_first_vcl_nalu.parsed_fields.pic_order_cnt_lsb}
+      end
+
+    pic_order_cnt_lsb = vcl_nalu.parsed_fields.pic_order_cnt_lsb
+
+    pic_order_cnt_msb =
+      cond do
+        pic_order_cnt_lsb < prev_pic_order_cnt_lsb and
+            prev_pic_order_cnt_lsb - pic_order_cnt_lsb >= div(max_pic_order_cnt_lsb, 2) ->
+          prev_pic_order_cnt_msb + max_pic_order_cnt_lsb
+
+        pic_order_cnt_lsb > prev_pic_order_cnt_lsb and
+            pic_order_cnt_lsb - prev_pic_order_cnt_lsb > div(max_pic_order_cnt_lsb, 2) ->
+          prev_pic_order_cnt_msb - max_pic_order_cnt_lsb
+
+        true ->
+          prev_pic_order_cnt_msb
+      end
+
+    {prev_pic_first_vcl_nalu, prev_pic_order_cnt_msb} =
+      if vcl_nalu.type in [:radl_r, :radl_n, :rasl_r, :rasl_n] or
+           vcl_nalu.parsed_fields.nal_unit_type in 0..15//2 do
+        {state.prev_pic_first_vcl_nalu, prev_pic_order_cnt_msb}
+      else
+        {vcl_nalu, pic_order_cnt_msb}
+      end
+
+    {pic_order_cnt_msb + pic_order_cnt_lsb,
+     %{
+       state
+       | prev_pic_order_cnt_msb: prev_pic_order_cnt_msb,
+         prev_pic_first_vcl_nalu: prev_pic_first_vcl_nalu
+     }}
+  end
+end
