@@ -65,7 +65,13 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
           Map.get(sps, :separate_colour_plane_flag, 0)
         )
 
-      sps_fields = Map.take(sps, [:segment_addr_length, :log2_max_pic_order_cnt_lsb_minus4])
+      sps_fields =
+        Map.take(sps, [
+          :segment_addr_length,
+          :log2_max_pic_order_cnt_lsb_minus4,
+          :sps_max_num_reorder_pics
+        ])
+
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
 
       # PPS fields

@@ -6,8 +6,30 @@ defmodule Membrane.H264.AUTimestampGenerator do
   require Membrane.H264.NALuTypes, as: NALuTypes
 
   @impl true
+  def max_frame_reorder(), do: 15
+
+  @impl true
   def get_first_vcl_nalu(au) do
     Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+  end
+
+  @impl true
+  def reorder_buffer_depth(vcl_nalu, _state) do
+    fields = vcl_nalu.parsed_fields
+
+    cond do
+      fields.profile in [:baseline, :constrained_baseline] ->
+        0
+
+      fields.pic_order_cnt_type == 2 ->
+        0
+
+      fields[:vui_parameters_present_flag] == 1 and fields[:bitstream_restriction_flag] == 1 ->
+        fields.max_num_reorder_frames
+
+      true ->
+        max_frame_reorder()
+    end
   end
 
   @impl true

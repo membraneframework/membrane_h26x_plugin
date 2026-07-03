@@ -48,10 +48,14 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
 
       sps_fields =
         Map.take(sps, [
+          :profile,
           :log2_max_frame_num_minus4,
           :frame_mbs_only_flag,
           :pic_order_cnt_type,
-          :log2_max_pic_order_cnt_lsb_minus4
+          :log2_max_pic_order_cnt_lsb_minus4,
+          :vui_parameters_present_flag,
+          :bitstream_restriction_flag,
+          :max_num_reorder_frames
         ])
 
       pps_fields =

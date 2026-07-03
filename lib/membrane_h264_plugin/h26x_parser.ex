@@ -206,6 +206,7 @@ defmodule Membrane.H26x.Parser do
         previous_buffer_timestamps: {buffer.pts || buffer.dts, buffer.dts || buffer.pts}
     }
 
+    {access_units, state} = maybe_generate_timestamps(access_units, state)
     prepare_actions_for_aus(access_units, ctx, state)
   end
 
@@ -228,6 +229,8 @@ defmodule Membrane.H26x.Parser do
         nalu_parser: nalu_parser,
         au_splitter: au_splitter
     }
+
+    {access_units, state} = maybe_generate_timestamps(access_units, true, state)
 
     {actions, state} = prepare_actions_for_aus(access_units, ctx, state)
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
@@ -413,23 +416,38 @@ defmodule Membrane.H26x.Parser do
         au_splitter: au_splitter
     }
 
+    {access_units, state} = maybe_generate_timestamps(access_units, true, state)
     prepare_actions_for_aus(access_units, ctx, state)
+  end
+
+  defguardp is_timestamp_generator_active(state)
+            when is_map(state) and state.mode == :bytestream and
+                   not is_nil(state.au_timestamp_generator)
+
+  @spec maybe_generate_timestamps([AUSplitter.access_unit()], boolean(), state()) ::
+          {[AUSplitter.access_unit()], state()}
+  defp maybe_generate_timestamps(aus, flush? \\ false, state)
+
+  defp maybe_generate_timestamps(aus, flush?, state)
+       when is_timestamp_generator_active(state) do
+    {aus, generator} =
+      state.au_timestamp_generator_mod.generate_timestamps(
+        aus,
+        flush?,
+        state.au_timestamp_generator
+      )
+
+    {aus, %{state | au_timestamp_generator: generator}}
+  end
+
+  defp maybe_generate_timestamps(aus, _flush?, state) do
+    {aus, state}
   end
 
   @spec prepare_timestamps(AUSplitter.access_unit(), state()) ::
           {{Membrane.Time.t(), Membrane.Time.t()}, state()}
   defp prepare_timestamps(au, state) do
-    if state.mode == :bytestream and state.au_timestamp_generator do
-      {timestamps, timestamp_generator} =
-        state.au_timestamp_generator_mod.generate_ts_with_constant_framerate(
-          au,
-          state.au_timestamp_generator
-        )
-
-      {timestamps, %{state | au_timestamp_generator: timestamp_generator}}
-    else
-      {first_vcl_nalu(au, state).timestamps, state}
-    end
+    {first_vcl_nalu(au, state).timestamps, state}
   end
 
   @spec should_forward_au(AUSplitter.access_unit(), boolean(), state()) :: {boolean(), state()}
