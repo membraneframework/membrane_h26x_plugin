@@ -32,11 +32,9 @@ defmodule Membrane.H265.Parser do
 
   use Membrane.Filter
 
-  require Membrane.H265.NALuTypes, as: NALuTypes
-
   alias Membrane.{H265, RemoteStream}
   alias Membrane.H265.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
-  alias Membrane.H26x.Parser.Utils
+  alias Membrane.H26x.Utils
 
   @nalu_length_size 4
   @metadata_key :h265
@@ -204,7 +202,7 @@ defmodule Membrane.H265.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.core.mode != :au_aligned,
+      when ctx.pads.input.start_of_stream? and state.parsing_engine.mode != :au_aligned,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
@@ -216,7 +214,7 @@ defmodule Membrane.H265.Parser do
     %{
       stream_format_module: H265,
       dcr_module: DecoderConfigurationRecord,
-      keyframe_nalu_types: NALuTypes.irap_nalu_types(),
+      keyframe_nalu_types: [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra],
       parameter_set_nalu_types: [:vps, :sps, :pps],
       out_of_band_parameter_sets_codec_tags: [:hvc1],
       nalu_parser_mod: NALuParser,

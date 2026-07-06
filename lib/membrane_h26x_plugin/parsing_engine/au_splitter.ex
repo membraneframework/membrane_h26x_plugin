@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.AUSplitter do
+defmodule Membrane.H26x.ParsingEngine.AUSplitter do
   @moduledoc false
   # A behaviour module to split NALus into access units
 
@@ -83,13 +83,13 @@ defmodule Membrane.H264.AUSplitter do
   # VCL NALu is a new primary coded picture. That condition is whether the picture
   # is a keyframe or not.
 
-  @behaviour Membrane.H26x.AUSplitter
+  @behaviour Membrane.H26x.ParsingEngine.AUSplitter
 
   require Membrane.Logger
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
-  alias Membrane.H26x.AUSplitter
+  alias Membrane.H26x.ParsingEngine.AUSplitter
 
   @non_vcl_nalu_types_at_au_beginning [:sps, :pps, :aud, :sei]
   @non_vcl_nalu_types_at_au_end [:end_of_seq, :end_of_stream]
@@ -266,13 +266,14 @@ defmodule Membrane.H265.AUSplitter do
   # *"Order of NAL units and coded pictures and association to access units"*
   # of the *"ITU-T Rec. H.265 (08/2021)"* specification.
 
-  @behaviour Membrane.H26x.AUSplitter
+  @behaviour Membrane.H26x.ParsingEngine.AUSplitter
 
   require Logger
   require Membrane.H265.NALuTypes, as: NALuTypes
 
   alias Membrane.H265.NALuTypes
-  alias Membrane.H26x.{AUSplitter, NALu}
+  alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParsingEngine.AUSplitter
 
   @non_vcl_nalus_at_au_beginning [:vps, :sps, :pps, :prefix_sei]
   @non_vcl_nalus_at_au_end [:fd, :eos, :eob, :suffix_sei]

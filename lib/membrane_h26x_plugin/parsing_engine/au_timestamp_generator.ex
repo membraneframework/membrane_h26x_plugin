@@ -1,7 +1,8 @@
-defmodule Membrane.H26x.AUTimestampGenerator do
+defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   @moduledoc false
 
-  alias Membrane.H26x.{AUSplitter, NALu}
+  alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParsingEngine.AUSplitter
 
   @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}
 
@@ -207,7 +208,7 @@ end
 defmodule Membrane.H264.AUTimestampGenerator do
   @moduledoc false
 
-  @behaviour Membrane.H26x.AUTimestampGenerator
+  @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   require Membrane.H264.NALuTypes, as: NALuTypes
 
@@ -318,7 +319,7 @@ end
 defmodule Membrane.H265.AUTimestampGenerator do
   @moduledoc false
 
-  @behaviour Membrane.H26x.AUTimestampGenerator
+  @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   require Membrane.H265.NALuTypes, as: NALuTypes
 

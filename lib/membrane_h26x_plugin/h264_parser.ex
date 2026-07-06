@@ -49,7 +49,7 @@ defmodule Membrane.H264.Parser do
 
   alias Membrane.{H264, RemoteStream}
   alias Membrane.H264.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
-  alias Membrane.H26x.Parser.Utils
+  alias Membrane.H26x.Utils
 
   @nalu_length_size 4
   @metadata_key :h264
@@ -207,7 +207,7 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.core.mode != :au_aligned,
+      when ctx.pads.input.start_of_stream? and state.parsing_engine.mode != :au_aligned,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true

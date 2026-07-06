@@ -8,7 +8,7 @@ defmodule Membrane.H265.RepeatParameterSetsTest do
   import Membrane.H26x.Support.Common
 
   alias Membrane.{H265, H26x}
-  alias Membrane.H26x.NALuSplitter
+  alias Membrane.H26x.ParsingEngine.NALuSplitter
   alias Membrane.Testing.{Pipeline, Sink}
 
   @in_path "test/fixtures/h265/input-60-640x480-no-parameter-sets.h265"

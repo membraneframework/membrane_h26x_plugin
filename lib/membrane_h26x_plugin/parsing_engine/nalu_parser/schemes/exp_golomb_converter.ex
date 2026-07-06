@@ -1,8 +1,8 @@
-defmodule Membrane.H26x.ExpGolombConverter do
-  @moduledoc """
-  This module holds function responsible for converting
-  from and to Exp-Golomb Notation.
-  """
+defmodule Membrane.H26x.ParsingEngine.NALuParser.Schemes.ExpGolombConverter do
+  @moduledoc false
+
+  # This module holds function responsible for converting
+  # from and to Exp-Golomb Notation.
 
   @doc """
   Reads the appropriate number of bits from the bitstring and decodes an

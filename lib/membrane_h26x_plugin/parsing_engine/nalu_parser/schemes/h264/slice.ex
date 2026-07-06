@@ -1,6 +1,6 @@
 defmodule Membrane.H264.NALuParser.Schemes.Slice do
   @moduledoc false
-  @behaviour Membrane.H26x.NALuParser.Scheme
+  @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
   @impl true
   def defaults(), do: [field_pic_flag: 0, delta_pic_order_cnt_bottom: 0]

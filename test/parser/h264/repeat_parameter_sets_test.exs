@@ -8,7 +8,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   import Membrane.H26x.Support.Common
 
   alias Membrane.{H264, H26x}
-  alias Membrane.H26x.NALuSplitter
+  alias Membrane.H26x.ParsingEngine.NALuSplitter
   alias Membrane.Testing.{Pipeline, Sink}
 
   @in_path "test/fixtures/h264/input-30-240p-no-sps-pps.h264"
@@ -125,7 +125,11 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       {nalus_payloads, _splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
 
       {nalus, _state} =
-        H26x.NALuParser.parse_nalus(H264.NALuParser, nalus_payloads, H26x.NALuParser.new())
+        H26x.ParsingEngine.NALuParser.parse_nalus(
+          H264.NALuParser,
+          nalus_payloads,
+          H26x.ParsingEngine.NALuParser.new()
+        )
 
       spss = Enum.filter(nalus, &(&1.type == :sps))
 

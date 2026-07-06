@@ -2,12 +2,12 @@ defmodule Membrane.H26x.Support.Common do
   @moduledoc false
 
   alias Membrane.{H264, H265}
-  alias Membrane.H26x.{AUSplitter, NALuParser, NALuSplitter}
+  alias Membrane.H26x.ParsingEngine.{AUSplitter, NALuParser, NALuSplitter}
 
   @spec prepare_h264_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H26x.Parser.Core.stream_structure(),
+          Membrane.H26x.ParsingEngine.stream_structure(),
           boolean()
         ) :: list
 
@@ -36,7 +36,7 @@ defmodule Membrane.H26x.Support.Common do
   @spec prepare_h265_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H26x.Parser.Core.stream_structure(),
+          Membrane.H26x.ParsingEngine.stream_structure(),
           boolean()
         ) :: list
 
