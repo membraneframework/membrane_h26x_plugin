@@ -67,21 +67,22 @@ defmodule Membrane.H26x.ParsingEngine.AUSplitter do
 end
 
 defmodule Membrane.H264.AUSplitter do
-  @moduledoc false
-  # Module providing functionalities to divide the binary
-  # h264 stream into access units.
-  #
-  # The access unit splitter's behaviour is based on *"7.4.1.2.3
-  # Order of NAL units and coded pictures and association to access units"*
-  # of the *"ITU-T Rec. H.264 (01/2012)"* specification. The most crucial part
-  # of the access unit splitter is the mechanism to detect new primary coded video picture.
-  #
-  # WARNING: Our implementation of that mechanism is based on:
-  # *"7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture"*
-  # of the *"ITU-T Rec. H.264 (01/2012)"*, however it adds one more
-  # additional condition which, when satisfied, says that the given
-  # VCL NALu is a new primary coded picture. That condition is whether the picture
-  # is a keyframe or not.
+  @moduledoc """
+  Module providing functionalities to divide the binary
+  h264 stream into access units.
+
+  The access unit splitter's behaviour is based on *"7.4.1.2.3
+  Order of NAL units and coded pictures and association to access units"*
+  of the *"ITU-T Rec. H.264 (01/2012)"* specification. The most crucial part
+  of the access unit splitter is the mechanism to detect new primary coded video picture.
+
+  WARNING: Our implementation of that mechanism is based on:
+  *"7.4.1.2.4 Detection of the first VCL NAL unit of a primary coded picture"*
+  of the *"ITU-T Rec. H.264 (01/2012)"*, however it adds one more
+  additional condition which, when satisfied, says that the given
+  VCL NALu is a new primary coded picture. That condition is whether the picture
+  is a keyframe or not.
+  """
 
   @behaviour Membrane.H26x.ParsingEngine.AUSplitter
 
@@ -258,13 +259,14 @@ defmodule Membrane.H264.AUSplitter do
 end
 
 defmodule Membrane.H265.AUSplitter do
-  @moduledoc false
-  # Module providing functionalities to group H265 NAL units
-  # into access units.
-  #
-  # The access unit splitter's behaviour is based on section **7.4.2.4.4**
-  # *"Order of NAL units and coded pictures and association to access units"*
-  # of the *"ITU-T Rec. H.265 (08/2021)"* specification.
+  @moduledoc """
+  Module providing functionalities to group H265 NAL units
+  into access units.
+
+  The access unit splitter's behaviour is based on section **7.4.2.4.4**
+  *"Order of NAL units and coded pictures and association to access units"*
+  of the *"ITU-T Rec. H.265 (08/2021)"* specification.
+  """
 
   @behaviour Membrane.H26x.ParsingEngine.AUSplitter
 

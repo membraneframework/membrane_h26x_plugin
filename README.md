@@ -55,6 +55,35 @@ defmodule Decoding.Pipeline do
 end
 ```
 
+### Parsing without Membrane
+
+The parsing logic itself lives in `Membrane.H26x.ParsingEngine` and can be used standalone,
+without spawning any Membrane component. The following snippet parses an H264 file
+and returns its access units:
+
+```elixir
+alias Membrane.H26x.ParsingEngine
+
+engine =
+  ParsingEngine.new(%{
+    input_stream_structure: :annexb,
+    mode: :bytestream,
+    nalu_parser_mod: Membrane.H264.NALuParser,
+    au_splitter_mod: Membrane.H264.AUSplitter,
+    au_timestamp_generator_mod: Membrane.H264.AUTimestampGenerator,
+    generate_best_effort_timestamps: false
+  })
+
+{access_units, engine} = ParsingEngine.push(engine, File.read!("video.h264"))
+{last_access_units, _engine} = ParsingEngine.flush(engine)
+
+access_units = access_units ++ last_access_units
+```
+
+Each access unit is a list of `Membrane.H26x.NALu` structs, carrying the NALus' types,
+payloads and parsed fields. The payload can also be fed in arbitrarily split chunks with
+repeated `ParsingEngine.push/3` calls - each call returns the access units completed so far,
+and `ParsingEngine.flush/1` drains whatever remains buffered.
 
 ## Copyright and License
 

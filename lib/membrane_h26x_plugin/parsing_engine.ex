@@ -4,7 +4,12 @@ defmodule Membrane.H26x.ParsingEngine do
 
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. Codec-specific
-  behaviour is provided via the modules passed in the `t:config/0`.
+  behaviour is provided via the modules passed in the `t:config/0`:
+
+  * `:nalu_parser_mod` - `Membrane.H264.NALuParser` or `Membrane.H265.NALuParser`
+  * `:au_splitter_mod` - `Membrane.H264.AUSplitter` or `Membrane.H265.AUSplitter`
+  * `:au_timestamp_generator_mod` - `Membrane.H264.AUTimestampGenerator` or
+    `Membrane.H265.AUTimestampGenerator`
   """
 
   alias Membrane.H26x.NALu

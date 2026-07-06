@@ -1,5 +1,7 @@
 defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   @moduledoc false
+  # A behaviour module for generating best-effort PTS and DTS for access units
+  # based on the stream's framerate and the picture order counts.
 
   alias Membrane.H26x.NALu
   alias Membrane.H26x.ParsingEngine.AUSplitter
@@ -206,7 +208,10 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 end
 
 defmodule Membrane.H264.AUTimestampGenerator do
-  @moduledoc false
+  @moduledoc """
+  Generates best-effort PTS and DTS for H264 access units based on the stream's
+  framerate and the picture order counts, for `Membrane.H26x.ParsingEngine`.
+  """
 
   @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
@@ -317,7 +322,10 @@ defmodule Membrane.H264.AUTimestampGenerator do
 end
 
 defmodule Membrane.H265.AUTimestampGenerator do
-  @moduledoc false
+  @moduledoc """
+  Generates best-effort PTS and DTS for H265 access units based on the stream's
+  framerate and the picture order counts, for `Membrane.H26x.ParsingEngine`.
+  """
 
   @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
