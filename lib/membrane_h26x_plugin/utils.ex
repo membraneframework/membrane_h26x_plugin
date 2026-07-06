@@ -9,23 +9,10 @@ defmodule Membrane.H26x.Utils do
   alias Membrane.H26x.ParsingEngine
 
   @typedoc """
-  Codec-specific configuration injected by an element.
-  """
-  @type codec :: %{
-          name: ParsingEngine.codec(),
-          stream_format_module: module(),
-          keyframe_nalu_types: [atom()],
-          parameter_set_nalu_types: [atom()],
-          out_of_band_parameter_sets_codec_tags: [atom()],
-          metadata_key: atom()
-        }
-
-  @typedoc """
   Element state driven by this module.
   """
   @type state :: %{
           parsing_engine: ParsingEngine.t() | nil,
-          codec: codec(),
           generate_best_effort_timestamps: false | map(),
           output_alignment: :au | :nalu,
           skip_until_keyframe: boolean(),
@@ -42,16 +29,15 @@ defmodule Membrane.H26x.Utils do
   @doc """
   Builds the initial element state.
 
-  Expects the codec config and the element options (`output_alignment`,
-  `skip_until_keyframe`, `repeat_parameter_sets`, `initial_parameter_sets`,
-  `output_stream_structure`, `generate_best_effort_timestamps`). The `ParsingEngine` itself is
-  created once the first stream format reveals the input structure and mode.
+  Expects the element options (`output_alignment`, `skip_until_keyframe`,
+  `repeat_parameter_sets`, `initial_parameter_sets`, `output_stream_structure`,
+  `generate_best_effort_timestamps`). The `ParsingEngine` itself is created once
+  the first stream format reveals the input structure and mode.
   """
-  @spec init_state(codec(), keyword()) :: state()
-  def init_state(codec, opts) do
+  @spec init_state(keyword()) :: state()
+  def init_state(opts) do
     %{
       parsing_engine: nil,
-      codec: codec,
       generate_best_effort_timestamps: opts[:generate_best_effort_timestamps],
       output_alignment: opts[:output_alignment],
       skip_until_keyframe: opts[:skip_until_keyframe],
@@ -67,17 +53,19 @@ defmodule Membrane.H26x.Utils do
   @doc """
   Handles a new input stream format.
 
-  The element parses the raw stream format itself and passes the resulting input
-  alignment, stream structure and parameter sets (as raw payloads) along with the
-  stream's framerate (or `nil`).
+  The element parses the raw stream format itself and passes its codec and the
+  resulting input alignment, stream structure and parameter sets (as raw payloads)
+  along with the stream's framerate (or `nil`).
   """
   @spec handle_stream_format(
+          ParsingEngine.codec(),
           {:bytestream | :nalu | :au, ParsingEngine.stream_structure(), [binary()]},
           term() | nil,
           map(),
           state()
         ) :: {[action()], state()}
   def handle_stream_format(
+        codec,
         {alignment, input_stream_structure, parameter_sets},
         framerate,
         ctx,
@@ -89,7 +77,7 @@ defmodule Membrane.H26x.Utils do
     {au_actions, state} =
       cond do
         is_first_received_stream_format ->
-          {[], start_parsing_engine(state, framerate, mode, input_stream_structure)}
+          {[], start_parsing_engine(codec, state, framerate, mode, input_stream_structure)}
 
         not input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -139,15 +127,16 @@ defmodule Membrane.H26x.Utils do
   end
 
   @spec start_parsing_engine(
+          ParsingEngine.codec(),
           state(),
           term() | nil,
           ParsingEngine.mode(),
           ParsingEngine.stream_structure()
         ) :: state()
-  defp start_parsing_engine(state, framerate, mode, input_stream_structure) do
+  defp start_parsing_engine(codec, state, framerate, mode, input_stream_structure) do
     parsing_engine =
       ParsingEngine.new(%{
-        codec: state.codec.name,
+        codec: codec,
         input_stream_structure: input_stream_structure,
         mode: mode,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps
@@ -179,23 +168,24 @@ defmodule Membrane.H26x.Utils do
   end
 
   defp handle_au_parameter_sets(au, ctx, state) do
-    parameter_sets = get_parameter_sets(au, state.codec)
+    codec = state.parsing_engine.codec
+    parameter_sets = get_parameter_sets(au, codec)
     {stream_format_actions, state} = cache_and_maybe_stream_format(parameter_sets, ctx, state)
 
     au =
       finalize_au_parameter_sets(au, parameter_sets, state.cached_parameter_sets,
-        strip?: strip_parameter_sets?(state.output_stream_structure, state.codec),
+        strip?: strip_parameter_sets?(state.output_stream_structure, codec),
         repeat?: state.repeat_parameter_sets,
-        keyframe?: keyframe?(au, state.codec)
+        keyframe?: keyframe?(au, codec)
       )
 
     {au, stream_format_actions, state}
   end
 
-  defp keyframe?(au, codec), do: Enum.any?(au, &(&1.type in codec.keyframe_nalu_types))
+  defp keyframe?(au, codec), do: Enum.any?(au, &(&1.type in keyframe_nalu_types(codec)))
 
   defp get_parameter_sets(au, codec) do
-    Enum.flat_map(codec.parameter_set_nalu_types, fn type ->
+    Enum.flat_map(parameter_set_nalu_types(codec), fn type ->
       Enum.filter(au, &(&1.type == type))
     end)
   end
@@ -203,7 +193,21 @@ defmodule Membrane.H26x.Utils do
   defp strip_parameter_sets?(:annexb, _codec), do: false
 
   defp strip_parameter_sets?({codec_tag, _nalu_length_size}, codec),
-    do: codec_tag in codec.out_of_band_parameter_sets_codec_tags
+    do: codec_tag in out_of_band_parameter_sets_codec_tags(codec)
+
+  defp stream_format_module(:h264), do: Membrane.H264
+  defp stream_format_module(:h265), do: Membrane.H265
+
+  defp keyframe_nalu_types(:h264), do: [:idr]
+
+  defp keyframe_nalu_types(:h265),
+    do: [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra]
+
+  defp parameter_set_nalu_types(:h264), do: [:sps, :pps]
+  defp parameter_set_nalu_types(:h265), do: [:vps, :sps, :pps]
+
+  defp out_of_band_parameter_sets_codec_tags(:h264), do: [:avc1]
+  defp out_of_band_parameter_sets_codec_tags(:h265), do: [:hvc1]
 
   defp cache_and_maybe_stream_format(parameter_sets, ctx, state) do
     last_sent_stream_format = ctx.pads.output.stream_format
@@ -228,9 +232,8 @@ defmodule Membrane.H26x.Utils do
           :annexb
 
         {codec_tag, _nalu_length_size} = structure ->
-          dcr =
-            ParsingEngine.generate_dcr(state.codec.name, state.cached_parameter_sets, structure)
-
+          codec = state.parsing_engine.codec
+          dcr = ParsingEngine.generate_dcr(codec, state.cached_parameter_sets, structure)
           {codec_tag, dcr}
       end
 
@@ -244,7 +247,7 @@ defmodule Membrane.H26x.Utils do
       {latest_sps, _last_sent_stream_format} ->
         sps = latest_sps.parsed_fields
 
-        struct!(state.codec.stream_format_module,
+        struct!(stream_format_module(state.parsing_engine.codec),
           width: sps.width,
           height: sps.height,
           profile: sps.profile,
@@ -302,7 +305,8 @@ defmodule Membrane.H26x.Utils do
 
   @spec prepare_buffer_actions(ParsingEngine.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
-    keyframe? = keyframe?(au, state.codec)
+    codec = state.parsing_engine.codec
+    keyframe? = keyframe?(au, codec)
     nalu_parser_mod = state.parsing_engine.nalu_parser_mod
 
     {should_forward?, skip_until_keyframe?} =
@@ -321,7 +325,7 @@ defmodule Membrane.H26x.Utils do
           keyframe?,
           state.output_alignment,
           state.output_stream_structure,
-          state.codec.metadata_key
+          _metadata_key = codec
         )
 
       {[buffer: {:output, buffers}], state}

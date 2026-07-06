@@ -52,7 +52,7 @@ defmodule Membrane.H264.Parser do
   alias Membrane.H26x.Utils
 
   @nalu_length_size 4
-  @metadata_key :h264
+  @codec :h264
 
   def_input_pad :input,
     flow_control: :auto,
@@ -183,7 +183,7 @@ defmodule Membrane.H264.Parser do
       end
 
     state =
-      Utils.init_state(codec(),
+      Utils.init_state(
         output_stream_structure: output_stream_structure,
         generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
         output_alignment: opts.output_alignment,
@@ -198,7 +198,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_stream_format(:input, stream_format, ctx, state) do
     input = parse_raw_input_stream_structure(stream_format)
-    Utils.handle_stream_format(input, Map.get(stream_format, :framerate), ctx, state)
+    Utils.handle_stream_format(@codec, input, Map.get(stream_format, :framerate), ctx, state)
   end
 
   @impl true
@@ -213,17 +213,6 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
-  end
-
-  defp codec() do
-    %{
-      name: :h264,
-      stream_format_module: H264,
-      keyframe_nalu_types: [:idr],
-      parameter_set_nalu_types: [:sps, :pps],
-      out_of_band_parameter_sets_codec_tags: [:avc1],
-      metadata_key: @metadata_key
-    }
   end
 
   defp parse_raw_input_stream_structure(stream_format) do
