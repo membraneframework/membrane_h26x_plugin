@@ -4,12 +4,7 @@ defmodule Membrane.H26x.ParsingEngine do
 
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. Codec-specific
-  behaviour is provided via the modules passed in the `t:config/0`:
-
-  * `:nalu_parser_mod` - `Membrane.H264.NALuParser` or `Membrane.H265.NALuParser`
-  * `:au_splitter_mod` - `Membrane.H264.AUSplitter` or `Membrane.H265.AUSplitter`
-  * `:au_timestamp_generator_mod` - `Membrane.H264.AUTimestampGenerator` or
-    `Membrane.H265.AUTimestampGenerator`
+  behaviour is selected via the `:codec` field of `t:config/0`.
   """
 
   alias Membrane.H26x.NALu
@@ -21,8 +16,22 @@ defmodule Membrane.H26x.ParsingEngine do
     NALuSplitter
   }
 
+  @type codec :: :h264 | :h265
+
   @type stream_structure ::
           Membrane.H264.Parser.stream_structure() | Membrane.H265.Parser.stream_structure()
+
+  @typedoc """
+  The structure of the input stream.
+
+  For the length-prefixed structures (`:avc1`, `:avc3`, `:hvc1`, `:hev1`), instead of the
+  NALu length size, a Decoder Configuration Record binary (e.g. coming from an MP4 container)
+  may be provided - the NALu length size is then read from it and the parameter sets it
+  carries are scheduled to be parsed before the first pushed payload.
+  """
+  @type input_stream_structure ::
+          stream_structure()
+          | {codec_tag :: :avc1 | :avc3 | :hvc1 | :hev1, dcr :: binary()}
 
   @type mode :: :bytestream | :nalu_aligned | :au_aligned
 
@@ -32,11 +41,9 @@ defmodule Membrane.H26x.ParsingEngine do
   @type access_unit :: [NALu.t()]
 
   @type config :: %{
-          input_stream_structure: stream_structure(),
+          codec: codec(),
+          input_stream_structure: input_stream_structure(),
           mode: mode(),
-          nalu_parser_mod: module(),
-          au_splitter_mod: module(),
-          au_timestamp_generator_mod: module(),
           generate_best_effort_timestamps:
             false
             | %{
@@ -78,23 +85,66 @@ defmodule Membrane.H26x.ParsingEngine do
   """
   @spec new(config()) :: t()
   def new(config) do
+    {input_stream_structure, parameter_sets} =
+      resolve_input_stream_structure(config.codec, config.input_stream_structure)
+
     au_timestamp_generator =
       case config.generate_best_effort_timestamps do
         false -> nil
-        cfg -> AUTimestampGenerator.new(config.au_timestamp_generator_mod, cfg)
+        cfg -> AUTimestampGenerator.new(au_timestamp_generator_mod(config.codec), cfg)
       end
 
     %__MODULE__{
-      nalu_splitter: NALuSplitter.new(config.input_stream_structure),
-      nalu_parser: NALuParser.new(config.input_stream_structure),
+      nalu_splitter: NALuSplitter.new(input_stream_structure),
+      nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
       mode: config.mode,
-      input_stream_structure: config.input_stream_structure,
-      nalu_parser_mod: config.nalu_parser_mod,
-      au_splitter_mod: config.au_splitter_mod,
-      au_timestamp_generator_mod: config.au_timestamp_generator_mod
+      input_stream_structure: input_stream_structure,
+      nalu_parser_mod: nalu_parser_mod(config.codec),
+      au_splitter_mod: au_splitter_mod(config.codec),
+      au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
     }
+    |> prepend_parameter_sets(parameter_sets)
+  end
+
+  @spec resolve_input_stream_structure(codec(), input_stream_structure()) ::
+          {stream_structure(), [binary()]}
+  defp resolve_input_stream_structure(codec, {codec_tag, dcr}) when is_binary(dcr) do
+    dcr = dcr_module(codec).parse(dcr)
+    {{codec_tag, dcr.nalu_length_size}, dcr_parameter_sets(codec, dcr)}
+  end
+
+  defp resolve_input_stream_structure(_codec, stream_structure), do: {stream_structure, []}
+
+  defp dcr_parameter_sets(:h264, dcr), do: dcr.spss ++ dcr.ppss
+  defp dcr_parameter_sets(:h265, dcr), do: dcr.vpss ++ dcr.spss ++ dcr.ppss
+
+  @doc false
+  @spec generate_dcr(codec(), [NALu.t()], stream_structure()) :: binary() | nil
+  def generate_dcr(codec, parameter_sets, stream_structure) do
+    dcr_module(codec).generate(parameter_sets, stream_structure)
+  end
+
+  defp dcr_module(:h264), do: Membrane.H264.DecoderConfigurationRecord
+  defp dcr_module(:h265), do: Membrane.H265.DecoderConfigurationRecord
+  defp dcr_module(codec), do: raise_unsupported_codec(codec)
+
+  defp nalu_parser_mod(:h264), do: Membrane.H264.NALuParser
+  defp nalu_parser_mod(:h265), do: Membrane.H265.NALuParser
+  defp nalu_parser_mod(codec), do: raise_unsupported_codec(codec)
+
+  defp au_splitter_mod(:h264), do: Membrane.H264.AUSplitter
+  defp au_splitter_mod(:h265), do: Membrane.H265.AUSplitter
+  defp au_splitter_mod(codec), do: raise_unsupported_codec(codec)
+
+  defp au_timestamp_generator_mod(:h264), do: Membrane.H264.AUTimestampGenerator
+  defp au_timestamp_generator_mod(:h265), do: Membrane.H265.AUTimestampGenerator
+  defp au_timestamp_generator_mod(codec), do: raise_unsupported_codec(codec)
+
+  @spec raise_unsupported_codec(term()) :: no_return()
+  defp raise_unsupported_codec(codec) do
+    raise "Unsupported codec: #{inspect(codec)}. The supported codecs are :h264 and :h265."
   end
 
   @doc """

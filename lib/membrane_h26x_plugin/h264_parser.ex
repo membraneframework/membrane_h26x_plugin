@@ -48,7 +48,7 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.H264.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
+  alias Membrane.H264.DecoderConfigurationRecord
   alias Membrane.H26x.Utils
 
   @nalu_length_size 4
@@ -217,14 +217,11 @@ defmodule Membrane.H264.Parser do
 
   defp codec() do
     %{
+      name: :h264,
       stream_format_module: H264,
-      dcr_module: DecoderConfigurationRecord,
       keyframe_nalu_types: [:idr],
       parameter_set_nalu_types: [:sps, :pps],
       out_of_band_parameter_sets_codec_tags: [:avc1],
-      nalu_parser_mod: NALuParser,
-      au_splitter_mod: AUSplitter,
-      au_timestamp_generator_mod: AUTimestampGenerator,
       metadata_key: @metadata_key
     }
   end

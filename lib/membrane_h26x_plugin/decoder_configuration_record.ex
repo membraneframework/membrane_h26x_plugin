@@ -1,9 +1,8 @@
 defmodule Membrane.H264.DecoderConfigurationRecord do
-  @moduledoc """
-  Utility functions for parsing and generating AVC Configuration Record.
-
-  The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
-  """
+  @moduledoc false
+  # Utility functions for parsing and generating AVC Configuration Record.
+  #
+  # The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
 
   @enforce_keys [
     :spss,
@@ -107,11 +106,10 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
 end
 
 defmodule Membrane.H265.DecoderConfigurationRecord do
-  @moduledoc """
-  Utility functions for parsing and generating HEVC Configuration Record.
-
-  The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
-  """
+  @moduledoc false
+  # Utility functions for parsing and generating HEVC Configuration Record.
+  #
+  # The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
 
   alias Membrane.H26x.NALu
 

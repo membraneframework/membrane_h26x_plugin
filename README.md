@@ -66,11 +66,9 @@ alias Membrane.H26x.ParsingEngine
 
 engine =
   ParsingEngine.new(%{
+    codec: :h264,
     input_stream_structure: :annexb,
     mode: :bytestream,
-    nalu_parser_mod: Membrane.H264.NALuParser,
-    au_splitter_mod: Membrane.H264.AUSplitter,
-    au_timestamp_generator_mod: Membrane.H264.AUTimestampGenerator,
     generate_best_effort_timestamps: false
   })
 
@@ -84,6 +82,20 @@ Each access unit is a list of `Membrane.H26x.NALu` structs, carrying the NALus' 
 payloads and parsed fields. The payload can also be fed in arbitrarily split chunks with
 repeated `ParsingEngine.push/3` calls - each call returns the access units completed so far,
 and `ParsingEngine.flush/1` drains whatever remains buffered.
+
+For length-prefixed streams (e.g. tracks demuxed from an MP4 container), pass the Decoder
+Configuration Record binary as the input stream structure - the NALu length size is read
+from it and the parameter sets it carries are parsed along with the first pushed payload:
+
+```elixir
+engine =
+  ParsingEngine.new(%{
+    codec: :h264,
+    input_stream_structure: {:avc1, dcr},
+    mode: :au_aligned,
+    generate_best_effort_timestamps: false
+  })
+```
 
 ## Copyright and License
 

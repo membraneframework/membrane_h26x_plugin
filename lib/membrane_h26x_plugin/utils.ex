@@ -12,14 +12,11 @@ defmodule Membrane.H26x.Utils do
   Codec-specific configuration injected by an element.
   """
   @type codec :: %{
+          name: ParsingEngine.codec(),
           stream_format_module: module(),
-          dcr_module: module(),
           keyframe_nalu_types: [atom()],
           parameter_set_nalu_types: [atom()],
           out_of_band_parameter_sets_codec_tags: [atom()],
-          nalu_parser_mod: module(),
-          au_splitter_mod: module(),
-          au_timestamp_generator_mod: module(),
           metadata_key: atom()
         }
 
@@ -150,11 +147,9 @@ defmodule Membrane.H26x.Utils do
   defp start_parsing_engine(state, framerate, mode, input_stream_structure) do
     parsing_engine =
       ParsingEngine.new(%{
+        codec: state.codec.name,
         input_stream_structure: input_stream_structure,
         mode: mode,
-        nalu_parser_mod: state.codec.nalu_parser_mod,
-        au_splitter_mod: state.codec.au_splitter_mod,
-        au_timestamp_generator_mod: state.codec.au_timestamp_generator_mod,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps
       })
 
@@ -233,7 +228,10 @@ defmodule Membrane.H26x.Utils do
           :annexb
 
         {codec_tag, _nalu_length_size} = structure ->
-          {codec_tag, state.codec.dcr_module.generate(state.cached_parameter_sets, structure)}
+          dcr =
+            ParsingEngine.generate_dcr(state.codec.name, state.cached_parameter_sets, structure)
+
+          {codec_tag, dcr}
       end
 
     case {latest_sps, last_sent_stream_format} do
@@ -305,7 +303,7 @@ defmodule Membrane.H26x.Utils do
   @spec prepare_buffer_actions(ParsingEngine.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
     keyframe? = keyframe?(au, state.codec)
-    nalu_parser_mod = state.codec.nalu_parser_mod
+    nalu_parser_mod = state.parsing_engine.nalu_parser_mod
 
     {should_forward?, skip_until_keyframe?} =
       should_forward_au(au, keyframe?, state.skip_until_keyframe, nalu_parser_mod)

@@ -171,10 +171,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
 end
 
 defmodule Membrane.H264.NALuParser do
-  @moduledoc """
-  Provides H264 specific NAL unit parsing functionalities
-  for `Membrane.H26x.ParsingEngine`.
-  """
+  @moduledoc false
+  # This module is an extension to `Membrane.H26x.ParsingEngine.NALuParser` and contains
+  # H264 specific functions.
 
   @behaviour Membrane.H26x.ParsingEngine.NALuParser
 
@@ -232,10 +231,9 @@ defmodule Membrane.H264.NALuParser do
 end
 
 defmodule Membrane.H265.NALuParser do
-  @moduledoc """
-  Provides H265 specific NAL unit parsing functionalities
-  for `Membrane.H26x.ParsingEngine`.
-  """
+  @moduledoc false
+  # This module is an extension to `Membrane.H26x.ParsingEngine.NALuParser` and contains
+  # H265 specific functions.
 
   @behaviour Membrane.H26x.ParsingEngine.NALuParser
 
