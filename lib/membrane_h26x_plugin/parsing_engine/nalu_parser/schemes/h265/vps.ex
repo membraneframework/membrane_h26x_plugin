@@ -1,7 +1,7 @@
 defmodule Membrane.H265.NALuParser.Schemes.VPS do
   @moduledoc false
 
-  @behaviour Membrane.H26x.NALuParser.Scheme
+  @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
   alias Membrane.H265.NALuParser.Schemes.Common
 

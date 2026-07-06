@@ -1,10 +1,10 @@
-defmodule Membrane.H26x.NALuParser do
+defmodule Membrane.H26x.ParsingEngine.NALuParser do
   @moduledoc false
   # A module providing functionality of parsing a stream of binaries, out of which each
   # is a payload of a single NAL unit.
 
   alias Membrane.H26x.NALu
-  alias Membrane.H26x.NALuParser.SchemeParser
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
 
@@ -172,16 +172,16 @@ end
 
 defmodule Membrane.H264.NALuParser do
   @moduledoc false
-  # This module is an extension to `Membrane.H26x.NALuParser` and contains
+  # This module is an extension to `Membrane.H26x.ParsingEngine.NALuParser` and contains
   # H264 specific functions.
 
-  @behaviour Membrane.H26x.NALuParser
+  @behaviour Membrane.H26x.ParsingEngine.NALuParser
 
   require Membrane.Logger
   require Membrane.H264.NALuTypes, as: NALuTypes
 
   alias Membrane.H264.NALuParser.Schemes
-  alias Membrane.H26x.NALuParser.SchemeParser
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @impl true
   def get_nalu_header_and_body(<<nalu_header::binary-size(1), nalu_body::binary>>),
@@ -232,17 +232,17 @@ end
 
 defmodule Membrane.H265.NALuParser do
   @moduledoc false
-  # This module is an extension to `Membrane.H26x.NALuParser` and contains
+  # This module is an extension to `Membrane.H26x.ParsingEngine.NALuParser` and contains
   # H265 specific functions.
 
-  @behaviour Membrane.H26x.NALuParser
+  @behaviour Membrane.H26x.ParsingEngine.NALuParser
 
   require Membrane.H265.NALuTypes
   require Membrane.Logger
 
   alias Membrane.H265.NALuParser.Schemes
   alias Membrane.H265.NALuTypes
-  alias Membrane.H26x.NALuParser.SchemeParser
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @impl true
   def get_nalu_header_and_body(<<nalu_header::binary-size(2), nalu_body::binary>>),

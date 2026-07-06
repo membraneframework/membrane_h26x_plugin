@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.Parser.Utils do
+defmodule Membrane.H26x.Utils do
   @moduledoc false
 
   # The Membrane-aware (but codec-agnostic) driver of the parser, shared by the
@@ -6,7 +6,7 @@ defmodule Membrane.H26x.Parser.Utils do
 
   alias Membrane.Buffer
   alias Membrane.H26x.NALu
-  alias Membrane.H26x.Parser.Core
+  alias Membrane.H26x.ParsingEngine
 
   @typedoc """
   Codec-specific configuration injected by an element.
@@ -27,15 +27,15 @@ defmodule Membrane.H26x.Parser.Utils do
   Element state driven by this module.
   """
   @type state :: %{
-          core: Core.t() | nil,
+          parsing_engine: ParsingEngine.t() | nil,
           codec: codec(),
           generate_best_effort_timestamps: false | map(),
           output_alignment: :au | :nalu,
           skip_until_keyframe: boolean(),
           repeat_parameter_sets: boolean(),
           initial_parameter_sets: [binary()],
-          input_stream_structure: Core.stream_structure() | nil,
-          output_stream_structure: Core.stream_structure() | nil,
+          input_stream_structure: ParsingEngine.stream_structure() | nil,
+          output_stream_structure: ParsingEngine.stream_structure() | nil,
           framerate: term() | nil,
           cached_parameter_sets: [NALu.t()]
         }
@@ -47,13 +47,13 @@ defmodule Membrane.H26x.Parser.Utils do
 
   Expects the codec config and the element options (`output_alignment`,
   `skip_until_keyframe`, `repeat_parameter_sets`, `initial_parameter_sets`,
-  `output_stream_structure`, `generate_best_effort_timestamps`). The `Core` itself is
+  `output_stream_structure`, `generate_best_effort_timestamps`). The `ParsingEngine` itself is
   created once the first stream format reveals the input structure and mode.
   """
   @spec init_state(codec(), keyword()) :: state()
   def init_state(codec, opts) do
     %{
-      core: nil,
+      parsing_engine: nil,
       codec: codec,
       generate_best_effort_timestamps: opts[:generate_best_effort_timestamps],
       output_alignment: opts[:output_alignment],
@@ -75,7 +75,7 @@ defmodule Membrane.H26x.Parser.Utils do
   stream's framerate (or `nil`).
   """
   @spec handle_stream_format(
-          {:bytestream | :nalu | :au, Core.stream_structure(), [binary()]},
+          {:bytestream | :nalu | :au, ParsingEngine.stream_structure(), [binary()]},
           term() | nil,
           map(),
           state()
@@ -92,7 +92,7 @@ defmodule Membrane.H26x.Parser.Utils do
     {au_actions, state} =
       cond do
         is_first_received_stream_format ->
-          {[], start_core(state, framerate, mode, input_stream_structure)}
+          {[], start_parsing_engine(state, framerate, mode, input_stream_structure)}
 
         not input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -100,9 +100,9 @@ defmodule Membrane.H26x.Parser.Utils do
         ) ->
           raise "stream structure cannot be fundamentally changed during stream"
 
-        mode != state.core.mode ->
+        mode != state.parsing_engine.mode ->
           {actions, state} = flush_and_process(ctx, state)
-          {actions, %{state | core: Core.set_mode(state.core, mode)}}
+          {actions, %{state | parsing_engine: ParsingEngine.set_mode(state.parsing_engine, mode)}}
 
         true ->
           {[], state}
@@ -124,8 +124,10 @@ defmodule Membrane.H26x.Parser.Utils do
   """
   @spec handle_buffer(Buffer.t(), map(), state()) :: {[action()], state()}
   def handle_buffer(buffer, ctx, state) do
-    {access_units, core} = Core.push(state.core, buffer.payload, {buffer.pts, buffer.dts})
-    process_access_units(access_units, ctx, %{state | core: core})
+    {access_units, parsing_engine} =
+      ParsingEngine.push(state.parsing_engine, buffer.payload, {buffer.pts, buffer.dts})
+
+    process_access_units(access_units, ctx, %{state | parsing_engine: parsing_engine})
   end
 
   @doc """
@@ -139,10 +141,15 @@ defmodule Membrane.H26x.Parser.Utils do
     {actions ++ [end_of_stream: :output], state}
   end
 
-  @spec start_core(state(), term() | nil, Core.mode(), Core.stream_structure()) :: state()
-  defp start_core(state, framerate, mode, input_stream_structure) do
-    core =
-      Core.new(%{
+  @spec start_parsing_engine(
+          state(),
+          term() | nil,
+          ParsingEngine.mode(),
+          ParsingEngine.stream_structure()
+        ) :: state()
+  defp start_parsing_engine(state, framerate, mode, input_stream_structure) do
+    parsing_engine =
+      ParsingEngine.new(%{
         input_stream_structure: input_stream_structure,
         mode: mode,
         nalu_parser_mod: state.codec.nalu_parser_mod,
@@ -153,7 +160,7 @@ defmodule Membrane.H26x.Parser.Utils do
 
     %{
       state
-      | core: core,
+      | parsing_engine: parsing_engine,
         input_stream_structure: input_stream_structure,
         output_stream_structure: state.output_stream_structure || input_stream_structure,
         framerate: framerate || state.framerate
@@ -162,11 +169,12 @@ defmodule Membrane.H26x.Parser.Utils do
 
   @spec flush_and_process(map(), state()) :: {[action()], state()}
   defp flush_and_process(ctx, state) do
-    {access_units, core} = Core.flush(state.core)
-    process_access_units(access_units, ctx, %{state | core: core})
+    {access_units, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
+    process_access_units(access_units, ctx, %{state | parsing_engine: parsing_engine})
   end
 
-  @spec process_access_units([Core.access_unit()], map(), state()) :: {[action()], state()}
+  @spec process_access_units([ParsingEngine.access_unit()], map(), state()) ::
+          {[action()], state()}
   defp process_access_units(access_units, ctx, state) do
     Enum.flat_map_reduce(access_units, state, fn au, state ->
       {au, stream_format_actions, state} = handle_au_parameter_sets(au, ctx, state)
@@ -264,7 +272,10 @@ defmodule Membrane.H26x.Parser.Utils do
   end
 
   defp prepend_parameter_sets(state, parameter_sets) do
-    %{state | core: Core.prepend_parameter_sets(state.core, parameter_sets)}
+    %{
+      state
+      | parsing_engine: ParsingEngine.prepend_parameter_sets(state.parsing_engine, parameter_sets)
+    }
   end
 
   defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
@@ -291,7 +302,7 @@ defmodule Membrane.H26x.Parser.Utils do
   defp framerate(false), do: nil
   defp framerate(%{framerate: framerate}), do: framerate
 
-  @spec prepare_buffer_actions(Core.access_unit(), state()) :: {[action()], state()}
+  @spec prepare_buffer_actions(ParsingEngine.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
     keyframe? = keyframe?(au, state.codec)
     nalu_parser_mod = state.codec.nalu_parser_mod
@@ -332,7 +343,11 @@ defmodule Membrane.H26x.Parser.Utils do
 
   defp wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do
     payload =
-      Enum.map_join(au, <<>>, &Core.get_prefixed_nalu_payload(&1, output_stream_structure))
+      Enum.map_join(
+        au,
+        <<>>,
+        &ParsingEngine.get_prefixed_nalu_payload(&1, output_stream_structure)
+      )
 
     %Buffer{
       payload: payload,
@@ -347,7 +362,7 @@ defmodule Membrane.H26x.Parser.Utils do
     |> Enum.zip(prepare_metadata(:nalu, au, keyframe?, metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: Core.get_prefixed_nalu_payload(nalu, output_stream_structure),
+        payload: ParsingEngine.get_prefixed_nalu_payload(nalu, output_stream_structure),
         metadata: metadata,
         pts: pts,
         dts: dts

@@ -1,12 +1,12 @@
-defmodule Membrane.H26x.AUTimestampGeneratorTest do
+defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
   @moduledoc false
   use ExUnit.Case, async: true
 
-  alias Membrane.H26x.AUTimestampGenerator
+  alias Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   defmodule FakeGenerator do
     @moduledoc false
-    @behaviour Membrane.H26x.AUTimestampGenerator
+    @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
     @impl true
     def max_frame_reorder(), do: 15

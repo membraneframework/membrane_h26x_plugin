@@ -7,7 +7,7 @@ defmodule Membrane.H265.ProcessAllTest do
   import Membrane.Testing.Assertions
 
   alias Membrane.H265
-  alias Membrane.H26x.NALuSplitter
+  alias Membrane.H26x.ParsingEngine.NALuSplitter
   alias Membrane.Testing.Pipeline
 
   defp make_pipeline(in_path, out_path, parameter_sets) do

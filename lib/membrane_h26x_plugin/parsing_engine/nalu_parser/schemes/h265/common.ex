@@ -1,7 +1,7 @@
 defmodule Membrane.H265.NALuParser.Schemes.Common do
   @moduledoc false
 
-  alias Membrane.H26x.NALuParser.Scheme
+  alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
   @spec profile_tier_level() :: Scheme.t()
   def profile_tier_level() do
