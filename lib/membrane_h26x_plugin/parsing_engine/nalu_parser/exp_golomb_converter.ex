@@ -1,4 +1,4 @@
-defmodule Membrane.H26x.ParsingEngine.NALuParser.Schemes.ExpGolombConverter do
+defmodule Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter do
   @moduledoc false
 
   # This module holds function responsible for converting

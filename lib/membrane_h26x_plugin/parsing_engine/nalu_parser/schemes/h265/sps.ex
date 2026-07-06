@@ -7,7 +7,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
   import Bitwise
 
   alias Membrane.H265.NALuParser.Schemes.Common
-  alias Membrane.H26x.ParsingEngine.NALuParser.Schemes.ExpGolombConverter
+  alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
 
   @profiles_description [
     main: [profile_idc: 1],

@@ -5,8 +5,8 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   use Bunch.Access
 
+  alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
   alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
-  alias Membrane.H26x.ParsingEngine.NALuParser.Schemes.ExpGolombConverter
 
   @typedoc """
   A type defining the state of the scheme parser.

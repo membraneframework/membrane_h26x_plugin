@@ -343,7 +343,11 @@ defmodule Membrane.H26x.Utils do
 
   defp wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do
     payload =
-      Enum.map_join(au, <<>>, &ParsingEngine.get_prefixed_nalu_payload(&1, output_stream_structure))
+      Enum.map_join(
+        au,
+        <<>>,
+        &ParsingEngine.get_prefixed_nalu_payload(&1, output_stream_structure)
+      )
 
     %Buffer{
       payload: payload,

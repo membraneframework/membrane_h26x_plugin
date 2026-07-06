@@ -2,8 +2,8 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
   @moduledoc false
   @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
+  alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
   alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
-  alias Membrane.H26x.ParsingEngine.NALuParser.Schemes.ExpGolombConverter
 
   @profiles_description [
     high_cavlc_4_4_4_intra: [profile_idc: 44],
