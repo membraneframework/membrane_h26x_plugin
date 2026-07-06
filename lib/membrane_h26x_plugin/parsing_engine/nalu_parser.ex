@@ -4,6 +4,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
   # is a payload of a single NAL unit.
 
   alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParsingEngine
   alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @annexb_prefix_code <<0, 0, 0, 1>>
@@ -41,7 +42,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
   """
   @type t :: %__MODULE__{
           scheme_parser_state: SchemeParser.t(),
-          input_stream_structure: Membrane.H264.Parser.stream_structure()
+          input_stream_structure: ParsingEngine.stream_structure()
         }
   @enforce_keys [:input_stream_structure, :scheme_parser_state]
   defstruct @enforce_keys
@@ -50,7 +51,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
   Returns a structure holding a clear NALu parser state. `input_stream_structure`
   determines the prefixes of input NALU payloads.
   """
-  @spec new(Membrane.H264.Parser.stream_structure()) :: t()
+  @spec new(ParsingEngine.stream_structure()) :: t()
   def new(input_stream_structure \\ :annexb) do
     %__MODULE__{
       input_stream_structure: input_stream_structure,
@@ -124,7 +125,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
   Returns payload of the NALu with appropriate prefix generated based on output stream
   structure and prefix length.
   """
-  @spec get_prefixed_nalu_payload(NALu.t(), Membrane.H264.Parser.stream_structure(), boolean()) ::
+  @spec get_prefixed_nalu_payload(NALu.t(), ParsingEngine.stream_structure(), boolean()) ::
           binary()
   def get_prefixed_nalu_payload(nalu, output_stream_structure, stable_prefixing? \\ true) do
     case {output_stream_structure, stable_prefixing?} do
@@ -143,7 +144,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
     end
   end
 
-  @spec unprefix_nalu_payload(binary(), Membrane.H264.Parser.stream_structure()) ::
+  @spec unprefix_nalu_payload(binary(), ParsingEngine.stream_structure()) ::
           {stripped_prefix :: binary(), payload :: binary()}
   def unprefix_nalu_payload(nalu_payload, :annexb) do
     case nalu_payload do
@@ -158,7 +159,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
     {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
   end
 
-  @spec prefix_nalus_payloads([binary()], Membrane.H264.Parser.stream_structure()) :: binary()
+  @spec prefix_nalus_payloads([binary()], ParsingEngine.stream_structure()) :: binary()
   def prefix_nalus_payloads(nalus, :annexb) do
     Enum.join([<<>> | nalus], @annexb_prefix_code)
   end

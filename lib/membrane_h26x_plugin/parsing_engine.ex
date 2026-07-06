@@ -18,8 +18,14 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @type codec :: :h264 | :h265
 
+  @typedoc """
+  Structure of the H26x stream - either Annex B, where the NALus are separated by
+  a start code (`0x(00)000001`), or length-prefixed (as described in *ISO/IEC 14496-15*),
+  where each NALu is prefixed with its length.
+  """
   @type stream_structure ::
-          Membrane.H264.Parser.stream_structure() | Membrane.H265.Parser.stream_structure()
+          :annexb
+          | {codec_tag :: :avc1 | :avc3 | :hvc1 | :hev1, nalu_length_size :: pos_integer()}
 
   @typedoc """
   The structure of the input stream.
