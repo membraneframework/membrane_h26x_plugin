@@ -88,9 +88,11 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @doc """
   Creates a parser for the given input stream structure and mode.
+
+  Raises an `ArgumentError` if the configured codec is not supported.
   """
   @spec new(config()) :: t()
-  def new(config) do
+  def new(%{codec: codec} = config) when codec in [:h264, :h265] do
     {input_stream_structure, parameter_sets} =
       resolve_input_stream_structure(config.codec, config.input_stream_structure)
 
@@ -114,6 +116,11 @@ defmodule Membrane.H26x.ParsingEngine do
     |> prepend_parameter_sets(parameter_sets)
   end
 
+  def new(config) do
+    raise ArgumentError,
+          "Unsupported codec: #{inspect(config[:codec])}. The supported codecs are :h264 and :h265."
+  end
+
   @spec resolve_input_stream_structure(codec(), input_stream_structure()) ::
           {stream_structure(), [binary()]}
   defp resolve_input_stream_structure(codec, {codec_tag, dcr}) when is_binary(dcr) do
@@ -134,24 +141,15 @@ defmodule Membrane.H26x.ParsingEngine do
 
   defp dcr_module(:h264), do: Membrane.H264.DecoderConfigurationRecord
   defp dcr_module(:h265), do: Membrane.H265.DecoderConfigurationRecord
-  defp dcr_module(codec), do: raise_unsupported_codec(codec)
 
   defp nalu_parser_mod(:h264), do: Membrane.H264.NALuParser
   defp nalu_parser_mod(:h265), do: Membrane.H265.NALuParser
-  defp nalu_parser_mod(codec), do: raise_unsupported_codec(codec)
 
   defp au_splitter_mod(:h264), do: Membrane.H264.AUSplitter
   defp au_splitter_mod(:h265), do: Membrane.H265.AUSplitter
-  defp au_splitter_mod(codec), do: raise_unsupported_codec(codec)
 
   defp au_timestamp_generator_mod(:h264), do: Membrane.H264.AUTimestampGenerator
   defp au_timestamp_generator_mod(:h265), do: Membrane.H265.AUTimestampGenerator
-  defp au_timestamp_generator_mod(codec), do: raise_unsupported_codec(codec)
-
-  @spec raise_unsupported_codec(term()) :: no_return()
-  defp raise_unsupported_codec(codec) do
-    raise "Unsupported codec: #{inspect(codec)}. The supported codecs are :h264 and :h265."
-  end
 
   @doc """
   Changes the parser mode, keeping the accumulated parsing state. To be used after
