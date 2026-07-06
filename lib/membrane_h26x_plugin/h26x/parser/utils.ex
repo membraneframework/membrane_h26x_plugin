@@ -322,20 +322,17 @@ defmodule Membrane.H26x.Parser.Utils do
   end
 
   defp should_forward_au(au, keyframe?, skip_until_keyframe?, nalu_parser_mod) do
-    with true <- Enum.all?(au, &(&1.status == :valid)),
-         true <- nalu_parser_mod.get_first_vcl_nalu(au) != nil do
+    if Enum.all?(au, &(&1.status == :valid)) and nalu_parser_mod.get_first_vcl_nalu(au) != nil do
       skip_until_keyframe? = skip_until_keyframe? and not keyframe?
       {not skip_until_keyframe?, skip_until_keyframe?}
     else
-      false -> {false, skip_until_keyframe?}
+      {false, skip_until_keyframe?}
     end
   end
 
   defp wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do
     payload =
-      Enum.reduce(au, <<>>, fn nalu, acc ->
-        acc <> Core.get_prefixed_nalu_payload(nalu, output_stream_structure)
-      end)
+      Enum.map_join(au, <<>>, &Core.get_prefixed_nalu_payload(&1, output_stream_structure))
 
     %Buffer{
       payload: payload,

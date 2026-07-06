@@ -30,31 +30,38 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
   """
   @spec generate([Membrane.H26x.NALu.t()], Membrane.H264.Parser.stream_structure()) ::
           binary() | nil
-  def generate(parameter_sets, {avc, nalu_length_size}) do
-    spss = for %{type: :sps, payload: payload} <- parameter_sets, do: payload
-    ppss = for %{type: :pps, payload: payload} <- parameter_sets, do: payload
+  def generate(parameter_sets, stream_structure) do
+    parameter_sets_by_type =
+      Map.merge(%{sps: [], pps: []}, Enum.group_by(parameter_sets, & &1.type))
 
-    case {spss, avc} do
-      {[], _avc} ->
-        nil
+    do_generate(parameter_sets_by_type, stream_structure)
+  end
 
-      {spss, :avc1} ->
-        <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
+  @spec do_generate(
+          %{sps: [Membrane.H26x.NALu.t()], pps: [Membrane.H26x.NALu.t()]},
+          Membrane.H264.Parser.stream_structure()
+        ) :: binary() | nil
+  defp do_generate(%{sps: []}, _stream_structure) do
+    nil
+  end
 
+  defp do_generate(%{sps: spss, pps: ppss}, {avc, nalu_length_size}) do
+    <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss).payload
+
+    cond do
+      avc == :avc1 ->
         <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, length(spss)::5-integer, encode_parameter_sets(spss)::binary,
           length(ppss)::8-integer, encode_parameter_sets(ppss)::binary>>
 
-      {spss, :avc3} ->
-        <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
-
+      avc == :avc3 ->
         <<1, profile, compatibility, level, 0b111111::6, nalu_length_size - 1::2-integer,
           0b111::3, 0::5, 0::8>>
     end
   end
 
   defp encode_parameter_sets(pss) do
-    Enum.map_join(pss, &<<byte_size(&1)::16-integer, &1::binary>>)
+    Enum.map_join(pss, &<<byte_size(&1.payload)::16-integer, &1.payload::binary>>)
   end
 
   @spec remove_parameter_sets(binary()) :: binary()

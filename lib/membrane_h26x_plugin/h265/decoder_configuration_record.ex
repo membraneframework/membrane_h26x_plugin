@@ -50,18 +50,21 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   """
   @spec generate([NALu.t()], Membrane.H265.Parser.stream_structure()) :: binary() | nil
   def generate(parameter_sets, stream_structure) do
-    vpss = Enum.filter(parameter_sets, &(&1.type == :vps))
-    spss = Enum.filter(parameter_sets, &(&1.type == :sps))
-    ppss = Enum.filter(parameter_sets, &(&1.type == :pps))
+    parameter_sets_by_type =
+      Map.merge(%{vps: [], sps: [], pps: []}, Enum.group_by(parameter_sets, & &1.type))
 
-    do_generate(vpss, spss, ppss, stream_structure)
+    do_generate(parameter_sets_by_type, stream_structure)
   end
 
-  defp do_generate(_vpss, [], _ppss, _stream_structure) do
+  @spec do_generate(
+          %{vps: [NALu.t()], sps: [NALu.t()], pps: [NALu.t()]},
+          Membrane.H265.Parser.stream_structure()
+        ) :: binary() | nil
+  defp do_generate(%{sps: []}, _stream_structure) do
     nil
   end
 
-  defp do_generate(vpss, spss, ppss, {avc, nalu_length_size}) do
+  defp do_generate(%{vps: vpss, sps: spss, pps: ppss}, {avc, nalu_length_size}) do
     %NALu{
       parsed_fields: %{
         profile_space: profile_space,
