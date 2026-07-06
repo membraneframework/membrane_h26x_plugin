@@ -78,4 +78,10 @@ defmodule Membrane.H265.NALuTypes do
 
   defguard is_vcl_nalu_type(nalu_type) when nalu_type in @vcl_nalu_types
   defguard is_irap_nalu_type(nalu_type) when nalu_type in @irap_nalu_types
+
+  @doc """
+  Returns the types of the IRAP (Intra Random Access Point) NAL units.
+  """
+  @spec irap_nalu_types() :: [nalu_type()]
+  def irap_nalu_types(), do: @irap_nalu_types
 end

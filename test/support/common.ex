@@ -7,7 +7,7 @@ defmodule Membrane.H26x.Support.Common do
   @spec prepare_h264_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H26x.Parser.stream_structure(),
+          Membrane.H26x.Parser.Core.stream_structure(),
           boolean()
         ) :: list
 
@@ -36,7 +36,7 @@ defmodule Membrane.H26x.Support.Common do
   @spec prepare_h265_buffers(
           binary,
           :au | :bytestream | :nalu,
-          Membrane.H26x.Parser.stream_structure(),
+          Membrane.H26x.Parser.Core.stream_structure(),
           boolean()
         ) :: list
 

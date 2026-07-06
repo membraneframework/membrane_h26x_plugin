@@ -1,8 +1,8 @@
 # Membrane H26x Plugin
 
-[![Hex.pm](https://img.shields.io/hexpm/v/membrane_h264_plugin.svg)](https://hex.pm/packages/membrane_h26x_plugin)
+[![Hex.pm](https://img.shields.io/hexpm/v/membrane_h26x_plugin.svg)](https://hex.pm/packages/membrane_h26x_plugin)
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/membrane_h26x_plugin)
-[![CircleCI](https://circleci.com/gh/membraneframework/membrane_h264_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_h26x_plugin)
+[![CircleCI](https://circleci.com/gh/membraneframework/membrane_h26x_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_h26x_plugin)
 
 Membrane H.264 and H.265 parsers.
 It is a pair of Membrane elements responsible for parsing the incoming H.264 and H.265 streams. The parsing is done as a sequence of the following steps:

@@ -3,13 +3,13 @@ defmodule Membrane.H26x.NALuSplitter do
   A module with functions responsible for splitting the H26x streams into the NAL units.
   """
 
-  alias Membrane.H26x.Parser
+  alias Membrane.H26x.Parser.Core
 
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
   @opaque t :: %__MODULE__{
-            input_stream_structure: Parser.stream_structure(),
+            input_stream_structure: Core.stream_structure(),
             unparsed_payload: binary()
           }
 

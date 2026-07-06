@@ -26,16 +26,27 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
         }
 
   @doc """
-  Generates a DCR based on given PPSs and SPSs.
+  Generates a DCR based on the given parameter set NAL units.
   """
-  @spec generate([binary()], [binary()], Membrane.H264.Parser.stream_structure()) ::
+  @spec generate([Membrane.H26x.NALu.t()], Membrane.H264.Parser.stream_structure()) ::
           binary() | nil
-  def generate([], _ppss, _stream_structure) do
+  def generate(parameter_sets, stream_structure) do
+    parameter_sets_by_type =
+      Map.merge(%{sps: [], pps: []}, Enum.group_by(parameter_sets, & &1.type))
+
+    do_generate(parameter_sets_by_type, stream_structure)
+  end
+
+  @spec do_generate(
+          %{sps: [Membrane.H26x.NALu.t()], pps: [Membrane.H26x.NALu.t()]},
+          Membrane.H264.Parser.stream_structure()
+        ) :: binary() | nil
+  defp do_generate(%{sps: []}, _stream_structure) do
     nil
   end
 
-  def generate(spss, ppss, {avc, nalu_length_size}) do
-    <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss)
+  defp do_generate(%{sps: spss, pps: ppss}, {avc, nalu_length_size}) do
+    <<_idc_and_type, profile, compatibility, level, _rest::binary>> = List.last(spss).payload
 
     cond do
       avc == :avc1 ->
@@ -50,7 +61,7 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
   end
 
   defp encode_parameter_sets(pss) do
-    Enum.map_join(pss, &<<byte_size(&1)::16-integer, &1::binary>>)
+    Enum.map_join(pss, &<<byte_size(&1.payload)::16-integer, &1.payload::binary>>)
   end
 
   @spec remove_parameter_sets(binary()) :: binary()
