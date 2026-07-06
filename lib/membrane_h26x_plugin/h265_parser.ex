@@ -178,7 +178,7 @@ defmodule Membrane.H265.Parser do
       end
 
     state =
-      Utils.init_state(
+      Utils.init_state(@codec,
         output_stream_structure: output_stream_structure,
         generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
         output_alignment: opts.output_alignment,
@@ -193,7 +193,7 @@ defmodule Membrane.H265.Parser do
   @impl true
   def handle_stream_format(:input, stream_format, ctx, state) do
     input = parse_raw_input_stream_structure(stream_format)
-    Utils.handle_stream_format(@codec, input, Map.get(stream_format, :framerate), ctx, state)
+    Utils.handle_stream_format(input, Map.get(stream_format, :framerate), ctx, state)
   end
 
   @impl true

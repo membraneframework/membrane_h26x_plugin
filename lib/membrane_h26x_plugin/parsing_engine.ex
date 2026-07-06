@@ -54,7 +54,6 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @typedoc false
   @type t :: %__MODULE__{
-          codec: codec(),
           nalu_splitter: NALuSplitter.t(),
           nalu_parser: NALuParser.t(),
           au_splitter: AUSplitter.t(),
@@ -69,7 +68,6 @@ defmodule Membrane.H26x.ParsingEngine do
         }
 
   @enforce_keys [
-    :codec,
     :nalu_splitter,
     :nalu_parser,
     :au_splitter,
@@ -97,7 +95,6 @@ defmodule Membrane.H26x.ParsingEngine do
       end
 
     %__MODULE__{
-      codec: config.codec,
       nalu_splitter: NALuSplitter.new(input_stream_structure),
       nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
