@@ -124,7 +124,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       payload = File.read!("./test/fixtures/h264/input-30-240p-vp-sps-pps.h264")
       {nalus_payloads, _splitter} = NALuSplitter.split(payload, true, NALuSplitter.new())
 
-      {nalus, _state} = H264.NALuParser.parse_nalus(nalus_payloads, H264.NALuParser.new())
+      {nalus, _state} =
+        H26x.NALuParser.parse_nalus(H264.NALuParser, nalus_payloads, H26x.NALuParser.new())
 
       spss = Enum.filter(nalus, &(&1.type == :sps))
 

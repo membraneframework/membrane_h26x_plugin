@@ -2,9 +2,11 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
   @moduledoc false
   use ExUnit.Case, async: true
 
+  alias Membrane.H26x.AUTimestampGenerator
+
   defmodule FakeGenerator do
     @moduledoc false
-    use Membrane.H26x.AUTimestampGenerator
+    @behaviour Membrane.H26x.AUTimestampGenerator
 
     @impl true
     def max_frame_reorder(), do: 15
@@ -26,9 +28,9 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
   # Returns `[{POC, PTS, DTS}]` in decode order
   defp run(config, depth, pocs) do
     aus = Enum.map(pocs, &au(&1, depth))
-    state = FakeGenerator.new(Map.merge(%{framerate: {1, 1}}, config))
+    state = AUTimestampGenerator.new(FakeGenerator, Map.merge(%{framerate: {1, 1}}, config))
 
-    {emitted, _state} = FakeGenerator.generate_timestamps(aus, true, state)
+    {emitted, _state} = AUTimestampGenerator.generate_timestamps(FakeGenerator, aus, true, state)
 
     emitted
     |> Enum.map(fn au ->
@@ -104,10 +106,12 @@ defmodule Membrane.H26x.AUTimestampGeneratorTest do
 
   describe "invalid access units" do
     test "passes through access units without a valid VCL NALu untouched" do
-      state = FakeGenerator.new(%{framerate: {1, 1}, add_dts_offset: false})
+      state = AUTimestampGenerator.new(FakeGenerator, %{framerate: {1, 1}, add_dts_offset: false})
 
       invalid_au = [%{parsed_fields: %{}, status: :error, timestamps: {nil, nil}}]
-      {emitted, _state} = FakeGenerator.generate_timestamps([invalid_au], state)
+
+      {emitted, _state} =
+        AUTimestampGenerator.generate_timestamps(FakeGenerator, [invalid_au], state)
 
       assert emitted == [invalid_au]
     end

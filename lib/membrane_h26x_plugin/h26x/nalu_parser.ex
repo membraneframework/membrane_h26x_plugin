@@ -1,0 +1,293 @@
+defmodule Membrane.H26x.NALuParser do
+  @moduledoc false
+  # A module providing functionality of parsing a stream of binaries, out of which each
+  # is a payload of a single NAL unit.
+
+  alias Membrane.H26x.NALu
+  alias Membrane.H26x.NALuParser.SchemeParser
+
+  @annexb_prefix_code <<0, 0, 0, 1>>
+
+  @type nalu_type :: atom()
+
+  @doc """
+  Splits an unprefixed NALu payload into its header and body binaries.
+  """
+  @callback get_nalu_header_and_body(binary()) :: {binary(), binary()}
+
+  @doc """
+  Parses the NALu header binary into its fields, returning them with the updated scheme parser state.
+  """
+  @callback parse_nalu_header(binary(), SchemeParser.t()) :: {map(), SchemeParser.t()}
+
+  @doc """
+  Maps the raw `nal_unit_type` integer to its NALu type atom.
+  """
+  @callback get_nalu_type(non_neg_integer()) :: nalu_type()
+
+  @doc """
+  Parses the fields carried in the NALu body, returning `:error` if it is malformed.
+  """
+  @callback parse_nalu_body(binary(), nalu_type(), SchemeParser.t()) ::
+              {:ok, map(), SchemeParser.t()} | {:error, SchemeParser.t()}
+
+  @doc """
+  Returns the first VCL (slice) NALu of the access unit, or `nil` if there is none.
+  """
+  @callback get_first_vcl_nalu([NALu.t()]) :: NALu.t() | nil
+
+  @typedoc """
+  A structure holding the state of the NALu parser.
+  """
+  @type t :: %__MODULE__{
+          scheme_parser_state: SchemeParser.t(),
+          input_stream_structure: Membrane.H264.Parser.stream_structure()
+        }
+  @enforce_keys [:input_stream_structure, :scheme_parser_state]
+  defstruct @enforce_keys
+
+  @doc """
+  Returns a structure holding a clear NALu parser state. `input_stream_structure`
+  determines the prefixes of input NALU payloads.
+  """
+  @spec new(Membrane.H264.Parser.stream_structure()) :: t()
+  def new(input_stream_structure \\ :annexb) do
+    %__MODULE__{
+      input_stream_structure: input_stream_structure,
+      scheme_parser_state: SchemeParser.new()
+    }
+  end
+
+  @doc """
+  Parses a list of binaries, each representing a single NALu, removing their prefixes
+  (if they exist).
+
+  Each returned structure contains parsed fields fetched from the corresponding NALu.
+  When `payload_prefixed?` is true each input binary is expected to contain one of:
+  * prefix defined as the *"Annex B"* in the H26x recommendation document.
+  * prefix of size defined in state describing the length of the NALU in bytes, as described in *ISO/IEC 14496-15*.
+  """
+  @spec parse_nalus(module(), [binary()], NALu.timestamps(), boolean(), t()) ::
+          {[NALu.t()], t()}
+  def parse_nalus(
+        module,
+        nalus_payloads,
+        timestamps \\ {nil, nil},
+        payload_prefixed? \\ true,
+        state
+      ) do
+    Enum.map_reduce(nalus_payloads, state, fn nalu_payload, state ->
+      parse_nalu(module, nalu_payload, timestamps, payload_prefixed?, state)
+    end)
+  end
+
+  @spec parse_nalu(module(), binary(), NALu.timestamps(), boolean(), t()) ::
+          {NALu.t(), t()}
+  defp parse_nalu(module, nalu_payload, timestamps, payload_prefixed?, state) do
+    {prefix, unprefixed_nalu_payload} =
+      if payload_prefixed? do
+        unprefix_nalu_payload(nalu_payload, state.input_stream_structure)
+      else
+        {<<>>, nalu_payload}
+      end
+
+    {nalu_header, nalu_body} = module.get_nalu_header_and_body(unprefixed_nalu_payload)
+
+    new_scheme_parser_state = SchemeParser.new(state.scheme_parser_state)
+
+    {parsed_fields, scheme_parser_state} =
+      module.parse_nalu_header(nalu_header, new_scheme_parser_state)
+
+    type = module.get_nalu_type(parsed_fields.nal_unit_type)
+
+    {status, parsed_fields, scheme_parser_state} =
+      case module.parse_nalu_body(nalu_body, type, scheme_parser_state) do
+        {:ok, parsed_fields, state} -> {:valid, parsed_fields, state}
+        {:error, state} -> {:error, SchemeParser.get_local_state(state), state}
+      end
+
+    nalu = %NALu{
+      parsed_fields: parsed_fields,
+      type: type,
+      status: status,
+      stripped_prefix: prefix,
+      payload: unprefixed_nalu_payload,
+      timestamps: timestamps
+    }
+
+    state = %{state | scheme_parser_state: scheme_parser_state}
+
+    {nalu, state}
+  end
+
+  @doc """
+  Returns payload of the NALu with appropriate prefix generated based on output stream
+  structure and prefix length.
+  """
+  @spec get_prefixed_nalu_payload(NALu.t(), Membrane.H264.Parser.stream_structure(), boolean()) ::
+          binary()
+  def get_prefixed_nalu_payload(nalu, output_stream_structure, stable_prefixing? \\ true) do
+    case {output_stream_structure, stable_prefixing?} do
+      {:annexb, true} ->
+        case nalu.stripped_prefix do
+          <<0, 0, 1>> -> <<0, 0, 1, nalu.payload::binary>>
+          <<0, 0, 0, 1>> -> <<0, 0, 0, 1, nalu.payload::binary>>
+          _prefix -> @annexb_prefix_code <> nalu.payload
+        end
+
+      {:annexb, false} ->
+        @annexb_prefix_code <> nalu.payload
+
+      {{_codec_tag, nalu_length_size}, _stable_prefixing?} ->
+        <<byte_size(nalu.payload)::integer-size(nalu_length_size)-unit(8), nalu.payload::binary>>
+    end
+  end
+
+  @spec unprefix_nalu_payload(binary(), Membrane.H264.Parser.stream_structure()) ::
+          {stripped_prefix :: binary(), payload :: binary()}
+  def unprefix_nalu_payload(nalu_payload, :annexb) do
+    case nalu_payload do
+      <<0, 0, 1, rest::binary>> -> {<<0, 0, 1>>, rest}
+      <<0, 0, 0, 1, rest::binary>> -> {<<0, 0, 0, 1>>, rest}
+    end
+  end
+
+  def unprefix_nalu_payload(nalu_payload, {_codec_tag, nalu_length_size}) do
+    <<nalu_length::integer-size(^nalu_length_size)-unit(8), rest::binary>> = nalu_payload
+
+    {<<nalu_length::integer-size(nalu_length_size)-unit(8)>>, rest}
+  end
+
+  @spec prefix_nalus_payloads([binary()], Membrane.H264.Parser.stream_structure()) :: binary()
+  def prefix_nalus_payloads(nalus, :annexb) do
+    Enum.join([<<>> | nalus], @annexb_prefix_code)
+  end
+
+  def prefix_nalus_payloads(nalus, {_codec_tag, nalu_length_size}) do
+    Enum.map_join(nalus, fn nalu ->
+      <<byte_size(nalu)::integer-size(nalu_length_size)-unit(8), nalu::binary>>
+    end)
+  end
+end
+
+defmodule Membrane.H264.NALuParser do
+  @moduledoc false
+  # This module is an extension to `Membrane.H26x.NALuParser` and contains
+  # H264 specific functions.
+
+  @behaviour Membrane.H26x.NALuParser
+
+  require Membrane.Logger
+  require Membrane.H264.NALuTypes, as: NALuTypes
+
+  alias Membrane.H264.NALuParser.Schemes
+  alias Membrane.H26x.NALuParser.SchemeParser
+
+  @impl true
+  def get_nalu_header_and_body(<<nalu_header::binary-size(1), nalu_body::binary>>),
+    do: {nalu_header, nalu_body}
+
+  @impl true
+  def parse_nalu_header(nalu_header, state) do
+    # Parsing of the header cannot ever fail.
+    {:ok, parsed_fields, state} =
+      SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+
+    {parsed_fields, state}
+  end
+
+  @impl true
+  def get_nalu_type(nal_unit_type), do: NALuTypes.get_type(nal_unit_type)
+
+  @impl true
+  def get_first_vcl_nalu(au), do: Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+
+  @impl true
+  def parse_nalu_body(nalu_body, nalu_type, state) do
+    case nalu_type do
+      :sps ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.SPS, state)
+
+      :pps ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.PPS, state)
+
+      :idr ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.Slice, state)
+
+      :non_idr ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.Slice, state)
+
+      _unknown_nalu_type ->
+        {:ok, %{}, state}
+    end
+  rescue
+    error ->
+      Membrane.Logger.warning(
+        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
+      )
+
+      {:error, state}
+  end
+end
+
+defmodule Membrane.H265.NALuParser do
+  @moduledoc false
+  # This module is an extension to `Membrane.H26x.NALuParser` and contains
+  # H265 specific functions.
+
+  @behaviour Membrane.H26x.NALuParser
+
+  require Membrane.H265.NALuTypes
+  require Membrane.Logger
+
+  alias Membrane.H265.NALuParser.Schemes
+  alias Membrane.H265.NALuTypes
+  alias Membrane.H26x.NALuParser.SchemeParser
+
+  @impl true
+  def get_nalu_header_and_body(<<nalu_header::binary-size(2), nalu_body::binary>>),
+    do: {nalu_header, nalu_body}
+
+  @impl true
+  def parse_nalu_header(nalu_header, state) do
+    # Parsing of the header cannot ever fail.
+    {:ok, parsed_fields, state} =
+      SchemeParser.parse_with_scheme(nalu_header, Schemes.NALuHeader, state)
+
+    {parsed_fields, state}
+  end
+
+  @impl true
+  def get_nalu_type(nal_unit_type), do: NALuTypes.get_type(nal_unit_type)
+
+  @impl true
+  def get_first_vcl_nalu(au), do: Enum.find(au, &NALuTypes.is_vcl_nalu_type(&1.type))
+
+  @impl true
+  def parse_nalu_body(nalu_body, nalu_type, state) do
+    case nalu_type do
+      :vps ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.VPS, state)
+
+      :sps ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.SPS, state)
+
+      :pps ->
+        SchemeParser.parse_with_scheme(nalu_body, Schemes.PPS, state)
+
+      type ->
+        if NALuTypes.is_vcl_nalu_type(type) do
+          SchemeParser.parse_with_scheme(nalu_body, Schemes.Slice, state)
+        else
+          {:ok, SchemeParser.get_local_state(state), state}
+        end
+    end
+  rescue
+    error ->
+      Membrane.Logger.warning(
+        "Failed to parse a #{nalu_type} NALu, marking it as erroneous: #{inspect(error)}"
+      )
+
+      {:error, state}
+  end
+end

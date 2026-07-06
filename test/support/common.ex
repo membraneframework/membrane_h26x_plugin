@@ -2,7 +2,7 @@ defmodule Membrane.H26x.Support.Common do
   @moduledoc false
 
   alias Membrane.{H264, H265}
-  alias Membrane.H26x.NALuSplitter
+  alias Membrane.H26x.{AUSplitter, NALuParser, NALuSplitter}
 
   @spec prepare_h264_buffers(
           binary,
@@ -78,15 +78,18 @@ defmodule Membrane.H26x.Support.Common do
          au_splitter_mod
        ) do
     {nalus_payloads, _nalu_splitter} = NALuSplitter.split(binary, true, NALuSplitter.new(:annexb))
-    {nalus, _nalu_parser} = nalu_parser_mod.parse_nalus(nalus_payloads, nalu_parser_mod.new())
-    {aus, _au_splitter} = au_splitter_mod.split(nalus, true, au_splitter_mod.new())
+
+    {nalus, _nalu_parser} =
+      NALuParser.parse_nalus(nalu_parser_mod, nalus_payloads, NALuParser.new())
+
+    {aus, _au_splitter} = AUSplitter.split(au_splitter_mod, nalus, true, AUSplitter.new())
 
     case mode do
       :nalu_aligned ->
         Enum.map_reduce(aus, 0, fn au, ts ->
           {Enum.map(au, fn nalu ->
              nalu_payload =
-               nalu_parser_mod.get_prefixed_nalu_payload(
+               NALuParser.get_prefixed_nalu_payload(
                  nalu,
                  output_stream_structure,
                  stable_reprefixing?
@@ -103,7 +106,7 @@ defmodule Membrane.H26x.Support.Common do
           {%Membrane.Buffer{
              payload:
                Enum.map_join(au, fn nalu ->
-                 nalu_parser_mod.get_prefixed_nalu_payload(
+                 NALuParser.get_prefixed_nalu_payload(
                    nalu,
                    output_stream_structure,
                    stable_reprefixing?
