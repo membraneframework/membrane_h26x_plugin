@@ -3,8 +3,10 @@ defmodule Membrane.H26x.ParsingEngine do
   Membrane-agnostic H26x parsing engine.
 
   Splits incoming payloads into NAL units, parses them and groups them into
-  access units, optionally generating best-effort timestamps. Codec-specific
-  behaviour is selected via the `:codec` field of `t:config/0`.
+  access units, optionally generating best-effort timestamps. Each produced
+  access unit is annotated with the parameter sets active at its position in
+  the stream. Codec-specific behaviour is selected via the `:codec` field of
+  `t:config/0`.
   """
 
   alias Membrane.H26x.NALu
@@ -13,7 +15,8 @@ defmodule Membrane.H26x.ParsingEngine do
     AUSplitter,
     AUTimestampGenerator,
     NALuParser,
-    NALuSplitter
+    NALuSplitter,
+    ParameterSetCache
   }
 
   @type codec :: :h264 | :h265
@@ -51,6 +54,13 @@ defmodule Membrane.H26x.ParsingEngine do
   @type access_unit :: [NALu.t()]
 
   @typedoc """
+  An access unit annotated with the parameter sets active at its position in the
+  stream - the most recent set per parameter set type and id, including the sets
+  carried by the access unit itself.
+  """
+  @type access_unit_with_parameter_sets :: {access_unit(), [NALu.t()]}
+
+  @typedoc """
   If set to a map, timestamps are generated based on the provided constant framerate
   (available only for the `:bytestream` input alignment). `:add_dts_offset` shifts DTS values so that
   they don't exceed PTS values, defaults to `true`.
@@ -83,6 +93,7 @@ defmodule Membrane.H26x.ParsingEngine do
           nalu_parser: NALuParser.t(),
           au_splitter: AUSplitter.t(),
           au_timestamp_generator: AUTimestampGenerator.state() | nil,
+          parameter_set_cache: ParameterSetCache.t(),
           input_alignment: input_alignment(),
           input_stream_structure: stream_structure(),
           previous_buffer_timestamps: NALu.timestamps() | nil,
@@ -97,6 +108,7 @@ defmodule Membrane.H26x.ParsingEngine do
     :nalu_parser,
     :au_splitter,
     :au_timestamp_generator,
+    :parameter_set_cache,
     :input_alignment,
     :input_stream_structure,
     :nalu_parser_mod,
@@ -126,6 +138,7 @@ defmodule Membrane.H26x.ParsingEngine do
       nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
+      parameter_set_cache: ParameterSetCache.new(),
       input_alignment: config.input_alignment,
       input_stream_structure: input_stream_structure,
       nalu_parser_mod: nalu_parser_mod(config.codec),
@@ -195,9 +208,16 @@ defmodule Membrane.H26x.ParsingEngine do
   defdelegate get_prefixed_nalu_payload(nalu, stream_structure), to: NALuParser
 
   @doc """
+  Returns the parameter sets currently active in the stream - the most recent set
+  per parameter set type and id.
+  """
+  @spec active_parameter_sets(t()) :: [NALu.t()]
+  def active_parameter_sets(engine), do: engine.parameter_set_cache
+
+  @doc """
   Feeds a payload through the parser, returning the access units completed by it.
   """
-  @spec push(t(), binary(), NALu.timestamps()) :: {[access_unit()], t()}
+  @spec push(t(), binary(), NALu.timestamps()) :: {[access_unit_with_parameter_sets()], t()}
   def push(engine, payload, timestamps \\ {nil, nil}) do
     {pts, dts} = timestamps
     payload = engine.pending_payload <> payload
@@ -215,12 +235,13 @@ defmodule Membrane.H26x.ParsingEngine do
   Drains all buffered data into access units. To be used on an input alignment change
   or end of stream.
   """
-  @spec flush(t()) :: {[access_unit()], t()}
+  @spec flush(t()) :: {[access_unit_with_parameter_sets()], t()}
   def flush(engine) do
     parse(engine, <<>>, engine.previous_buffer_timestamps || {nil, nil}, _flush? = true)
   end
 
-  @spec parse(t(), binary(), NALu.timestamps(), boolean()) :: {[access_unit()], t()}
+  @spec parse(t(), binary(), NALu.timestamps(), boolean()) ::
+          {[access_unit_with_parameter_sets()], t()}
   defp parse(engine, payload, timestamps, flush?) do
     {nalus_payloads, nalu_splitter} =
       NALuSplitter.split(
@@ -252,7 +273,15 @@ defmodule Membrane.H26x.ParsingEngine do
         au_splitter: au_splitter
     }
 
-    maybe_generate_timestamps(access_units, flush?, engine)
+    {access_units, engine} = maybe_generate_timestamps(access_units, flush?, engine)
+
+    {access_units, parameter_set_cache} =
+      Enum.map_reduce(access_units, engine.parameter_set_cache, fn au, cache ->
+        cache = ParameterSetCache.put(cache, au)
+        {{au, cache}, cache}
+      end)
+
+    {access_units, %{engine | parameter_set_cache: parameter_set_cache}}
   end
 
   defguardp is_timestamp_generator_active(engine)
