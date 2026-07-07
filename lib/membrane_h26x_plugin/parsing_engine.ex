@@ -39,6 +39,11 @@ defmodule Membrane.H26x.ParsingEngine do
           stream_structure()
           | {codec_tag :: :avc1 | :avc3 | :hvc1 | :hev1, dcr :: binary()}
 
+  @typedoc """
+  Alignment of the payloads fed to the engine - an arbitrary stream of bytes (`:bytestream`),
+  a single NAL unit per payload (`:nalu_aligned`) or a whole access unit per payload
+  (`:au_aligned`).
+  """
   @type mode :: :bytestream | :nalu_aligned | :au_aligned
 
   @typedoc """
@@ -46,16 +51,31 @@ defmodule Membrane.H26x.ParsingEngine do
   """
   @type access_unit :: [NALu.t()]
 
+  @typedoc """
+  If set to a map, timestamps are generated based on the provided constant framerate
+  (available only in `:bytestream` mode). `:add_dts_offset` shifts DTS values so that
+  they don't exceed PTS values, defaults to `true`.
+  """
+  @type generate_best_effort_timestamps ::
+          false
+          | %{
+              :framerate => {frames :: pos_integer(), seconds :: pos_integer()},
+              optional(:add_dts_offset) => boolean()
+            }
+
+  @typedoc """
+  Configuration of the parsing engine:
+  * `:codec` - the codec of the parsed stream, either `:h264` or `:h265`.
+  * `:input_stream_structure` - see `t:input_stream_structure/0`.
+  * `:mode` - see `t:mode/0`.
+  * `:generate_best_effort_timestamps` - see `t:generate_best_effort_timestamps/0`.
+    Defaults to `false`.
+  """
   @type config :: %{
           :codec => codec(),
           :input_stream_structure => input_stream_structure(),
           :mode => mode(),
-          optional(:generate_best_effort_timestamps) =>
-            false
-            | %{
-                :framerate => {frames :: pos_integer(), seconds :: pos_integer()},
-                optional(:add_dts_offset) => boolean()
-              }
+          optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps()
         }
 
   @typedoc false
