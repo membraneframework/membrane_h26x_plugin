@@ -5,7 +5,7 @@ defmodule Membrane.H26x.Utils do
   # `Membrane.H264.Parser` and `Membrane.H265.Parser` elements.
 
   alias Membrane.Buffer
-  alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParameterSetCache
   alias Membrane.H26x.ParsingEngine
 
   @typedoc """
@@ -22,7 +22,7 @@ defmodule Membrane.H26x.Utils do
           input_stream_structure: ParsingEngine.stream_structure() | nil,
           output_stream_structure: ParsingEngine.stream_structure() | nil,
           framerate: term() | nil,
-          cached_parameter_sets: [NALu.t()]
+          cached_parameter_sets: ParameterSetCache.t()
         }
 
   @type action :: Membrane.Element.Action.t()
@@ -217,7 +217,7 @@ defmodule Membrane.H26x.Utils do
 
     state = %{
       state
-      | cached_parameter_sets: cache_parameter_sets(state.cached_parameter_sets, parameter_sets)
+      | cached_parameter_sets: ParameterSetCache.put(state.cached_parameter_sets, parameter_sets)
     }
 
     stream_format_candidate =
@@ -292,30 +292,6 @@ defmodule Membrane.H26x.Utils do
 
   defp incoming_parameter_sets(_structure, parameter_sets, _is_first, state),
     do: parameter_sets -- Enum.map(state.cached_parameter_sets, & &1.payload)
-
-  @doc """
-  Merges new parameter sets into the cache.
-
-  A parameter set redefined under an already used id replaces the cached one,
-  so the cache always holds only the currently active set per id.
-  """
-  @spec cache_parameter_sets([NALu.t()], [NALu.t()]) :: [NALu.t()]
-  def cache_parameter_sets(cached_parameter_sets, new_parameter_sets) do
-    Enum.reduce(new_parameter_sets, cached_parameter_sets, fn new_ps, cached ->
-      case Enum.find_index(cached, &(parameter_set_id(&1) == parameter_set_id(new_ps))) do
-        nil -> cached ++ [new_ps]
-        index -> List.replace_at(cached, index, new_ps)
-      end
-    end)
-  end
-
-  defp parameter_set_id(%NALu{type: type, parsed_fields: fields}) do
-    case type do
-      :vps -> {:vps, fields.video_parameter_set_id}
-      :sps -> {:sps, fields.seq_parameter_set_id}
-      :pps -> {:pps, fields.pic_parameter_set_id}
-    end
-  end
 
   defp input_stream_structure_change_allowed?(:annexb, :annexb), do: true
   defp input_stream_structure_change_allowed?({tag, _new_len}, {tag, _old_len}), do: true
