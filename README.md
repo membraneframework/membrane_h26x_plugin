@@ -68,8 +68,7 @@ engine =
   ParsingEngine.new(%{
     codec: :h264,
     input_stream_structure: :annexb,
-    mode: :bytestream,
-    generate_best_effort_timestamps: false
+    mode: :bytestream
   })
 
 {access_units, engine} = ParsingEngine.push(engine, File.read!("video.h264"))
@@ -92,8 +91,7 @@ engine =
   ParsingEngine.new(%{
     codec: :h264,
     input_stream_structure: {:avc1, dcr},
-    mode: :au_aligned,
-    generate_best_effort_timestamps: false
+    mode: :au_aligned
   })
 ```
 

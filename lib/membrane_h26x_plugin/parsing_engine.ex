@@ -47,10 +47,10 @@ defmodule Membrane.H26x.ParsingEngine do
   @type access_unit :: [NALu.t()]
 
   @type config :: %{
-          codec: codec(),
-          input_stream_structure: input_stream_structure(),
-          mode: mode(),
-          generate_best_effort_timestamps:
+          :codec => codec(),
+          :input_stream_structure => input_stream_structure(),
+          :mode => mode(),
+          optional(:generate_best_effort_timestamps) =>
             false
             | %{
                 :framerate => {frames :: pos_integer(), seconds :: pos_integer()},
@@ -97,7 +97,7 @@ defmodule Membrane.H26x.ParsingEngine do
       resolve_input_stream_structure(config.codec, config.input_stream_structure)
 
     au_timestamp_generator =
-      case config.generate_best_effort_timestamps do
+      case Map.get(config, :generate_best_effort_timestamps, false) do
         false -> nil
         cfg -> AUTimestampGenerator.new(au_timestamp_generator_mod(config.codec), cfg)
       end
