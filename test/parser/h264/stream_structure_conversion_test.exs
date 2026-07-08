@@ -29,11 +29,9 @@ defmodule Membrane.H264.StreamStructureConversionTest do
   defp make_annexb_pipeline(alignment, parsers) do
     parser_chain = make_parser_chain(parsers)
 
-    mode = get_mode_from_alignment(alignment)
-
     spec =
       child(:source, %H26x.Support.TestSource{
-        mode: mode,
+        alignment: alignment,
         output_raw_stream_structure: :annexb
       })
       |> parser_chain.()
@@ -46,8 +44,8 @@ defmodule Membrane.H264.StreamStructureConversionTest do
     Pipeline.start_link_supervised!(spec: spec)
   end
 
-  defp perform_annexb_test(pipeline_pid, data, mode, identical_order?) do
-    buffers = prepare_h264_buffers(data, mode, :annexb, false)
+  defp perform_annexb_test(pipeline_pid, data, alignment, identical_order?) do
+    buffers = prepare_h264_buffers(data, alignment, :annexb, false)
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
     Pipeline.notify_child(pipeline_pid, :source, actions ++ [end_of_stream: :output])
@@ -65,14 +63,14 @@ defmodule Membrane.H264.StreamStructureConversionTest do
       fixture_buffers = Enum.map(buffers, & &1.payload)
 
       {fixture_nalus_set, converted_nalus_set} =
-        case mode do
-          :au_aligned ->
+        case alignment do
+          :au ->
             {
               MapSet.new(split_aus_to_nalus(fixture_buffers, :annexb)),
               MapSet.new(split_aus_to_nalus(converted_buffers, :annexb))
             }
 
-          :nalu_aligned ->
+          :nalu ->
             {MapSet.new(fixture_buffers), MapSet.new(converted_buffers)}
         end
 
@@ -168,11 +166,9 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
     case stream_structure do
       :annexb ->
-        mode = get_mode_from_alignment(alignment)
-
         Enum.each(@annexb_fixtures, fn path ->
           pid = make_annexb_pipeline(alignment, parsers)
-          perform_annexb_test(pid, File.read!(path), mode, identical_order?)
+          perform_annexb_test(pid, File.read!(path), alignment, identical_order?)
         end)
 
       avc when avc in [:avc1, :avc3] ->
@@ -222,13 +218,6 @@ defmodule Membrane.H264.StreamStructureConversionTest do
 
   defp add_length_prefix(nalu_payload, nalu_length_size) do
     <<byte_size(nalu_payload)::integer-size(nalu_length_size)-unit(8), nalu_payload::binary>>
-  end
-
-  defp get_mode_from_alignment(alignment) do
-    case alignment do
-      :au -> :au_aligned
-      :nalu -> :nalu_aligned
-    end
   end
 
   describe "The output stream should be the same as the input stream" do

@@ -9,16 +9,16 @@ defmodule Membrane.H265.Parser do
   * enriches the output buffers with the metadata describing the way the access unit is split into NAL units, type of each NAL unit
   making up the access unit and the information if the access unit hold a keyframe.
 
-  The parser works in one of three possible modes, depending on the structure of the input buffers:
+  The parser handles one of three possible input alignments, depending on the structure of the input buffers:
   * `:bytestream` - each input buffer contains some part of H265 stream's payload, but not necessary a logical
   H265 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
-  * `:nalu_aligned` - each input buffer contains a single NAL unit's payload
-  * `:au_aligned` - each input buffer contains a single access unit's payload
+  * `:nalu` - each input buffer contains a single NAL unit's payload
+  * `:au` - each input buffer contains a single access unit's payload
 
-  The parser's mode is set automatically, based on the input stream format received by that element:
-  * Receiving `Membrane.RemoteStream` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.H265{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`.
-  * Receiving `%Membrane.H265{alignment: :au}` results in the parser mode being set to `:au_aligned`.
+  The input alignment is set automatically, based on the input stream format received by that element:
+  * Receiving `Membrane.RemoteStream` results in the input alignment being set to `:bytestream`
+  * Receiving `%Membrane.H265{alignment: :nalu}` results in the input alignment being set to `:nalu`.
+  * Receiving `%Membrane.H265{alignment: :au}` results in the input alignment being set to `:au`.
 
   The parser also allows for conversion between stream structures. The available structures are:
   * Annex B, `:annexb` - In a stream with this structure each NAL unit is prefixed by three or
@@ -202,7 +202,7 @@ defmodule Membrane.H265.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.parsing_engine.mode != :au_aligned,
+      when ctx.pads.input.start_of_stream? and state.parsing_engine.input_alignment != :au,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true

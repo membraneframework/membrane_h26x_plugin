@@ -41,10 +41,9 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @typedoc """
   Alignment of the payloads fed to the engine - an arbitrary stream of bytes (`:bytestream`),
-  a single NAL unit per payload (`:nalu_aligned`) or a whole access unit per payload
-  (`:au_aligned`).
+  a single NAL unit per payload (`:nalu`) or a whole access unit per payload (`:au`).
   """
-  @type mode :: :bytestream | :nalu_aligned | :au_aligned
+  @type input_alignment :: :bytestream | :nalu | :au
 
   @typedoc """
   An access unit - a list of logically associated NAL units.
@@ -53,7 +52,7 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @typedoc """
   If set to a map, timestamps are generated based on the provided constant framerate
-  (available only in `:bytestream` mode). `:add_dts_offset` shifts DTS values so that
+  (available only for the `:bytestream` input alignment). `:add_dts_offset` shifts DTS values so that
   they don't exceed PTS values, defaults to `true`.
   """
   @type generate_best_effort_timestamps ::
@@ -67,14 +66,14 @@ defmodule Membrane.H26x.ParsingEngine do
   Configuration of the parsing engine:
   * `:codec` - the codec of the parsed stream, either `:h264` or `:h265`.
   * `:input_stream_structure` - see `t:input_stream_structure/0`.
-  * `:mode` - see `t:mode/0`.
+  * `:input_alignment` - see `t:input_alignment/0`.
   * `:generate_best_effort_timestamps` - see `t:generate_best_effort_timestamps/0`.
     Defaults to `false`.
   """
   @type config :: %{
           :codec => codec(),
           :input_stream_structure => input_stream_structure(),
-          :mode => mode(),
+          :input_alignment => input_alignment(),
           optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps()
         }
 
@@ -84,7 +83,7 @@ defmodule Membrane.H26x.ParsingEngine do
           nalu_parser: NALuParser.t(),
           au_splitter: AUSplitter.t(),
           au_timestamp_generator: AUTimestampGenerator.state() | nil,
-          mode: mode(),
+          input_alignment: input_alignment(),
           input_stream_structure: stream_structure(),
           previous_buffer_timestamps: NALu.timestamps() | nil,
           pending_payload: binary(),
@@ -98,7 +97,7 @@ defmodule Membrane.H26x.ParsingEngine do
     :nalu_parser,
     :au_splitter,
     :au_timestamp_generator,
-    :mode,
+    :input_alignment,
     :input_stream_structure,
     :nalu_parser_mod,
     :au_splitter_mod,
@@ -107,7 +106,7 @@ defmodule Membrane.H26x.ParsingEngine do
   defstruct @enforce_keys ++ [previous_buffer_timestamps: nil, pending_payload: <<>>]
 
   @doc """
-  Creates a parser for the given input stream structure and mode.
+  Creates a parser for the given input stream structure and alignment.
 
   Raises an `ArgumentError` if the configured codec is not supported.
   """
@@ -127,7 +126,7 @@ defmodule Membrane.H26x.ParsingEngine do
       nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
-      mode: config.mode,
+      input_alignment: config.input_alignment,
       input_stream_structure: input_stream_structure,
       nalu_parser_mod: nalu_parser_mod(config.codec),
       au_splitter_mod: au_splitter_mod(config.codec),
@@ -172,11 +171,12 @@ defmodule Membrane.H26x.ParsingEngine do
   defp au_timestamp_generator_mod(:h265), do: Membrane.H265.AUTimestampGenerator
 
   @doc """
-  Changes the parser mode, keeping the accumulated parsing state. To be used after
+  Changes the input alignment, keeping the accumulated parsing state. To be used after
   `flush/1` when the input alignment changes mid-stream.
   """
-  @spec set_mode(t(), mode()) :: t()
-  def set_mode(engine, mode), do: %{engine | mode: mode}
+  @spec set_input_alignment(t(), input_alignment()) :: t()
+  def set_input_alignment(engine, input_alignment),
+    do: %{engine | input_alignment: input_alignment}
 
   @doc """
   Schedules raw (unprefixed) parameter set payloads to be parsed just before the next
@@ -212,7 +212,8 @@ defmodule Membrane.H26x.ParsingEngine do
   end
 
   @doc """
-  Drains all buffered data into access units. To be used on a mode change or end of stream.
+  Drains all buffered data into access units. To be used on an input alignment change
+  or end of stream.
   """
   @spec flush(t()) :: {[access_unit()], t()}
   def flush(engine) do
@@ -222,7 +223,11 @@ defmodule Membrane.H26x.ParsingEngine do
   @spec parse(t(), binary(), NALu.timestamps(), boolean()) :: {[access_unit()], t()}
   defp parse(engine, payload, timestamps, flush?) do
     {nalus_payloads, nalu_splitter} =
-      NALuSplitter.split(payload, flush? or engine.mode != :bytestream, engine.nalu_splitter)
+      NALuSplitter.split(
+        payload,
+        flush? or engine.input_alignment != :bytestream,
+        engine.nalu_splitter
+      )
 
     {nalus, nalu_parser} =
       NALuParser.parse_nalus(
@@ -236,7 +241,7 @@ defmodule Membrane.H26x.ParsingEngine do
       AUSplitter.split(
         engine.au_splitter_mod,
         nalus,
-        flush? or engine.mode == :au_aligned,
+        flush? or engine.input_alignment == :au,
         engine.au_splitter
       )
 
@@ -251,7 +256,8 @@ defmodule Membrane.H26x.ParsingEngine do
   end
 
   defguardp is_timestamp_generator_active(engine)
-            when engine.mode == :bytestream and not is_nil(engine.au_timestamp_generator)
+            when engine.input_alignment == :bytestream and
+                   not is_nil(engine.au_timestamp_generator)
 
   @spec maybe_generate_timestamps([access_unit()], boolean(), t()) :: {[access_unit()], t()}
   defp maybe_generate_timestamps(aus, flush?, engine)

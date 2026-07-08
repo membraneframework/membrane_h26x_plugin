@@ -33,7 +33,7 @@ defmodule Membrane.H26x.Utils do
   Expects the codec and the element options (`output_alignment`, `skip_until_keyframe`,
   `repeat_parameter_sets`, `initial_parameter_sets`, `output_stream_structure`,
   `generate_best_effort_timestamps`). The `ParsingEngine` itself is created once
-  the first stream format reveals the input structure and mode.
+  the first stream format reveals the input structure and alignment.
   """
   @spec init_state(ParsingEngine.codec(), keyword()) :: state()
   def init_state(codec, opts) do
@@ -60,7 +60,7 @@ defmodule Membrane.H26x.Utils do
   stream's framerate (or `nil`).
   """
   @spec handle_stream_format(
-          {:bytestream | :nalu | :au, ParsingEngine.stream_structure(), [binary()]},
+          {ParsingEngine.input_alignment(), ParsingEngine.stream_structure(), [binary()]},
           term() | nil,
           map(),
           state()
@@ -71,13 +71,12 @@ defmodule Membrane.H26x.Utils do
         ctx,
         state
       ) do
-    mode = mode_from_alignment(alignment)
     is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
 
     {au_actions, state} =
       cond do
         is_first_received_stream_format ->
-          {[], start_parsing_engine(state, framerate, mode, input_stream_structure)}
+          {[], start_parsing_engine(state, framerate, alignment, input_stream_structure)}
 
         not input_stream_structure_change_allowed?(
           input_stream_structure,
@@ -85,9 +84,14 @@ defmodule Membrane.H26x.Utils do
         ) ->
           raise "stream structure cannot be fundamentally changed during stream"
 
-        mode != state.parsing_engine.mode ->
+        alignment != state.parsing_engine.input_alignment ->
           {actions, state} = flush_and_process(ctx, state)
-          {actions, %{state | parsing_engine: ParsingEngine.set_mode(state.parsing_engine, mode)}}
+
+          {actions,
+           %{
+             state
+             | parsing_engine: ParsingEngine.set_input_alignment(state.parsing_engine, alignment)
+           }}
 
         true ->
           {[], state}
@@ -129,15 +133,15 @@ defmodule Membrane.H26x.Utils do
   @spec start_parsing_engine(
           state(),
           term() | nil,
-          ParsingEngine.mode(),
+          ParsingEngine.input_alignment(),
           ParsingEngine.stream_structure()
         ) :: state()
-  defp start_parsing_engine(state, framerate, mode, input_stream_structure) do
+  defp start_parsing_engine(state, framerate, input_alignment, input_stream_structure) do
     parsing_engine =
       ParsingEngine.new(%{
         codec: state.codec,
         input_stream_structure: input_stream_structure,
-        mode: mode,
+        input_alignment: input_alignment,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps
       })
 
@@ -293,10 +297,6 @@ defmodule Membrane.H26x.Utils do
   defp input_stream_structure_change_allowed?(:annexb, :annexb), do: true
   defp input_stream_structure_change_allowed?({tag, _new_len}, {tag, _old_len}), do: true
   defp input_stream_structure_change_allowed?(_new, _old), do: false
-
-  defp mode_from_alignment(:bytestream), do: :bytestream
-  defp mode_from_alignment(:nalu), do: :nalu_aligned
-  defp mode_from_alignment(:au), do: :au_aligned
 
   defp framerate(false), do: nil
   defp framerate(%{framerate: framerate}), do: framerate
