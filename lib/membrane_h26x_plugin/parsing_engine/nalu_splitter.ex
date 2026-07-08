@@ -21,7 +21,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   The `input_stream_structure` determines which prefix is considered as delimiting two NALUs.
   By default, the inner `unparsed_payload` of the state is clean, but can be set to a given binary.
   """
-  @spec new(Membrane.H264.Parser.stream_structure(), initial_binary :: binary()) :: t()
+  @spec new(ParsingEngine.stream_structure(), initial_binary :: binary()) :: t()
   def new(input_stream_structure \\ :annexb, initial_binary \\ <<>>) do
     %__MODULE__{
       input_stream_structure: input_stream_structure,

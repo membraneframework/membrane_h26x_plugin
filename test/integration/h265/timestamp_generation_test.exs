@@ -53,15 +53,15 @@ defmodule Membrane.H265.TimestampGenerationTest do
   @h265_input_timestamps_baseline [0, 33, 67, 100, 133, 167, 200, 233, 267, 300]
                                   |> Enum.map(&{&1, &1 - 500})
 
-  test "if the pts and dts are set to nil in :bytestream mode when framerate isn't given" do
+  test "if the pts and dts are set to nil for :bytestream input alignment when framerate isn't given" do
     binary = File.read!(@h265_input_file_baseline)
-    mode = :bytestream
-    input_buffers = prepare_h265_buffers(binary, mode)
+    alignment = :bytestream
+    input_buffers = prepare_h265_buffers(binary, alignment)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
         spec: [
-          child(:source, %TestSource{mode: mode, codec: :H265})
+          child(:source, %TestSource{alignment: alignment, codec: :H265})
           |> child(:parser, Parser)
           |> child(:sink, Sink)
         ]
@@ -71,7 +71,7 @@ defmodule Membrane.H265.TimestampGenerationTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_h265_buffers(binary, :au_aligned)
+    output_buffers = prepare_h265_buffers(binary, :au)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -81,29 +81,29 @@ defmodule Membrane.H265.TimestampGenerationTest do
     Pipeline.terminate(pid)
   end
 
-  test "if the pts and dts are generated correctly for stream without frame reorder and no-bframes in :bytestream mode when framerate is given" do
+  test "if the pts and dts are generated correctly for stream without frame reorder and no-bframes for :bytestream input alignment when framerate is given" do
     process_test(@h265_input_file_baseline, @h265_input_timestamps_baseline)
   end
 
-  test "if the pts and dts are generated correctly in :bytestream mode when framerate is given" do
+  test "if the pts and dts are generated correctly for :bytestream input alignment when framerate is given" do
     process_test(@h265_input_file_main, @h265_input_timestamps_main)
   end
 
-  test "if the pts and dts are generated correctly without dts offset in :bytestream mode when framerate is given" do
+  test "if the pts and dts are generated correctly without dts offset for :bytestream input alignment when framerate is given" do
     process_test(@h265_input_file_main, @h265_input_timestamps_main, false)
   end
 
   defp process_test(file, timestamps, dts_offset \\ true) do
     binary = File.read!(file)
-    mode = :bytestream
-    input_buffers = prepare_h265_buffers(binary, mode)
+    alignment = :bytestream
+    input_buffers = prepare_h265_buffers(binary, alignment)
 
     framerate = {30, 1}
 
     pid =
       Pipeline.start_supervised!(
         spec: [
-          child(:source, %TestSource{mode: mode, codec: :H265})
+          child(:source, %TestSource{alignment: alignment, codec: :H265})
           |> child(:parser, %Membrane.H265.Parser{
             generate_best_effort_timestamps: %{framerate: framerate, add_dts_offset: dts_offset}
           })
@@ -115,7 +115,7 @@ defmodule Membrane.H265.TimestampGenerationTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_h265_buffers(binary, :au_aligned)
+    output_buffers = prepare_h265_buffers(binary, :au)
 
     output_buffers
     |> Enum.zip(timestamps)

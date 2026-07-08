@@ -9,16 +9,16 @@ defmodule Membrane.H265.Parser do
   * enriches the output buffers with the metadata describing the way the access unit is split into NAL units, type of each NAL unit
   making up the access unit and the information if the access unit hold a keyframe.
 
-  The parser works in one of three possible modes, depending on the structure of the input buffers:
+  The parser handles one of three possible input alignments, depending on the structure of the input buffers:
   * `:bytestream` - each input buffer contains some part of H265 stream's payload, but not necessary a logical
   H265 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
-  * `:nalu_aligned` - each input buffer contains a single NAL unit's payload
-  * `:au_aligned` - each input buffer contains a single access unit's payload
+  * `:nalu` - each input buffer contains a single NAL unit's payload
+  * `:au` - each input buffer contains a single access unit's payload
 
-  The parser's mode is set automatically, based on the input stream format received by that element:
-  * Receiving `Membrane.RemoteStream` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.H265{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`.
-  * Receiving `%Membrane.H265{alignment: :au}` results in the parser mode being set to `:au_aligned`.
+  The input alignment is set automatically, based on the input stream format received by that element:
+  * Receiving `Membrane.RemoteStream` results in the input alignment being set to `:bytestream`
+  * Receiving `%Membrane.H265{alignment: :nalu}` results in the input alignment being set to `:nalu`.
+  * Receiving `%Membrane.H265{alignment: :au}` results in the input alignment being set to `:au`.
 
   The parser also allows for conversion between stream structures. The available structures are:
   * Annex B, `:annexb` - In a stream with this structure each NAL unit is prefixed by three or
@@ -33,11 +33,11 @@ defmodule Membrane.H265.Parser do
   use Membrane.Filter
 
   alias Membrane.{H265, RemoteStream}
-  alias Membrane.H265.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
+  alias Membrane.H265.DecoderConfigurationRecord
   alias Membrane.H26x.Utils
 
   @nalu_length_size 4
-  @metadata_key :h265
+  @codec :h265
 
   def_input_pad :input,
     flow_control: :auto,
@@ -178,7 +178,7 @@ defmodule Membrane.H265.Parser do
       end
 
     state =
-      Utils.init_state(codec(),
+      Utils.init_state(@codec,
         output_stream_structure: output_stream_structure,
         generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
         output_alignment: opts.output_alignment,
@@ -202,26 +202,12 @@ defmodule Membrane.H265.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.parsing_engine.mode != :au_aligned,
+      when ctx.pads.input.start_of_stream? and state.parsing_engine.input_alignment != :au,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
-  end
-
-  defp codec() do
-    %{
-      stream_format_module: H265,
-      dcr_module: DecoderConfigurationRecord,
-      keyframe_nalu_types: [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra],
-      parameter_set_nalu_types: [:vps, :sps, :pps],
-      out_of_band_parameter_sets_codec_tags: [:hvc1],
-      nalu_parser_mod: NALuParser,
-      au_splitter_mod: AUSplitter,
-      au_timestamp_generator_mod: AUTimestampGenerator,
-      metadata_key: @metadata_key
-    }
   end
 
   defp parse_raw_input_stream_structure(stream_format) do

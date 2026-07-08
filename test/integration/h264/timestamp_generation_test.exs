@@ -29,15 +29,15 @@ defmodule Membrane.H264.TimestampGenerationTest do
   @h264_input_timestamps_baseline [0, 33, 67, 100, 133, 167, 200, 233, 267, 300]
                                   |> Enum.map(&{&1, &1 - 500})
 
-  test "if the pts and dts are set to nil in :bytestream mode when framerate isn't given" do
+  test "if the pts and dts are set to nil for :bytestream input alignment when framerate isn't given" do
     binary = File.read!(@h264_input_file_baseline)
-    mode = :bytestream
-    input_buffers = prepare_h264_buffers(binary, mode)
+    alignment = :bytestream
+    input_buffers = prepare_h264_buffers(binary, alignment)
 
     {:ok, _supervisor_pid, pid} =
       Pipeline.start_supervised(
         spec: [
-          child(:source, %TestSource{mode: mode})
+          child(:source, %TestSource{alignment: alignment})
           |> child(:parser, Parser)
           |> child(:sink, Sink)
         ]
@@ -47,7 +47,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
     send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
     Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-    output_buffers = prepare_h264_buffers(binary, :au_aligned)
+    output_buffers = prepare_h264_buffers(binary, :au)
 
     Enum.each(output_buffers, fn buf ->
       payload = buf.payload
@@ -66,18 +66,18 @@ defmodule Membrane.H264.TimestampGenerationTest do
     fn {profiles, file, timestamps} ->
       test """
       if the pts and dts are generated correctly for profiles #{profiles}\
-      in :bytestream mode when framerate is given
+      for :bytestream input alignment when framerate is given
       """ do
         binary = File.read!(unquote(file))
-        mode = :bytestream
-        input_buffers = prepare_h264_buffers(binary, mode)
+        alignment = :bytestream
+        input_buffers = prepare_h264_buffers(binary, alignment)
 
         framerate = {30, 1}
 
         {:ok, _supervisor_pid, pid} =
           Pipeline.start_supervised(
             spec: [
-              child(:source, %TestSource{mode: mode})
+              child(:source, %TestSource{alignment: alignment})
               |> child(:parser, %Membrane.H264.Parser{
                 generate_best_effort_timestamps: %{framerate: framerate}
               })
@@ -89,7 +89,7 @@ defmodule Membrane.H264.TimestampGenerationTest do
         send_buffers_actions = for buffer <- input_buffers, do: {:buffer, {:output, buffer}}
         Pipeline.notify_child(pid, :source, send_buffers_actions ++ [end_of_stream: :output])
 
-        output_buffers = prepare_h264_buffers(binary, :au_aligned)
+        output_buffers = prepare_h264_buffers(binary, :au)
 
         output_buffers
         |> Enum.zip(unquote(timestamps))

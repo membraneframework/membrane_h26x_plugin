@@ -22,10 +22,10 @@ defmodule Membrane.H26x.Support.Common do
     do_prepare_bytestream_buffers(binary)
   end
 
-  def prepare_h264_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
+  def prepare_h264_buffers(binary, alignment, output_stream_structure, stable_reprefixing?) do
     do_prepare_buffers(
       binary,
-      mode,
+      alignment,
       output_stream_structure,
       stable_reprefixing?,
       H264.NALuParser,
@@ -51,10 +51,10 @@ defmodule Membrane.H26x.Support.Common do
     do_prepare_bytestream_buffers(binary)
   end
 
-  def prepare_h265_buffers(binary, mode, output_stream_structure, stable_reprefixing?) do
+  def prepare_h265_buffers(binary, alignment, output_stream_structure, stable_reprefixing?) do
     do_prepare_buffers(
       binary,
-      mode,
+      alignment,
       output_stream_structure,
       stable_reprefixing?,
       H265.NALuParser,
@@ -71,7 +71,7 @@ defmodule Membrane.H26x.Support.Common do
 
   defp do_prepare_buffers(
          binary,
-         mode,
+         alignment,
          output_stream_structure,
          stable_reprefixing?,
          nalu_parser_mod,
@@ -84,8 +84,8 @@ defmodule Membrane.H26x.Support.Common do
 
     {aus, _au_splitter} = AUSplitter.split(au_splitter_mod, nalus, true, AUSplitter.new())
 
-    case mode do
-      :nalu_aligned ->
+    case alignment do
+      :nalu ->
         Enum.map_reduce(aus, 0, fn au, ts ->
           {Enum.map(au, fn nalu ->
              nalu_payload =
@@ -101,7 +101,7 @@ defmodule Membrane.H26x.Support.Common do
         |> elem(0)
         |> List.flatten()
 
-      :au_aligned ->
+      :au ->
         Enum.map_reduce(aus, 0, fn au, ts ->
           {%Membrane.Buffer{
              payload:

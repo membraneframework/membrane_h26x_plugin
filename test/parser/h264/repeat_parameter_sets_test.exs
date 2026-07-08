@@ -38,11 +38,11 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
   defp perform_test(
          pipeline_pid,
          data,
-         mode \\ :bytestream,
+         alignment \\ :bytestream,
          parser_input_stream_structure \\ :annexb,
          parser_output_stream_structure \\ :annexb
        ) do
-    buffers = prepare_h264_buffers(data, mode, parser_input_stream_structure)
+    buffers = prepare_h264_buffers(data, alignment, parser_input_stream_structure)
 
     assert_sink_playing(pipeline_pid, :sink)
     actions = for buffer <- buffers, do: {:buffer, {:output, buffer}}
@@ -51,7 +51,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     output_buffers =
       prepare_h264_buffers(
         File.read!(@ref_path),
-        :au_aligned,
+        :au,
         parser_output_stream_structure
       )
 
@@ -71,13 +71,13 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
   describe "Parameter sets should be reapeated on each IDR access unit" do
     test "when provided by parser options" do
-      source = %H26x.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{alignment: :bytestream}
       pid = make_pipeline(source, [@sps], [@pps])
       perform_test(pid, File.read!(@in_path))
     end
 
     test "when retrieved from the bytestream" do
-      source = %H26x.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{alignment: :bytestream}
       pid = make_pipeline(source)
 
       data = Enum.join([<<>>, @sps, @pps], <<0, 0, 0, 1>>) <> File.read!(@in_path)
@@ -86,19 +86,19 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
     test "when provided via DCR" do
       source = %H26x.Support.TestSource{
-        mode: :au_aligned,
+        alignment: :au,
         output_raw_stream_structure: {:avc3, @dcr}
       }
 
       pid = make_pipeline(source, [], [], {:avc3, 4})
-      perform_test(pid, File.read!(@in_path), :au_aligned, {:avc3, 4}, {:avc3, 4})
+      perform_test(pid, File.read!(@in_path), :au, {:avc3, 4}, {:avc3, 4})
     end
 
     test "when bytestream has variable parameter sets" do
       in_path = "./test/fixtures/h264/input-vp-sps-pps.h264"
       ref_path = "./test/fixtures/h264/reference-vp-sps-pps.h264"
 
-      source = %H26x.Support.TestSource{mode: :bytestream}
+      source = %H26x.Support.TestSource{alignment: :bytestream}
       pid = make_pipeline(source)
 
       buffers = prepare_h264_buffers(File.read!(in_path), :bytestream)
@@ -108,7 +108,7 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       Pipeline.notify_child(pid, :source, actions ++ [end_of_stream: :output])
 
       File.read!(ref_path)
-      |> prepare_h264_buffers(:au_aligned)
+      |> prepare_h264_buffers(:au)
       |> Enum.each(fn output_buffer ->
         assert_sink_buffer(pid, :sink, buffer)
         assert split_access_unit(output_buffer.payload) == split_access_unit(buffer.payload)

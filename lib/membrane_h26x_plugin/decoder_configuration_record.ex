@@ -1,9 +1,10 @@
 defmodule Membrane.H264.DecoderConfigurationRecord do
-  @moduledoc """
-  Utility functions for parsing and generating AVC Configuration Record.
+  @moduledoc false
+  # Utility functions for parsing and generating AVC Configuration Record.
+  #
+  # The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
 
-  The structure of the record is described in section 5.2.4.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15).
-  """
+  alias Membrane.H26x.ParsingEngine
 
   @enforce_keys [
     :spss,
@@ -28,7 +29,7 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on the given parameter set NAL units.
   """
-  @spec generate([Membrane.H26x.NALu.t()], Membrane.H264.Parser.stream_structure()) ::
+  @spec generate([Membrane.H26x.NALu.t()], ParsingEngine.stream_structure()) ::
           binary() | nil
   def generate(parameter_sets, stream_structure) do
     parameter_sets_by_type =
@@ -39,7 +40,7 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
 
   @spec do_generate(
           %{sps: [Membrane.H26x.NALu.t()], pps: [Membrane.H26x.NALu.t()]},
-          Membrane.H264.Parser.stream_structure()
+          ParsingEngine.stream_structure()
         ) :: binary() | nil
   defp do_generate(%{sps: []}, _stream_structure) do
     nil
@@ -107,13 +108,13 @@ defmodule Membrane.H264.DecoderConfigurationRecord do
 end
 
 defmodule Membrane.H265.DecoderConfigurationRecord do
-  @moduledoc """
-  Utility functions for parsing and generating HEVC Configuration Record.
-
-  The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
-  """
+  @moduledoc false
+  # Utility functions for parsing and generating HEVC Configuration Record.
+  #
+  # The structure of the record is described in section 8.3.3.1.1 of MPEG-4 part 15 (ISO/IEC 14496-15 Edition 2017-02).
 
   alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParsingEngine
 
   @enforce_keys [
     :vpss,
@@ -156,7 +157,7 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
   @doc """
   Generates a DCR based on the given parameter set NAL units.
   """
-  @spec generate([NALu.t()], Membrane.H265.Parser.stream_structure()) :: binary() | nil
+  @spec generate([NALu.t()], ParsingEngine.stream_structure()) :: binary() | nil
   def generate(parameter_sets, stream_structure) do
     parameter_sets_by_type =
       Map.merge(%{vps: [], sps: [], pps: []}, Enum.group_by(parameter_sets, & &1.type))
@@ -166,7 +167,7 @@ defmodule Membrane.H265.DecoderConfigurationRecord do
 
   @spec do_generate(
           %{vps: [NALu.t()], sps: [NALu.t()], pps: [NALu.t()]},
-          Membrane.H265.Parser.stream_structure()
+          ParsingEngine.stream_structure()
         ) :: binary() | nil
   defp do_generate(%{sps: []}, _stream_structure) do
     nil

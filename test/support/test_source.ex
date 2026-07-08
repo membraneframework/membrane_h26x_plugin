@@ -3,7 +3,7 @@ defmodule Membrane.H26x.Support.TestSource do
 
   use Membrane.Source
 
-  def_options mode: [],
+  def_options alignment: [],
               output_raw_stream_structure: [default: :annexb],
               codec: [default: :H264]
 
@@ -20,7 +20,7 @@ defmodule Membrane.H26x.Support.TestSource do
   def handle_init(_ctx, opts) do
     {[],
      %{
-       mode: opts.mode,
+       alignment: opts.alignment,
        codec: opts.codec,
        output_raw_stream_structure: opts.output_raw_stream_structure
      }}
@@ -34,20 +34,20 @@ defmodule Membrane.H26x.Support.TestSource do
   @impl true
   def handle_playing(_ctx, state) do
     stream_format =
-      case {state.codec, state.mode} do
+      case {state.codec, state.alignment} do
         {_codec, :bytestream} ->
           %Membrane.RemoteStream{type: :packetized}
 
-        {:H264, :nalu_aligned} ->
+        {:H264, :nalu} ->
           %Membrane.H264{alignment: :nalu, stream_structure: state.output_raw_stream_structure}
 
-        {:H264, :au_aligned} ->
+        {:H264, :au} ->
           %Membrane.H264{alignment: :au, stream_structure: state.output_raw_stream_structure}
 
-        {:H265, :nalu_aligned} ->
+        {:H265, :nalu} ->
           %Membrane.H265{alignment: :nalu, stream_structure: state.output_raw_stream_structure}
 
-        {:H265, :au_aligned} ->
+        {:H265, :au} ->
           %Membrane.H265{alignment: :au, stream_structure: state.output_raw_stream_structure}
       end
 

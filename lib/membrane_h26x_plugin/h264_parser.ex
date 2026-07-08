@@ -10,26 +10,26 @@ defmodule Membrane.H264.Parser do
   making up the access unit and the information if the access unit hold a keyframe.
   * converts the stream's structure (Annex B, avc1 or avc3) to the one provided via the element's options.
 
-  The parser works in one of three possible modes, depending on the structure of the input buffers:
+  The parser handles one of three possible input alignments, depending on the structure of the input buffers:
   * `:bytestream` - each input buffer contains some part of H264 stream's payload, but not necessary a logical
   H264 unit (like NAL unit or an access unit). Can be used for i.e. for parsing the stream read from the file.
-  * `:nalu_aligned` - each input buffer contains a single NAL unit's payload
-  * `:au_aligned` - each input buffer contains a single access unit's payload
+  * `:nalu` - each input buffer contains a single NAL unit's payload
+  * `:au` - each input buffer contains a single access unit's payload
 
-  The parser's mode is set automatically, based on the input stream format received by that element:
-  * Receiving `Membrane.RemoteStream` results in the parser mode being set to `:bytestream`
-  * Receiving `%Membrane.H264{alignment: :nalu}` results in the parser mode being set to `:nalu_aligned`
-  * Receiving `%Membrane.H264{alignment: :au}` results in the parser mode being set to `:au_aligned`
+  The input alignment is set automatically, based on the input stream format received by that element:
+  * Receiving `Membrane.RemoteStream` results in the input alignment being set to `:bytestream`
+  * Receiving `%Membrane.H264{alignment: :nalu}` results in the input alignment being set to `:nalu`
+  * Receiving `%Membrane.H264{alignment: :au}` results in the input alignment being set to `:au`
 
-  The distinction between parser modes was introduced to eliminate the redundant operations and to provide a reliable way
+  The distinction between input alignments was introduced to eliminate the redundant operations and to provide a reliable way
   for rewriting of timestamps:
-  * in the `:bytestream` mode:
+  * for the `:bytestream` input alignment:
     * if option `:framerate` is set to nil, the output buffers have their `:pts` and `:dts` set to nil
     * if framerate is specified, `:pts` and `:dts` will be generated automatically, based on that framerate, starting from 0
      This may only be used with H264 profiles `:baseline` and `:constrained_baseline`, where `PTS==DTS`.
-  * in the `:nalu_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the
+  * for the `:nalu` input alignment, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the
    input buffer that was holding the first NAL unit making up given access unit (that is being sent inside that output buffer).
-  * in the `:au_aligned` mode, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
+  * for the `:au` input alignment, the output buffers have their `:pts` and `:dts` set to `:pts` and `:dts` of the input buffer
   (holding the whole access unit being output)
 
   The parser also allows for conversion between stream structures. The available structures are:
@@ -48,11 +48,11 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.H264.{AUSplitter, AUTimestampGenerator, DecoderConfigurationRecord, NALuParser}
+  alias Membrane.H264.DecoderConfigurationRecord
   alias Membrane.H26x.Utils
 
   @nalu_length_size 4
-  @metadata_key :h264
+  @codec :h264
 
   def_input_pad :input,
     flow_control: :auto,
@@ -183,7 +183,7 @@ defmodule Membrane.H264.Parser do
       end
 
     state =
-      Utils.init_state(codec(),
+      Utils.init_state(@codec,
         output_stream_structure: output_stream_structure,
         generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
         output_alignment: opts.output_alignment,
@@ -207,26 +207,12 @@ defmodule Membrane.H264.Parser do
 
   @impl true
   def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.parsing_engine.mode != :au_aligned,
+      when ctx.pads.input.start_of_stream? and state.parsing_engine.input_alignment != :au,
       do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
-  end
-
-  defp codec() do
-    %{
-      stream_format_module: H264,
-      dcr_module: DecoderConfigurationRecord,
-      keyframe_nalu_types: [:idr],
-      parameter_set_nalu_types: [:sps, :pps],
-      out_of_band_parameter_sets_codec_tags: [:avc1],
-      nalu_parser_mod: NALuParser,
-      au_splitter_mod: AUSplitter,
-      au_timestamp_generator_mod: AUTimestampGenerator,
-      metadata_key: @metadata_key
-    }
   end
 
   defp parse_raw_input_stream_structure(stream_format) do
