@@ -3,6 +3,10 @@ defmodule Membrane.H264.AUSplitterTest do
 
   use ExUnit.Case, async: true
 
+  alias Membrane.H264
+  alias Membrane.H26x.NALu
+  alias Membrane.H26x.ParsingEngine.AUSplitter
+
   @test_files_names ["10-720a", "10-720p"]
 
   @au_lengths_snapshot %{
@@ -80,5 +84,57 @@ defmodule Membrane.H264.AUSplitterTest do
 
     assert au |> Enum.map(&(byte_size(&1.payload) + byte_size(&1.stripped_prefix))) |> Enum.sum() ==
              byte_size(fixture)
+  end
+
+  @idr_parsed_fields %{
+    nal_unit_type: 5,
+    nal_ref_idc: 1,
+    first_mb_in_slice: 0,
+    frame_num: 0,
+    pic_parameter_set_id: 0,
+    field_pic_flag: 0,
+    bottom_field_flag: 0,
+    pic_order_cnt_type: 2,
+    idr_pic_id: 0
+  }
+
+  describe "resync after an improper transition" do
+    test "NALus following an improper NALu before the first VCL NALu are not dropped" do
+      nalus = [
+        nalu(:end_of_seq, %{nal_unit_type: 10}),
+        nalu(:sps, %{nal_unit_type: 7}),
+        nalu(:pps, %{nal_unit_type: 8}),
+        nalu(:idr, @idr_parsed_fields)
+      ]
+
+      {aus, _au_splitter} = AUSplitter.split(H264.AUSplitter, nalus, true, AUSplitter.new())
+
+      assert [[%NALu{type: :sps}, %NALu{type: :pps}, %NALu{type: :idr}]] = aus
+    end
+
+    test "NALus following an improper NALu inside an access unit are not dropped" do
+      nalus = [
+        nalu(:sps, %{nal_unit_type: 7}),
+        nalu(:pps, %{nal_unit_type: 8}),
+        nalu(:idr, @idr_parsed_fields),
+        nalu(:sps_extension, %{nal_unit_type: 13}),
+        nalu(:idr, %{@idr_parsed_fields | first_mb_in_slice: 8160})
+      ]
+
+      {aus, _au_splitter} = AUSplitter.split(H264.AUSplitter, nalus, true, AUSplitter.new())
+
+      assert [[%NALu{type: :sps}, %NALu{type: :pps}, %NALu{type: :idr}, %NALu{type: :idr}]] =
+               aus
+    end
+  end
+
+  defp nalu(type, parsed_fields) do
+    %NALu{
+      type: type,
+      parsed_fields: parsed_fields,
+      stripped_prefix: <<0, 0, 1>>,
+      payload: <<>>,
+      status: :valid
+    }
   end
 end
