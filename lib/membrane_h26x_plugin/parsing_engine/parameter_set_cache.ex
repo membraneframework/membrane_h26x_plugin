@@ -15,10 +15,13 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   @spec new() :: t()
   def new(), do: []
 
+  @spec parameter_set?(NALu.t()) :: boolean()
+  def parameter_set?(nalu), do: nalu.type in @parameter_set_types
+
   @spec put(t(), [NALu.t()]) :: t()
   def put(cache, nalus) do
     nalus
-    |> Enum.filter(&(&1.type in @parameter_set_types))
+    |> Enum.filter(&parameter_set?/1)
     |> Enum.reduce(cache, fn new_ps, cache ->
       case Enum.find_index(cache, &(parameter_set_id(&1) == parameter_set_id(new_ps))) do
         nil -> cache ++ [new_ps]

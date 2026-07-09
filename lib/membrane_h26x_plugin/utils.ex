@@ -110,10 +110,10 @@ defmodule Membrane.H26x.Utils do
   """
   @spec handle_buffer(Buffer.t(), map(), state()) :: {[action()], state()}
   def handle_buffer(buffer, ctx, state) do
-    {access_units, parsing_engine} =
+    {events, parsing_engine} =
       ParsingEngine.push(state.parsing_engine, buffer.payload, {buffer.pts, buffer.dts})
 
-    process_access_units(access_units, ctx, %{state | parsing_engine: parsing_engine})
+    process_events(events, ctx, %{state | parsing_engine: parsing_engine})
   end
 
   @doc """
@@ -134,11 +134,15 @@ defmodule Membrane.H26x.Utils do
           ParsingEngine.stream_structure()
         ) :: state()
   defp start_parsing_engine(state, framerate, input_alignment, input_stream_structure) do
+    output_stream_structure = state.output_stream_structure || input_stream_structure
+
     parsing_engine =
       ParsingEngine.new(%{
         codec: state.codec,
         input_stream_structure: input_stream_structure,
         input_alignment: input_alignment,
+        output_stream_structure: output_stream_structure,
+        repeat_parameter_sets: state.repeat_parameter_sets,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps
       })
 
@@ -146,120 +150,67 @@ defmodule Membrane.H26x.Utils do
       state
       | parsing_engine: parsing_engine,
         input_stream_structure: input_stream_structure,
-        output_stream_structure: state.output_stream_structure || input_stream_structure,
+        output_stream_structure: output_stream_structure,
         framerate: framerate || state.framerate
     }
   end
 
   @spec flush_and_process(map(), state()) :: {[action()], state()}
   defp flush_and_process(ctx, state) do
-    {access_units, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
-    process_access_units(access_units, ctx, %{state | parsing_engine: parsing_engine})
+    {events, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
+    process_events(events, ctx, %{state | parsing_engine: parsing_engine})
   end
 
-  @spec process_access_units(
-          [ParsingEngine.access_unit_with_parameter_sets()],
-          map(),
-          state()
-        ) :: {[action()], state()}
-  defp process_access_units(access_units, ctx, state) do
-    Enum.flat_map_reduce(access_units, state, fn {au, active_parameter_sets}, state ->
-      {au, stream_format_actions} =
-        handle_au_parameter_sets(au, active_parameter_sets, ctx, state)
+  @spec process_events([ParsingEngine.event()], map(), state()) :: {[action()], state()}
+  defp process_events(events, ctx, state) do
+    {actions, {state, _last_stream_format}} =
+      Enum.flat_map_reduce(events, {state, ctx.pads.output.stream_format}, fn
+        {:parameter_sets, parameter_sets}, {state, last_stream_format} ->
+          {actions, last_stream_format} =
+            maybe_stream_format(parameter_sets, last_stream_format, state)
 
-      {buffer_actions, state} = prepare_buffer_actions(au, state)
-      {stream_format_actions ++ buffer_actions, state}
-    end)
+          {actions, {state, last_stream_format}}
+
+        {:access_unit, au}, {state, last_stream_format} ->
+          {actions, state} = prepare_buffer_actions(au, state)
+          {actions, {state, last_stream_format}}
+      end)
+
+    {actions, state}
   end
-
-  defp handle_au_parameter_sets(au, active_parameter_sets, ctx, state) do
-    codec = state.codec
-    parameter_sets = get_parameter_sets(au, codec)
-
-    stream_format_actions =
-      maybe_stream_format(parameter_sets, active_parameter_sets, ctx, state)
-
-    au =
-      finalize_au_parameter_sets(au, parameter_sets, active_parameter_sets,
-        strip?: strip_parameter_sets?(state.output_stream_structure, codec),
-        repeat?: state.repeat_parameter_sets,
-        keyframe?: keyframe?(au, codec)
-      )
-
-    {au, stream_format_actions}
-  end
-
-  defp keyframe?(au, codec), do: Enum.any?(au, &(&1.type in keyframe_nalu_types(codec)))
-
-  defp get_parameter_sets(au, codec) do
-    Enum.flat_map(parameter_set_nalu_types(codec), fn type ->
-      Enum.filter(au, &(&1.type == type))
-    end)
-  end
-
-  defp strip_parameter_sets?(:annexb, _codec), do: false
-
-  defp strip_parameter_sets?({codec_tag, _nalu_length_size}, codec),
-    do: codec_tag in out_of_band_parameter_sets_codec_tags(codec)
 
   defp stream_format_module(:h264), do: Membrane.H264
   defp stream_format_module(:h265), do: Membrane.H265
 
-  defp keyframe_nalu_types(:h264), do: [:idr]
-
-  defp keyframe_nalu_types(:h265),
-    do: [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra]
-
-  defp parameter_set_nalu_types(:h264), do: [:sps, :pps]
-  defp parameter_set_nalu_types(:h265), do: [:vps, :sps, :pps]
-
-  defp out_of_band_parameter_sets_codec_tags(:h264), do: [:avc1]
-  defp out_of_band_parameter_sets_codec_tags(:h265), do: [:hvc1]
-
-  defp maybe_stream_format(parameter_sets, active_parameter_sets, ctx, state) do
-    last_sent_stream_format = ctx.pads.output.stream_format
-
-    stream_format_candidate =
-      generate_stream_format(
-        parameter_sets,
-        active_parameter_sets,
-        last_sent_stream_format,
-        state
-      )
-
-    if stream_format_candidate in [last_sent_stream_format, nil] do
-      []
-    else
-      [stream_format: {:output, stream_format_candidate}]
+  defp maybe_stream_format(parameter_sets, last_stream_format, state) do
+    case generate_stream_format(parameter_sets, last_stream_format, state) do
+      nil -> {[], last_stream_format}
+      ^last_stream_format -> {[], last_stream_format}
+      stream_format -> {[stream_format: {:output, stream_format}], stream_format}
     end
   end
 
   defp generate_stream_format(
-         new_parameter_sets,
-         active_parameter_sets,
-         last_sent_stream_format,
+         %{active: active_parameter_sets, dcr: dcr},
+         last_stream_format,
          state
        ) do
-    latest_sps = new_parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
+    latest_sps = active_parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
 
     output_raw_stream_structure =
       case state.output_stream_structure do
-        :annexb ->
-          :annexb
-
-        {codec_tag, _nalu_length_size} = structure ->
-          dcr = ParsingEngine.generate_dcr(state.codec, active_parameter_sets, structure)
-          {codec_tag, dcr}
+        :annexb -> :annexb
+        {codec_tag, _nalu_length_size} -> {codec_tag, dcr}
       end
 
-    case {latest_sps, last_sent_stream_format} do
+    case {latest_sps, last_stream_format} do
       {nil, nil} ->
         nil
 
-      {nil, last_sent_stream_format} ->
-        %{last_sent_stream_format | stream_structure: output_raw_stream_structure}
+      {nil, last_stream_format} ->
+        %{last_stream_format | stream_structure: output_raw_stream_structure}
 
-      {latest_sps, _last_sent_stream_format} ->
+      {latest_sps, _last_stream_format} ->
         sps = latest_sps.parsed_fields
 
         struct!(stream_format_module(state.codec),
@@ -271,19 +222,6 @@ defmodule Membrane.H26x.Utils do
           nalu_in_metadata?: true,
           stream_structure: output_raw_stream_structure
         )
-    end
-  end
-
-  defp finalize_au_parameter_sets(au, parameter_sets, active_parameter_sets, opts) do
-    cond do
-      opts[:strip?] ->
-        Enum.filter(au, &(&1 not in parameter_sets))
-
-      opts[:keyframe?] ->
-        Enum.uniq_by(if(opts[:repeat?], do: active_parameter_sets ++ au, else: au), & &1.payload)
-
-      true ->
-        au
     end
   end
 
@@ -318,7 +256,7 @@ defmodule Membrane.H26x.Utils do
   @spec prepare_buffer_actions(ParsingEngine.access_unit(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
     codec = state.codec
-    keyframe? = keyframe?(au, codec)
+    keyframe? = ParsingEngine.keyframe?(codec, au)
     nalu_parser_mod = state.parsing_engine.nalu_parser_mod
 
     {should_forward?, skip_until_keyframe?} =
