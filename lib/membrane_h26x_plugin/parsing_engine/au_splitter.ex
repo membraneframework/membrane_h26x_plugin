@@ -114,20 +114,12 @@ defmodule Membrane.H264.AUSplitter do
           %AUSplitter{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
         )
 
-      first_nalu.type == :filler_data ->
-        # We can safely discard filler_data as it contains no information
+      true ->
         Membrane.Logger.warning(
-          "AUSplitter: Improper transition: filler data NALu before the first VCL NALu in AU"
+          "AUSplitter: Improper transition, discarding NALu: #{inspect(first_nalu)}"
         )
 
         split(rest_nalus, state)
-
-      true ->
-        Membrane.Logger.warning(
-          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
-        )
-
-        state
     end
   end
 
@@ -172,10 +164,10 @@ defmodule Membrane.H264.AUSplitter do
 
       true ->
         Membrane.Logger.warning(
-          "AUSplitter: Improper transition, first_nalu: #{inspect(first_nalu)}"
+          "AUSplitter: Improper transition, discarding NALu: #{inspect(first_nalu)}"
         )
 
-        state
+        split(rest_nalus, state)
     end
   end
 
@@ -302,7 +294,7 @@ defmodule Membrane.H265.AUSplitter do
         )
 
       true ->
-        Logger.warning("AUSplitter: Improper transition")
+        Logger.warning("AUSplitter: Improper transition, discarding NALu: #{inspect(first_nalu)}")
         split(rest_nalus, state)
     end
   end
@@ -347,7 +339,7 @@ defmodule Membrane.H265.AUSplitter do
         )
 
       true ->
-        Logger.warning("AUSplitter: Improper transition")
+        Logger.warning("AUSplitter: Improper transition, discarding NALu: #{inspect(first_nalu)}")
         split(rest_nalus, state)
     end
   end
