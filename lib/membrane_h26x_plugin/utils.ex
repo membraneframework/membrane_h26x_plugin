@@ -18,7 +18,6 @@ defmodule Membrane.H26x.Utils do
           skip_until_keyframe: boolean(),
           repeat_parameter_sets: boolean(),
           initial_parameter_sets: [binary()],
-          input_stream_structure: ParsingEngine.stream_structure() | nil,
           output_stream_structure: ParsingEngine.stream_structure() | nil,
           framerate: term() | nil
         }
@@ -43,7 +42,6 @@ defmodule Membrane.H26x.Utils do
       skip_until_keyframe: opts[:skip_until_keyframe],
       repeat_parameter_sets: opts[:repeat_parameter_sets],
       initial_parameter_sets: opts[:initial_parameter_sets],
-      input_stream_structure: nil,
       output_stream_structure: opts[:output_stream_structure],
       framerate: framerate(opts[:generate_best_effort_timestamps])
     }
@@ -52,57 +50,24 @@ defmodule Membrane.H26x.Utils do
   @doc """
   Handles a new input stream format.
 
-  The element parses the raw stream format itself and passes the resulting input
-  alignment, stream structure and parameter sets (as raw payloads) along with the
-  stream's framerate (or `nil`).
+  The element passes the input alignment and the raw input stream structure resolved
+  from the stream format, along with the stream's framerate (or `nil`).
   """
   @spec handle_stream_format(
-          {ParsingEngine.input_alignment(), ParsingEngine.stream_structure(), [binary()]},
+          {ParsingEngine.input_alignment(), ParsingEngine.input_stream_structure()},
           term() | nil,
           map(),
           state()
         ) :: {[action()], state()}
-  def handle_stream_format(
-        {alignment, input_stream_structure, parameter_sets},
-        framerate,
-        ctx,
-        state
-      ) do
-    is_first_received_stream_format = is_nil(ctx.pads.output.stream_format)
+  def handle_stream_format({alignment, input_stream_structure}, framerate, ctx, state) do
+    if is_nil(ctx.pads.output.stream_format) do
+      {[], start_parsing_engine(state, framerate, alignment, input_stream_structure)}
+    else
+      {events, parsing_engine} =
+        ParsingEngine.reconfigure_input(state.parsing_engine, alignment, input_stream_structure)
 
-    {au_actions, state} =
-      cond do
-        is_first_received_stream_format ->
-          {[], start_parsing_engine(state, framerate, alignment, input_stream_structure)}
-
-        not input_stream_structure_change_allowed?(
-          input_stream_structure,
-          state.input_stream_structure
-        ) ->
-          raise "stream structure cannot be fundamentally changed during stream"
-
-        alignment != state.parsing_engine.input_alignment ->
-          {actions, state} = flush_and_process(ctx, state)
-
-          {actions,
-           %{
-             state
-             | parsing_engine: ParsingEngine.set_input_alignment(state.parsing_engine, alignment)
-           }}
-
-        true ->
-          {[], state}
-      end
-
-    incoming_parameter_sets =
-      incoming_parameter_sets(
-        input_stream_structure,
-        parameter_sets,
-        is_first_received_stream_format,
-        state
-      )
-
-    {au_actions, prepend_parameter_sets(state, incoming_parameter_sets)}
+      process_events(events, ctx, %{state | parsing_engine: parsing_engine})
+    end
   end
 
   @doc """
@@ -122,7 +87,9 @@ defmodule Membrane.H26x.Utils do
   """
   @spec handle_end_of_stream(map(), state()) :: {[action()], state()}
   def handle_end_of_stream(ctx, state) do
-    {actions, state} = flush_and_process(ctx, state)
+    {events, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
+    {actions, state} = process_events(events, ctx, %{state | parsing_engine: parsing_engine})
+
     actions = if stream_format_sent?(actions, ctx), do: actions, else: []
     {actions ++ [end_of_stream: :output], state}
   end
@@ -131,34 +98,26 @@ defmodule Membrane.H26x.Utils do
           state(),
           term() | nil,
           ParsingEngine.input_alignment(),
-          ParsingEngine.stream_structure()
+          ParsingEngine.input_stream_structure()
         ) :: state()
   defp start_parsing_engine(state, framerate, input_alignment, input_stream_structure) do
-    output_stream_structure = state.output_stream_structure || input_stream_structure
-
     parsing_engine =
       ParsingEngine.new(%{
         codec: state.codec,
         input_stream_structure: input_stream_structure,
         input_alignment: input_alignment,
-        output_stream_structure: output_stream_structure,
+        output_stream_structure: state.output_stream_structure,
         repeat_parameter_sets: state.repeat_parameter_sets,
+        initial_parameter_sets: state.initial_parameter_sets,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps
       })
 
     %{
       state
       | parsing_engine: parsing_engine,
-        input_stream_structure: input_stream_structure,
-        output_stream_structure: output_stream_structure,
+        output_stream_structure: parsing_engine.output_stream_structure,
         framerate: framerate || state.framerate
     }
-  end
-
-  @spec flush_and_process(map(), state()) :: {[action()], state()}
-  defp flush_and_process(ctx, state) do
-    {events, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
-    process_events(events, ctx, %{state | parsing_engine: parsing_engine})
   end
 
   @spec process_events([ParsingEngine.event()], map(), state()) :: {[action()], state()}
@@ -224,31 +183,6 @@ defmodule Membrane.H26x.Utils do
         )
     end
   end
-
-  defp prepend_parameter_sets(state, parameter_sets) do
-    %{
-      state
-      | parsing_engine: ParsingEngine.prepend_parameter_sets(state.parsing_engine, parameter_sets)
-    }
-  end
-
-  defp incoming_parameter_sets(:annexb, _parameter_sets, true, state),
-    do: state.initial_parameter_sets
-
-  defp incoming_parameter_sets(:annexb, _parameter_sets, false, _state), do: []
-
-  defp incoming_parameter_sets(_structure, parameter_sets, _is_first, state) do
-    active_payloads =
-      state.parsing_engine
-      |> ParsingEngine.active_parameter_sets()
-      |> Enum.map(& &1.payload)
-
-    parameter_sets -- active_payloads
-  end
-
-  defp input_stream_structure_change_allowed?(:annexb, :annexb), do: true
-  defp input_stream_structure_change_allowed?({tag, _new_len}, {tag, _old_len}), do: true
-  defp input_stream_structure_change_allowed?(_new, _old), do: false
 
   defp framerate(false), do: nil
   defp framerate(%{framerate: framerate}), do: framerate

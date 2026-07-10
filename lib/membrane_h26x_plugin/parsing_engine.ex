@@ -7,7 +7,7 @@ defmodule Membrane.H26x.ParsingEngine do
   are returned interleaved with parameter set change notifications - see
   `t:event/0`. Depending on the configured output stream structure, the engine
   also repeats the active parameter sets on keyframes or strips them from the
-  access units altogether (for the structures conveying them out-of-band).
+  access units altogether (for the structures carrying them out-of-band).
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
 
@@ -89,12 +89,14 @@ defmodule Membrane.H26x.ParsingEngine do
   * `:input_alignment` - see `t:input_alignment/0`.
   * `:output_stream_structure` - the stream structure the output access units are
     intended for. Determines how the parameter sets are handled: for the structures
-    conveying them out-of-band (`:avc1`, `:hvc1`) they are stripped from the access
+    carrying them out-of-band (`:avc1`, `:hvc1`) they are stripped from the access
     units and carried solely by the DCRs of the `:parameter_sets` events. Defaults
     to the input stream structure.
   * `:repeat_parameter_sets` - if `true`, all the active parameter sets are attached
     to each keyframe access unit. Takes no effect for the `:avc1` and `:hvc1` output
     stream structures, where the parameter sets travel out-of-band. Defaults to `false`.
+  * `:initial_parameter_sets` - raw (unprefixed) payloads of parameter sets absent from
+    the stream, scheduled to be parsed before the first pushed payload. Defaults to `[]`.
   * `:generate_best_effort_timestamps` - see `t:generate_best_effort_timestamps/0`.
     Defaults to `false`.
   """
@@ -102,8 +104,9 @@ defmodule Membrane.H26x.ParsingEngine do
           :codec => codec(),
           :input_stream_structure => input_stream_structure(),
           :input_alignment => input_alignment(),
-          optional(:output_stream_structure) => stream_structure(),
+          optional(:output_stream_structure) => stream_structure() | nil,
           optional(:repeat_parameter_sets) => boolean(),
+          optional(:initial_parameter_sets) => [binary()],
           optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps()
         }
 
@@ -175,7 +178,7 @@ defmodule Membrane.H26x.ParsingEngine do
       au_splitter_mod: au_splitter_mod(config.codec),
       au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
     }
-    |> prepend_parameter_sets(parameter_sets)
+    |> prepend_parameter_sets(Map.get(config, :initial_parameter_sets, []) ++ parameter_sets)
   end
 
   def new(config) do
@@ -220,19 +223,53 @@ defmodule Membrane.H26x.ParsingEngine do
   defp au_timestamp_generator_mod(:h265), do: Membrane.H265.AUTimestampGenerator
 
   @doc """
-  Changes the input alignment, keeping the accumulated parsing state. To be used after
-  `flush/1` when the input alignment changes mid-stream.
-  """
-  @spec set_input_alignment(t(), input_alignment()) :: t()
-  def set_input_alignment(engine, input_alignment),
-    do: %{engine | input_alignment: input_alignment}
+  Changes the input alignment and stream structure, keeping the accumulated parsing
+  state. If the input configuration actually changed, the engine is flushed first
+  (see `flush/1`) and the resulting events are returned. When the new structure
+  carries a Decoder Configuration Record, the parameter sets it holds are scheduled
+  to be parsed, skipping the ones already active in the stream.
 
-  @doc """
-  Schedules raw (unprefixed) parameter set payloads to be parsed just before the next
-  pushed payload, as if they preceded it in the stream.
+  Raises if the input stream structure differs fundamentally from the current one -
+  the only change allowed mid-stream is the NALu length size of a length-prefixed
+  structure.
   """
+  @spec reconfigure_input(t(), input_alignment(), input_stream_structure()) ::
+          {[event()], t()} | no_return()
+  def reconfigure_input(engine, input_alignment, input_stream_structure) do
+    {input_stream_structure, parameter_sets} =
+      resolve_input_stream_structure(engine.codec, input_stream_structure)
+
+    if not input_stream_structure_change_allowed?(
+             input_stream_structure,
+             engine.input_stream_structure
+           ) do
+      raise "stream structure cannot be fundamentally changed during stream"
+    end
+
+    {events, engine} =
+      if input_alignment != engine.input_alignment or
+           input_stream_structure != engine.input_stream_structure,
+         do: flush(engine),
+         else: {[], engine}
+
+    engine = %{
+      engine
+      | input_alignment: input_alignment,
+        input_stream_structure: input_stream_structure,
+        nalu_splitter: %{engine.nalu_splitter | input_stream_structure: input_stream_structure},
+        nalu_parser: %{engine.nalu_parser | input_stream_structure: input_stream_structure}
+    }
+
+    active_payloads = Enum.map(engine.parameter_set_cache, & &1.payload)
+    {events, prepend_parameter_sets(engine, parameter_sets -- active_payloads)}
+  end
+
+  defp input_stream_structure_change_allowed?(:annexb, :annexb), do: true
+  defp input_stream_structure_change_allowed?({tag, _new_len}, {tag, _old_len}), do: true
+  defp input_stream_structure_change_allowed?(_new, _old), do: false
+
   @spec prepend_parameter_sets(t(), [binary()]) :: t()
-  def prepend_parameter_sets(engine, parameter_sets) do
+  defp prepend_parameter_sets(engine, parameter_sets) do
     prefixed = NALuParser.prefix_nalus_payloads(parameter_sets, engine.input_stream_structure)
     %{engine | pending_payload: engine.pending_payload <> prefixed}
   end
@@ -242,13 +279,6 @@ defmodule Membrane.H26x.ParsingEngine do
   """
   @spec get_prefixed_nalu_payload(NALu.t(), stream_structure()) :: binary()
   defdelegate get_prefixed_nalu_payload(nalu, stream_structure), to: NALuParser
-
-  @doc """
-  Returns the parameter sets currently active in the stream - the most recent set
-  per parameter set type and id.
-  """
-  @spec active_parameter_sets(t()) :: [NALu.t()]
-  def active_parameter_sets(engine), do: engine.parameter_set_cache
 
   @doc """
   Feeds a payload through the parser, returning the access units completed by it,

@@ -7,10 +7,10 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   @typedoc """
   A structure holding the state of the NALu splitter.
   """
-  @opaque t :: %__MODULE__{
-            input_stream_structure: ParsingEngine.stream_structure(),
-            unparsed_payload: binary()
-          }
+  @type t :: %__MODULE__{
+          input_stream_structure: ParsingEngine.stream_structure(),
+          unparsed_payload: binary()
+        }
 
   @enforce_keys [:input_stream_structure]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
