@@ -5,11 +5,15 @@ defmodule Membrane.H26x.ParsingEngine do
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. The access units
   are returned interleaved with parameter set change notifications - see
-  `t:event/0`. Depending on the configured output stream structure, the engine
-  also repeats the active parameter sets on keyframes or strips them from the
-  access units altogether (for the structures carrying them out-of-band).
+  `t:event/0`. Access units that are not decodable - containing NALus that
+  failed to parse or no VCL NALu - are dropped (their parameter sets are still
+  taken into account). Depending on the configured output stream structure, the
+  engine also repeats the active parameter sets on keyframes or strips them from
+  the access units altogether (for the structures carrying them out-of-band).
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
+
+  require Membrane.Logger
 
   alias Membrane.H26x.{AccessUnit, NALu}
 
@@ -273,13 +277,6 @@ defmodule Membrane.H26x.ParsingEngine do
   end
 
   @doc """
-  Returns the access unit's first VCL (slice) NALu, or `nil` if there is none.
-  """
-  @spec first_vcl_nalu(t(), AccessUnit.t()) :: NALu.t() | nil
-  def first_vcl_nalu(engine, access_unit),
-    do: engine.nalu_parser_mod.get_first_vcl_nalu(access_unit.nalus)
-
-  @doc """
   Feeds a payload through the parser, returning the access units completed by it,
   interleaved with parameter set change notifications - see `t:event/0`.
   """
@@ -349,17 +346,37 @@ defmodule Membrane.H26x.ParsingEngine do
       Enum.flat_map_reduce(access_units, engine.parameter_set_cache, fn {nalus, timestamps},
                                                                         cache ->
         updated_cache = ParameterSetCache.put(cache, nalus)
-        au_event = {:access_unit, build_access_unit(engine, nalus, timestamps, updated_cache)}
+
+        au_events =
+          if decodable?(engine, nalus),
+            do: [{:access_unit, build_access_unit(engine, nalus, timestamps, updated_cache)}],
+            else: []
 
         if updated_cache == cache do
-          {[au_event], cache}
+          {au_events, cache}
         else
           parameter_sets = %{dcr: generate_dcr(engine, updated_cache), active: updated_cache}
-          {[{:parameter_sets, parameter_sets}, au_event], updated_cache}
+          {[{:parameter_sets, parameter_sets} | au_events], updated_cache}
         end
       end)
 
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
+  end
+
+  @spec decodable?(t(), AUSplitter.access_unit()) :: boolean()
+  defp decodable?(engine, nalus) do
+    cond do
+      Enum.any?(nalus, &(&1.status == :error)) ->
+        Membrane.Logger.warning("Dropping an access unit containing NALus that failed to parse")
+        false
+
+      engine.nalu_parser_mod.get_first_vcl_nalu(nalus) == nil ->
+        Membrane.Logger.debug("Dropping an access unit without a VCL NALu")
+        false
+
+      true ->
+        true
+    end
   end
 
   @spec generate_dcr(t(), [NALu.t()]) :: binary() | nil

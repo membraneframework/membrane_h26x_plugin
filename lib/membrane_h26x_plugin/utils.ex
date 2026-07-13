@@ -189,12 +189,12 @@ defmodule Membrane.H26x.Utils do
 
   @spec prepare_buffer_actions(AccessUnit.t(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
-    {should_forward?, skip_until_keyframe?} =
-      should_forward_au(au, state.skip_until_keyframe, state.parsing_engine)
-
+    skip_until_keyframe? = state.skip_until_keyframe and not au.keyframe?
     state = %{state | skip_until_keyframe: skip_until_keyframe?}
 
-    if should_forward? do
+    if skip_until_keyframe? do
+      {[], state}
+    else
       buffers =
         wrap_into_buffer(
           au,
@@ -204,18 +204,6 @@ defmodule Membrane.H26x.Utils do
         )
 
       {[buffer: {:output, buffers}], state}
-    else
-      {[], state}
-    end
-  end
-
-  defp should_forward_au(au, skip_until_keyframe?, parsing_engine) do
-    if Enum.all?(au.nalus, &(&1.status == :valid)) and
-         ParsingEngine.first_vcl_nalu(parsing_engine, au) != nil do
-      skip_until_keyframe? = skip_until_keyframe? and not au.keyframe?
-      {not skip_until_keyframe?, skip_until_keyframe?}
-    else
-      {false, skip_until_keyframe?}
     end
   end
 
