@@ -237,7 +237,7 @@ defmodule Membrane.H264.StreamStructureConversionTest do
         stream_name =
           "stream #{tested_stream_structure_name} -> #{parser_chain_string}#{tested_stream_structure_name}#{name_suffix}"
 
-        @tag "au aligned #{stream_name}"
+        @tag String.to_atom("au aligned #{stream_name}")
         test "for au aligned #{stream_name}" do
           perform_test(
             unquote(tested_stream_structure_name),
