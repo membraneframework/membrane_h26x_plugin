@@ -1,4 +1,4 @@
-defmodule ExpGolombTest do
+defmodule Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverterTest do
   @moduledoc false
 
   use ExUnit.Case, async: true
