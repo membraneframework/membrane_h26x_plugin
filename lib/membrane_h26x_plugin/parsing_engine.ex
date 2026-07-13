@@ -239,7 +239,11 @@ defmodule Membrane.H26x.ParsingEngine do
          input_stream_structure,
          engine.input_stream_structure
        ) do
-      raise "stream structure cannot be fundamentally changed during stream"
+      raise """
+        Input stream structure cannot be changed
+        from: #{inspect(engine.input_stream_structure)}
+        to: #{inspect(input_stream_structure)} during the stream.
+      """
     end
 
     {events, engine} =
@@ -267,14 +271,6 @@ defmodule Membrane.H26x.ParsingEngine do
   @spec prepend_parameter_sets(t(), [binary()]) :: t()
   defp prepend_parameter_sets(engine, parameter_sets),
     do: %{engine | pending_parameter_sets: engine.pending_parameter_sets ++ parameter_sets}
-
-  @doc """
-  Returns the NALu's payload with the prefix fitting the engine's output stream structure.
-  """
-  @spec get_prefixed_nalu_payload(t(), NALu.t()) :: binary()
-  def get_prefixed_nalu_payload(state, nalu) do
-    NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
-  end
 
   @doc """
   Feeds a payload through the parser, returning the access units completed by it,
@@ -389,9 +385,12 @@ defmodule Membrane.H26x.ParsingEngine do
           AccessUnit.t()
   defp build_access_unit(engine, nalus, timestamps, active_parameter_sets) do
     keyframe? = keyframe?(engine.codec, nalus)
+    nalus = finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets)
 
     %AccessUnit{
-      nalus: finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets),
+      nalus: nalus,
+      nalus_payloads:
+        Enum.map(nalus, &NALuParser.get_prefixed_nalu_payload(&1, engine.output_stream_structure)),
       timestamps: timestamps,
       keyframe?: keyframe?
     }

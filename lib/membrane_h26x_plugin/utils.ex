@@ -195,40 +195,30 @@ defmodule Membrane.H26x.Utils do
     if skip_until_keyframe? do
       {[], state}
     else
-      buffers =
-        wrap_into_buffer(
-          au,
-          state.output_alignment,
-          state.parsing_engine,
-          _metadata_key = state.codec
-        )
-
+      buffers = wrap_into_buffer(au, state.output_alignment, _metadata_key = state.codec)
       {[buffer: {:output, buffers}], state}
     end
   end
 
-  defp wrap_into_buffer(au, :au, parsing_engine, metadata_key) do
+  defp wrap_into_buffer(au, :au, metadata_key) do
     {pts, dts} = au.timestamps
 
-    payload =
-      Enum.map_join(au.nalus, <<>>, &ParsingEngine.get_prefixed_nalu_payload(parsing_engine, &1))
-
     %Buffer{
-      payload: payload,
+      payload: Enum.join(au.nalus_payloads),
       metadata: prepare_metadata(:au, au.nalus, au.keyframe?, metadata_key),
       pts: pts,
       dts: dts
     }
   end
 
-  defp wrap_into_buffer(au, :nalu, parsing_engine, metadata_key) do
+  defp wrap_into_buffer(au, :nalu, metadata_key) do
     {pts, dts} = au.timestamps
 
-    au.nalus
+    au.nalus_payloads
     |> Enum.zip(prepare_metadata(:nalu, au.nalus, au.keyframe?, metadata_key))
-    |> Enum.map(fn {nalu, metadata} ->
+    |> Enum.map(fn {nalu_payload, metadata} ->
       %Buffer{
-        payload: ParsingEngine.get_prefixed_nalu_payload(parsing_engine, nalu),
+        payload: nalu_payload,
         metadata: metadata,
         pts: pts,
         dts: dts
