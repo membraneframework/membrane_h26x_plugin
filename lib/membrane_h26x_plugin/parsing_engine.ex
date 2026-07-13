@@ -118,7 +118,7 @@ defmodule Membrane.H26x.ParsingEngine do
           output_stream_structure: stream_structure(),
           repeat_parameter_sets: boolean(),
           previous_buffer_timestamps: NALu.timestamps() | nil,
-          pending_payload: binary(),
+          pending_parameter_sets: [binary()],
           nalu_parser_mod: module(),
           au_splitter_mod: module(),
           au_timestamp_generator_mod: module()
@@ -139,7 +139,7 @@ defmodule Membrane.H26x.ParsingEngine do
     :au_splitter_mod,
     :au_timestamp_generator_mod
   ]
-  defstruct @enforce_keys ++ [previous_buffer_timestamps: nil, pending_payload: <<>>]
+  defstruct @enforce_keys ++ [previous_buffer_timestamps: nil, pending_parameter_sets: []]
 
   @doc """
   Creates a parser for the given input stream structure and alignment.
@@ -261,10 +261,8 @@ defmodule Membrane.H26x.ParsingEngine do
   defp input_stream_structure_change_allowed?(_new, _old), do: false
 
   @spec prepend_parameter_sets(t(), [binary()]) :: t()
-  defp prepend_parameter_sets(engine, parameter_sets) do
-    prefixed = NALuParser.prefix_nalus_payloads(parameter_sets, engine.input_stream_structure)
-    %{engine | pending_payload: engine.pending_payload <> prefixed}
-  end
+  defp prepend_parameter_sets(engine, parameter_sets),
+    do: %{engine | pending_parameter_sets: engine.pending_parameter_sets ++ parameter_sets}
 
   @doc """
   Returns the NALu's payload with the prefix fitting the engine's output stream structure.
@@ -288,15 +286,20 @@ defmodule Membrane.H26x.ParsingEngine do
   @spec push(t(), binary(), NALu.timestamps()) :: {[event()], t()}
   def push(engine, payload, timestamps \\ {nil, nil}) do
     {pts, dts} = timestamps
-    payload = engine.pending_payload <> payload
+
+    prefixed_parameter_sets =
+      NALuParser.prefix_nalus_payloads(
+        engine.pending_parameter_sets,
+        engine.input_stream_structure
+      )
 
     engine = %{
       engine
-      | pending_payload: <<>>,
+      | pending_parameter_sets: [],
         previous_buffer_timestamps: {pts || dts, dts || pts}
     }
 
-    parse(engine, payload, timestamps, _flush? = false)
+    parse(engine, prefixed_parameter_sets <> payload, timestamps, _flush? = false)
   end
 
   @doc """
