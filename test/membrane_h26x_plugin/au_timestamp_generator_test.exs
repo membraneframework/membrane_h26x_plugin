@@ -33,9 +33,8 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
     {emitted, _state} = AUTimestampGenerator.generate_timestamps(FakeGenerator, aus, true, state)
 
     emitted
-    |> Enum.map(fn au ->
+    |> Enum.map(fn {au, pts, dts} ->
       nalu = hd(au)
-      {pts, dts} = nalu.timestamps
 
       {nalu.parsed_fields.poc, Membrane.Time.as_seconds(pts, :round),
        Membrane.Time.as_seconds(dts, :round)}
@@ -113,7 +112,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
       {emitted, _state} =
         AUTimestampGenerator.generate_timestamps(FakeGenerator, [invalid_au], state)
 
-      assert emitted == [invalid_au]
+      assert emitted == [{invalid_au, nil, nil}]
     end
   end
 end

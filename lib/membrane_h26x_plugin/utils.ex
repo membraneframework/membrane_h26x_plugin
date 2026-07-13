@@ -5,7 +5,7 @@ defmodule Membrane.H26x.Utils do
   # `Membrane.H264.Parser` and `Membrane.H265.Parser` elements.
 
   alias Membrane.Buffer
-  alias Membrane.H26x.ParsingEngine
+  alias Membrane.H26x.{AccessUnit, ParsingEngine}
 
   @typedoc """
   Element state driven by this module.
@@ -187,29 +187,20 @@ defmodule Membrane.H26x.Utils do
   defp framerate(false), do: nil
   defp framerate(%{framerate: framerate}), do: framerate
 
-  @spec prepare_buffer_actions(ParsingEngine.access_unit(), state()) :: {[action()], state()}
+  @spec prepare_buffer_actions(AccessUnit.t(), state()) :: {[action()], state()}
   defp prepare_buffer_actions(au, state) do
-    codec = state.codec
-    keyframe? = ParsingEngine.keyframe?(codec, au)
-    nalu_parser_mod = state.parsing_engine.nalu_parser_mod
-
     {should_forward?, skip_until_keyframe?} =
-      should_forward_au(au, keyframe?, state.skip_until_keyframe, nalu_parser_mod)
+      should_forward_au(au, state.skip_until_keyframe, state.parsing_engine)
 
     state = %{state | skip_until_keyframe: skip_until_keyframe?}
 
     if should_forward? do
-      {pts, dts} = nalu_parser_mod.get_first_vcl_nalu(au).timestamps
-
       buffers =
         wrap_into_buffer(
           au,
-          pts,
-          dts,
-          keyframe?,
           state.output_alignment,
-          state.output_stream_structure,
-          _metadata_key = codec
+          state.parsing_engine,
+          _metadata_key = state.codec
         )
 
       {[buffer: {:output, buffers}], state}
@@ -218,37 +209,38 @@ defmodule Membrane.H26x.Utils do
     end
   end
 
-  defp should_forward_au(au, keyframe?, skip_until_keyframe?, nalu_parser_mod) do
-    if Enum.all?(au, &(&1.status == :valid)) and nalu_parser_mod.get_first_vcl_nalu(au) != nil do
-      skip_until_keyframe? = skip_until_keyframe? and not keyframe?
+  defp should_forward_au(au, skip_until_keyframe?, parsing_engine) do
+    if Enum.all?(au.nalus, &(&1.status == :valid)) and
+         ParsingEngine.first_vcl_nalu(parsing_engine, au) != nil do
+      skip_until_keyframe? = skip_until_keyframe? and not au.keyframe?
       {not skip_until_keyframe?, skip_until_keyframe?}
     else
       {false, skip_until_keyframe?}
     end
   end
 
-  defp wrap_into_buffer(au, pts, dts, keyframe?, :au, output_stream_structure, metadata_key) do
+  defp wrap_into_buffer(au, :au, parsing_engine, metadata_key) do
+    {pts, dts} = au.timestamps
+
     payload =
-      Enum.map_join(
-        au,
-        <<>>,
-        &ParsingEngine.get_prefixed_nalu_payload(&1, output_stream_structure)
-      )
+      Enum.map_join(au.nalus, <<>>, &ParsingEngine.get_prefixed_nalu_payload(parsing_engine, &1))
 
     %Buffer{
       payload: payload,
-      metadata: prepare_metadata(:au, au, keyframe?, metadata_key),
+      metadata: prepare_metadata(:au, au.nalus, au.keyframe?, metadata_key),
       pts: pts,
       dts: dts
     }
   end
 
-  defp wrap_into_buffer(au, pts, dts, keyframe?, :nalu, output_stream_structure, metadata_key) do
-    au
-    |> Enum.zip(prepare_metadata(:nalu, au, keyframe?, metadata_key))
+  defp wrap_into_buffer(au, :nalu, parsing_engine, metadata_key) do
+    {pts, dts} = au.timestamps
+
+    au.nalus
+    |> Enum.zip(prepare_metadata(:nalu, au.nalus, au.keyframe?, metadata_key))
     |> Enum.map(fn {nalu, metadata} ->
       %Buffer{
-        payload: ParsingEngine.get_prefixed_nalu_payload(nalu, output_stream_structure),
+        payload: ParsingEngine.get_prefixed_nalu_payload(parsing_engine, nalu),
         metadata: metadata,
         pts: pts,
         dts: dts

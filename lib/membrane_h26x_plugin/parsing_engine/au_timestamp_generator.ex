@@ -79,15 +79,15 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
   @doc """
   Feeds the access units (in decode order) through the generator, returning
-  those that are ready to be emitted (also in decode order) with their
-  `{pts, dts}` written onto the first VCL NALu.
+  those that are ready to be emitted (also in decode order) along with their
+  `pts` and `dts`.
 
   If `flush?` is set to `true`, all the access units still buffered after
   feeding the input are drained and returned as well. To be done on end of
   stream or when the generator is no longer going to be used.
   """
   @spec generate_timestamps(module(), [AUSplitter.access_unit()], boolean(), state()) ::
-          {[AUSplitter.access_unit()], state()}
+          {[timestamped_au()], state()}
   def generate_timestamps(module, access_units, flush? \\ false, state) do
     {ready, state} =
       Enum.flat_map_reduce(access_units, state, fn au, state ->
@@ -96,10 +96,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
     {drained, state} = if flush?, do: drain(state), else: {[], state}
 
-    outputs =
-      Enum.map(ready ++ drained, fn {au, pts, dts} -> put_timestamps(module, au, pts, dts) end)
-
-    {outputs, state}
+    {ready ++ drained, state}
   end
 
   @spec put_access_unit(module(), AUSplitter.access_unit(), state()) ::
@@ -157,16 +154,6 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
     {ready, state} = pop_ready(state)
     {flushed ++ ready, state}
-  end
-
-  @spec put_timestamps(module(), AUSplitter.access_unit(), timestamp(), timestamp()) ::
-          AUSplitter.access_unit()
-  defp put_timestamps(module, au, pts, dts) do
-    first_vcl_nalu = module.get_first_vcl_nalu(au)
-
-    Enum.map(au, fn nalu ->
-      if nalu == first_vcl_nalu, do: %{nalu | timestamps: {pts, dts}}, else: nalu
-    end)
   end
 
   @spec assign_next_pts(state()) :: state()

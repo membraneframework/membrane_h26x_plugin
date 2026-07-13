@@ -11,7 +11,7 @@ defmodule Membrane.H26x.ParsingEngine do
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
 
-  alias Membrane.H26x.NALu
+  alias Membrane.H26x.{AccessUnit, NALu}
 
   alias Membrane.H26x.ParsingEngine.{
     AUSplitter,
@@ -51,23 +51,18 @@ defmodule Membrane.H26x.ParsingEngine do
   @type input_alignment :: :bytestream | :nalu | :au
 
   @typedoc """
-  An access unit - a list of logically associated NAL units.
-  """
-  @type access_unit :: [NALu.t()]
-
-  @typedoc """
   An item of the engine's output.
 
-  Access units are interleaved with parameter set change notifications: whenever the
-  set of active parameter sets changes, a `:parameter_sets` event is emitted right
-  before the access unit that introduced the change. The event carries all the
-  parameter sets active at that point of the stream (the most recent set per
-  parameter set type and id) and a Decoder Configuration Record generated out of
-  them (`nil` for the `:annexb` output stream structure, or when no SPS has been
-  seen yet).
+  Access units (see `t:Membrane.H26x.AccessUnit.t/0`) are interleaved with parameter
+  set change notifications: whenever the set of active parameter sets changes, a
+  `:parameter_sets` event is emitted right before the access unit that introduced
+  the change. The event carries all the parameter sets active at that point of the
+  stream (the most recent set per parameter set type and id) and a Decoder
+  Configuration Record generated out of them (`nil` for the `:annexb` output stream
+  structure, or when no SPS has been seen yet).
   """
   @type event ::
-          {:access_unit, access_unit()}
+          {:access_unit, AccessUnit.t()}
           | {:parameter_sets, %{dcr: binary() | nil, active: [NALu.t()]}}
 
   @typedoc """
@@ -198,12 +193,9 @@ defmodule Membrane.H26x.ParsingEngine do
   defp dcr_parameter_sets(:h264, dcr), do: dcr.spss ++ dcr.ppss
   defp dcr_parameter_sets(:h265, dcr), do: dcr.vpss ++ dcr.spss ++ dcr.ppss
 
-  @doc """
-  Tells whether the access unit contains a keyframe.
-  """
-  @spec keyframe?(codec(), access_unit()) :: boolean()
-  def keyframe?(codec, access_unit),
-    do: Enum.any?(access_unit, &(&1.type in keyframe_nalu_types(codec)))
+  @spec keyframe?(codec(), AUSplitter.access_unit()) :: boolean()
+  defp keyframe?(codec, nalus),
+    do: Enum.any?(nalus, &(&1.type in keyframe_nalu_types(codec)))
 
   defp keyframe_nalu_types(:h264), do: [:idr]
 
@@ -240,9 +232,9 @@ defmodule Membrane.H26x.ParsingEngine do
       resolve_input_stream_structure(engine.codec, input_stream_structure)
 
     if not input_stream_structure_change_allowed?(
-             input_stream_structure,
-             engine.input_stream_structure
-           ) do
+         input_stream_structure,
+         engine.input_stream_structure
+       ) do
       raise "stream structure cannot be fundamentally changed during stream"
     end
 
@@ -275,10 +267,19 @@ defmodule Membrane.H26x.ParsingEngine do
   end
 
   @doc """
-  Returns the NALu's payload with the prefix fitting the given stream structure.
+  Returns the NALu's payload with the prefix fitting the engine's output stream structure.
   """
-  @spec get_prefixed_nalu_payload(NALu.t(), stream_structure()) :: binary()
-  defdelegate get_prefixed_nalu_payload(nalu, stream_structure), to: NALuParser
+  @spec get_prefixed_nalu_payload(t(), NALu.t()) :: binary()
+  def get_prefixed_nalu_payload(state, nalu) do
+    NALuParser.get_prefixed_nalu_payload(nalu, state.output_stream_structure)
+  end
+
+  @doc """
+  Returns the access unit's first VCL (slice) NALu, or `nil` if there is none.
+  """
+  @spec first_vcl_nalu(t(), AccessUnit.t()) :: NALu.t() | nil
+  def first_vcl_nalu(engine, access_unit),
+    do: engine.nalu_parser_mod.get_first_vcl_nalu(access_unit.nalus)
 
   @doc """
   Feeds a payload through the parser, returning the access units completed by it,
@@ -342,9 +343,10 @@ defmodule Membrane.H26x.ParsingEngine do
     {access_units, engine} = maybe_generate_timestamps(access_units, flush?, engine)
 
     {events, parameter_set_cache} =
-      Enum.flat_map_reduce(access_units, engine.parameter_set_cache, fn au, cache ->
-        updated_cache = ParameterSetCache.put(cache, au)
-        au_event = {:access_unit, finalize_access_unit(engine, au, updated_cache)}
+      Enum.flat_map_reduce(access_units, engine.parameter_set_cache, fn {nalus, timestamps},
+                                                                        cache ->
+        updated_cache = ParameterSetCache.put(cache, nalus)
+        au_event = {:access_unit, build_access_unit(engine, nalus, timestamps, updated_cache)}
 
         if updated_cache == cache do
           {[au_event], cache}
@@ -363,18 +365,31 @@ defmodule Membrane.H26x.ParsingEngine do
   defp generate_dcr(engine, parameter_sets),
     do: dcr_module(engine.codec).generate(parameter_sets, engine.output_stream_structure)
 
-  @spec finalize_access_unit(t(), access_unit(), [NALu.t()]) :: access_unit()
-  defp finalize_access_unit(engine, au, active_parameter_sets) do
+  @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), [NALu.t()]) ::
+          AccessUnit.t()
+  defp build_access_unit(engine, nalus, timestamps, active_parameter_sets) do
+    keyframe? = keyframe?(engine.codec, nalus)
+
+    %AccessUnit{
+      nalus: finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets),
+      timestamps: timestamps,
+      keyframe?: keyframe?
+    }
+  end
+
+  @spec finalize_access_unit_nalus(t(), AUSplitter.access_unit(), boolean(), [NALu.t()]) ::
+          AUSplitter.access_unit()
+  defp finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets) do
     cond do
       strip_parameter_sets?(engine) ->
-        Enum.reject(au, &ParameterSetCache.parameter_set?/1)
+        Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
 
-      keyframe?(engine.codec, au) ->
-        au = if engine.repeat_parameter_sets, do: active_parameter_sets ++ au, else: au
-        Enum.uniq_by(au, & &1.payload)
+      keyframe? ->
+        nalus = if engine.repeat_parameter_sets, do: active_parameter_sets ++ nalus, else: nalus
+        Enum.uniq_by(nalus, & &1.payload)
 
       true ->
-        au
+        nalus
     end
   end
 
@@ -392,10 +407,11 @@ defmodule Membrane.H26x.ParsingEngine do
             when engine.input_alignment == :bytestream and
                    not is_nil(engine.au_timestamp_generator)
 
-  @spec maybe_generate_timestamps([access_unit()], boolean(), t()) :: {[access_unit()], t()}
+  @spec maybe_generate_timestamps([AUSplitter.access_unit()], boolean(), t()) ::
+          {[{AUSplitter.access_unit(), NALu.timestamps()}], t()}
   defp maybe_generate_timestamps(aus, flush?, engine)
        when is_timestamp_generator_active(engine) do
-    {aus, generator} =
+    {timestamped_aus, generator} =
       AUTimestampGenerator.generate_timestamps(
         engine.au_timestamp_generator_mod,
         aus,
@@ -403,8 +419,17 @@ defmodule Membrane.H26x.ParsingEngine do
         engine.au_timestamp_generator
       )
 
-    {aus, %{engine | au_timestamp_generator: generator}}
+    timestamped_aus = Enum.map(timestamped_aus, fn {au, pts, dts} -> {au, {pts, dts}} end)
+    {timestamped_aus, %{engine | au_timestamp_generator: generator}}
   end
 
-  defp maybe_generate_timestamps(aus, _flush?, engine), do: {aus, engine}
+  defp maybe_generate_timestamps(aus, _flush?, engine) do
+    timestamped_aus =
+      Enum.map(aus, fn au ->
+        first_vcl_nalu = engine.nalu_parser_mod.get_first_vcl_nalu(au)
+        {au, if(first_vcl_nalu, do: first_vcl_nalu.timestamps, else: {nil, nil})}
+      end)
+
+    {timestamped_aus, engine}
+  end
 end
