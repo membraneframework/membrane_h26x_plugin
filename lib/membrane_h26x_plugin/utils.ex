@@ -115,7 +115,6 @@ defmodule Membrane.H26x.Utils do
     %{
       state
       | parsing_engine: parsing_engine,
-        output_stream_structure: parsing_engine.output_stream_structure,
         framerate: framerate || state.framerate
     }
   end
@@ -150,17 +149,14 @@ defmodule Membrane.H26x.Utils do
   end
 
   defp generate_stream_format(
-         %{active: active_parameter_sets, dcr: dcr},
+         %{
+           active: active_parameter_sets,
+           output_raw_stream_structure: output_raw_stream_structure
+         },
          last_stream_format,
          state
        ) do
     latest_sps = active_parameter_sets |> Enum.filter(&(&1.type == :sps)) |> List.last()
-
-    output_raw_stream_structure =
-      case state.output_stream_structure do
-        :annexb -> :annexb
-        {codec_tag, _nalu_length_size} -> {codec_tag, dcr}
-      end
 
     case {latest_sps, last_stream_format} do
       {nil, nil} ->

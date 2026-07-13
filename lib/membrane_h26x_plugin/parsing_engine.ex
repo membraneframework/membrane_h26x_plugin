@@ -37,6 +37,15 @@ defmodule Membrane.H26x.ParsingEngine do
           | {codec_tag :: :avc1 | :avc3 | :hvc1 | :hev1, nalu_length_size :: pos_integer()}
 
   @typedoc """
+  Structure of the H26x stream in the raw form transferred out-of-band: either `:annexb`,
+  or a codec tag along with a Decoder Configuration Record binary carrying the stream's
+  parameter sets (`nil` if no SPS has been seen yet, so no DCR can be generated).
+  """
+  @type raw_stream_structure ::
+          :annexb
+          | {codec_tag :: :avc1 | :avc3 | :hvc1 | :hev1, dcr :: binary() | nil}
+
+  @typedoc """
   The structure of the input stream.
 
   For the length-prefixed structures (`:avc1`, `:avc3`, `:hvc1`, `:hev1`), instead of the
@@ -61,13 +70,15 @@ defmodule Membrane.H26x.ParsingEngine do
   set change notifications: whenever the set of active parameter sets changes, a
   `:parameter_sets` event is emitted right before the access unit that introduced
   the change. The event carries all the parameter sets active at that point of the
-  stream (the most recent set per parameter set type and id) and a Decoder
-  Configuration Record generated out of them (`nil` for the `:annexb` output stream
-  structure, or when no SPS has been seen yet).
+  stream (the most recent set per parameter set type and id) and the raw output
+  stream structure (see `t:raw_stream_structure/0`) - for the length-prefixed
+  output stream structures its Decoder Configuration Record is generated out of
+  the active parameter sets.
   """
   @type event ::
           {:access_unit, AccessUnit.t()}
-          | {:parameter_sets, %{dcr: binary() | nil, active: [NALu.t()]}}
+          | {:parameter_sets,
+             %{output_raw_stream_structure: raw_stream_structure(), active: [NALu.t()]}}
 
   @typedoc """
   If set to a map, timestamps are generated based on the provided constant framerate
@@ -109,24 +120,23 @@ defmodule Membrane.H26x.ParsingEngine do
           optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps()
         }
 
-  @typedoc false
-  @type t :: %__MODULE__{
-          codec: codec(),
-          nalu_splitter: NALuSplitter.t(),
-          nalu_parser: NALuParser.t(),
-          au_splitter: AUSplitter.t(),
-          au_timestamp_generator: AUTimestampGenerator.state() | nil,
-          parameter_set_cache: ParameterSetCache.t(),
-          input_alignment: input_alignment(),
-          input_stream_structure: stream_structure(),
-          output_stream_structure: stream_structure(),
-          repeat_parameter_sets: boolean(),
-          previous_buffer_timestamps: NALu.timestamps() | nil,
-          pending_parameter_sets: [binary()],
-          nalu_parser_mod: module(),
-          au_splitter_mod: module(),
-          au_timestamp_generator_mod: module()
-        }
+  @opaque t :: %__MODULE__{
+            codec: codec(),
+            nalu_splitter: NALuSplitter.t(),
+            nalu_parser: NALuParser.t(),
+            au_splitter: AUSplitter.t(),
+            au_timestamp_generator: AUTimestampGenerator.state() | nil,
+            parameter_set_cache: ParameterSetCache.t(),
+            input_alignment: input_alignment(),
+            input_stream_structure: stream_structure(),
+            output_stream_structure: stream_structure(),
+            repeat_parameter_sets: boolean(),
+            previous_buffer_timestamps: NALu.timestamps() | nil,
+            pending_parameter_sets: [binary()],
+            nalu_parser_mod: module(),
+            au_splitter_mod: module(),
+            au_timestamp_generator_mod: module()
+          }
 
   @enforce_keys [
     :codec,
@@ -351,7 +361,11 @@ defmodule Membrane.H26x.ParsingEngine do
         if updated_cache == cache do
           {au_events, cache}
         else
-          parameter_sets = %{dcr: generate_dcr(engine, updated_cache), active: updated_cache}
+          parameter_sets = %{
+            output_raw_stream_structure: output_raw_stream_structure(engine, updated_cache),
+            active: updated_cache
+          }
+
           {[{:parameter_sets, parameter_sets} | au_events], updated_cache}
         end
       end)
@@ -375,11 +389,14 @@ defmodule Membrane.H26x.ParsingEngine do
     end
   end
 
-  @spec generate_dcr(t(), [NALu.t()]) :: binary() | nil
-  defp generate_dcr(%{output_stream_structure: :annexb}, _parameter_sets), do: nil
+  @spec output_raw_stream_structure(t(), [NALu.t()]) :: raw_stream_structure()
+  defp output_raw_stream_structure(%{output_stream_structure: :annexb}, _parameter_sets),
+    do: :annexb
 
-  defp generate_dcr(engine, parameter_sets),
-    do: dcr_module(engine.codec).generate(parameter_sets, engine.output_stream_structure)
+  defp output_raw_stream_structure(engine, parameter_sets) do
+    {codec_tag, _nalu_length_size} = engine.output_stream_structure
+    {codec_tag, dcr_module(engine.codec).generate(parameter_sets, engine.output_stream_structure)}
+  end
 
   @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), [NALu.t()]) ::
           AccessUnit.t()

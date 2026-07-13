@@ -200,9 +200,8 @@ defmodule Membrane.H265.Parser do
     do: Utils.handle_buffer(buffer, ctx, state)
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.parsing_engine.input_alignment != :au,
-      do: Utils.handle_end_of_stream(ctx, state)
+  def handle_end_of_stream(:input, ctx, state) when ctx.pads.input.start_of_stream?,
+    do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
