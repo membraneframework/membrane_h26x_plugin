@@ -71,16 +71,20 @@ engine =
     input_alignment: :bytestream
   })
 
-{access_units, engine} = ParsingEngine.push(engine, File.read!("video.h264"))
-{last_access_units, _engine} = ParsingEngine.flush(engine)
+{events, engine} = ParsingEngine.push(engine, File.read!("video.h264"))
+{last_events, _engine} = ParsingEngine.flush(engine)
 
-access_units = access_units ++ last_access_units
+access_units = for {:access_unit, access_unit} <- events ++ last_events, do: access_unit
 ```
 
 Each access unit is a list of `Membrane.H26x.NALu` structs, carrying the NALus' types,
-payloads and parsed fields. The payload can also be fed in arbitrarily split chunks with
-repeated `ParsingEngine.push/3` calls - each call returns the access units completed so far,
-and `ParsingEngine.flush/1` drains whatever remains buffered.
+payloads and parsed fields. Interleaved with the access units, the engine emits
+`{:parameter_sets, %{dcr: dcr, active: parameter_sets}}` events whenever the set of active
+parameter sets changes - each carries the currently active parameter sets and a Decoder
+Configuration Record generated out of them (for length-prefixed output stream structures).
+The payload can also be fed in arbitrarily split chunks with repeated `ParsingEngine.push/3`
+calls - each call returns the events produced so far, and `ParsingEngine.flush/1` drains
+whatever remains buffered.
 
 For length-prefixed streams (e.g. tracks demuxed from an MP4 container), pass the Decoder
 Configuration Record binary as the input stream structure - the NALu length size is read

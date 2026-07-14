@@ -48,7 +48,6 @@ defmodule Membrane.H264.Parser do
   require Membrane.Logger
 
   alias Membrane.{H264, RemoteStream}
-  alias Membrane.H264.DecoderConfigurationRecord
   alias Membrane.H26x.Utils
 
   @nalu_length_size 4
@@ -206,34 +205,19 @@ defmodule Membrane.H264.Parser do
     do: Utils.handle_buffer(buffer, ctx, state)
 
   @impl true
-  def handle_end_of_stream(:input, ctx, state)
-      when ctx.pads.input.start_of_stream? and state.parsing_engine.input_alignment != :au,
-      do: Utils.handle_end_of_stream(ctx, state)
+  def handle_end_of_stream(:input, ctx, state) when ctx.pads.input.start_of_stream?,
+    do: Utils.handle_end_of_stream(ctx, state)
 
   @impl true
   def handle_end_of_stream(_pad, _ctx, state) do
     {[end_of_stream: :output], state}
   end
 
-  defp parse_raw_input_stream_structure(stream_format) do
-    {alignment, input_raw_stream_structure} =
-      case stream_format do
-        %RemoteStream{} ->
-          {:bytestream, :annexb}
+  defp parse_raw_input_stream_structure(%RemoteStream{}), do: {:bytestream, :annexb}
 
-        %H264{alignment: alignment, stream_structure: stream_structure} ->
-          {alignment, stream_structure}
-      end
-
-    case input_raw_stream_structure do
-      :annexb ->
-        {alignment, :annexb, []}
-
-      {avc, dcr} ->
-        %{nalu_length_size: nalu_length_size, spss: spss, ppss: ppss} =
-          DecoderConfigurationRecord.parse(dcr)
-
-        {alignment, {avc, nalu_length_size}, spss ++ ppss}
-    end
-  end
+  defp parse_raw_input_stream_structure(%H264{
+         alignment: alignment,
+         stream_structure: stream_structure
+       }),
+       do: {alignment, stream_structure}
 end
