@@ -93,6 +93,46 @@ defmodule Membrane.H265.TimestampGenerationTest do
     process_test(@h265_input_file_main, @h265_input_timestamps_main, false)
   end
 
+  test "infers dts from reordered pts for an access-unit-aligned stream" do
+    binary = File.read!(@h265_input_file_main)
+    frame_duration = div(Membrane.Time.second(), 30)
+
+    input_buffers =
+      binary
+      |> prepare_h265_buffers(:au)
+      |> Enum.zip_with(@h265_input_timestamps_main, fn buffer, {pts_ms, _dts_ms} ->
+        frame_index = round(pts_ms * 30 / 1_000)
+        %{buffer | pts: frame_index * frame_duration, dts: nil}
+      end)
+
+    pid =
+      Pipeline.start_supervised!(
+        spec: [
+          child(:source, %TestSource{alignment: :au, codec: :H265})
+          |> child(:parser, %Parser{infer_dts_from_pts: true})
+          |> child(:sink, Sink)
+        ]
+      )
+
+    assert_sink_playing(pid, :sink)
+    actions = Enum.map(input_buffers, &{:buffer, {:output, &1}})
+    Pipeline.notify_child(pid, :source, actions ++ [end_of_stream: :output])
+
+    input_buffers
+    |> Enum.with_index()
+    |> Enum.each(fn {%Buffer{payload: payload, pts: pts}, index} ->
+      assert_sink_buffer(pid, :sink, %Buffer{
+        payload: ^payload,
+        pts: ^pts,
+        dts: dts
+      })
+
+      assert dts == index * frame_duration
+    end)
+
+    Pipeline.terminate(pid)
+  end
+
   defp process_test(file, timestamps, dts_offset \\ true) do
     binary = File.read!(file)
     alignment = :bytestream
