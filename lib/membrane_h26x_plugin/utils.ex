@@ -14,6 +14,7 @@ defmodule Membrane.H26x.Utils do
           parsing_engine: ParsingEngine.t() | nil,
           codec: ParsingEngine.codec(),
           generate_best_effort_timestamps: false | map(),
+          infer_dts_from_pts: boolean(),
           output_alignment: :au | :nalu,
           skip_until_keyframe: boolean(),
           repeat_parameter_sets: boolean(),
@@ -29,7 +30,7 @@ defmodule Membrane.H26x.Utils do
 
   Expects the codec and the element options (`output_alignment`, `skip_until_keyframe`,
   `repeat_parameter_sets`, `initial_parameter_sets`, `output_stream_structure`,
-  `generate_best_effort_timestamps`). The `ParsingEngine` itself is created once
+  `generate_best_effort_timestamps`, `infer_dts_from_pts`). The `ParsingEngine` itself is created once
   the first stream format reveals the input structure and alignment.
   """
   @spec init_state(ParsingEngine.codec(), keyword()) :: state()
@@ -37,7 +38,8 @@ defmodule Membrane.H26x.Utils do
     %{
       parsing_engine: nil,
       codec: codec,
-      generate_best_effort_timestamps: opts[:generate_best_effort_timestamps],
+      generate_best_effort_timestamps: Keyword.get(opts, :generate_best_effort_timestamps, false),
+      infer_dts_from_pts: Keyword.get(opts, :infer_dts_from_pts, false),
       output_alignment: opts[:output_alignment],
       skip_until_keyframe: opts[:skip_until_keyframe],
       repeat_parameter_sets: opts[:repeat_parameter_sets],
@@ -109,7 +111,8 @@ defmodule Membrane.H26x.Utils do
         output_stream_structure: state.output_stream_structure,
         repeat_parameter_sets: state.repeat_parameter_sets,
         initial_parameter_sets: state.initial_parameter_sets,
-        generate_best_effort_timestamps: state.generate_best_effort_timestamps
+        generate_best_effort_timestamps: state.generate_best_effort_timestamps,
+        infer_dts_from_pts: state.infer_dts_from_pts
       })
 
     %{
