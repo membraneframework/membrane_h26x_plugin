@@ -4,6 +4,8 @@
 [![API Docs](https://img.shields.io/badge/api-docs-yellow.svg?style=flat)](https://hexdocs.pm/membrane_h26x_plugin)
 [![CircleCI](https://circleci.com/gh/membraneframework/membrane_h26x_plugin.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane_h26x_plugin)
 
+[![Star Membrane Core](https://img.shields.io/github/stars/membraneframework/membrane_core?style=for-the-badge&logo=github&label=Star%20Membrane%20Core&color=yellow)](https://github.com/membraneframework/membrane_core)
+
 Membrane H.264 and H.265 parsers.
 It is a pair of Membrane elements responsible for parsing the incoming H.264 and H.265 streams. The parsing is done as a sequence of the following steps:
 * splitting the stream into stream NAL units
