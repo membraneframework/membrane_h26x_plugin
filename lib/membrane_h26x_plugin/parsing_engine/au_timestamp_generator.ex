@@ -3,6 +3,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
   alias Membrane.H26x.NALu
   alias Membrane.H26x.ParsingEngine.AUSplitter
+  alias Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   @type mode :: :generate_best_effort_timestamps | :infer_dts_from_pts | :passthrough
 
@@ -12,8 +13,6 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
           :framerate => framerate(),
           optional(:add_dts_offset) => boolean()
         }
-
-  @type state :: BestEffortGeneration.state() | DTSInference.state() | Passthrough.state()
 
   defmodule Passthrough do
     @moduledoc false
@@ -380,6 +379,8 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
       end
     end
   end
+
+  @type state :: BestEffortGeneration.state() | DTSInference.state() | Passthrough.state()
 
   @type timestamp :: integer() | nil
   @type timestamped_au ::
