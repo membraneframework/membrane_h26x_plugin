@@ -317,11 +317,15 @@ defmodule Membrane.H26x.ParsingEngine do
   def push(engine, payload, timestamps \\ {nil, nil}) do
     {pts, dts} = timestamps
 
-    prefixed_parameter_sets =
-      NALuParser.prefix_nalus_payloads(
-        engine.pending_parameter_sets,
-        engine.input_stream_structure
-      )
+    payload =
+      case engine.pending_parameter_sets do
+        [] ->
+          payload
+
+        parameter_sets ->
+          NALuParser.prefix_nalus_payloads(parameter_sets, engine.input_stream_structure) <>
+            payload
+      end
 
     engine = %{
       engine
@@ -329,7 +333,7 @@ defmodule Membrane.H26x.ParsingEngine do
         previous_buffer_timestamps: {pts || dts, dts || pts}
     }
 
-    parse(engine, prefixed_parameter_sets <> payload, timestamps, _flush? = false)
+    parse(engine, payload, timestamps, _flush? = false)
   end
 
   @doc """

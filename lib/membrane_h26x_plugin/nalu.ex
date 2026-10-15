@@ -16,6 +16,8 @@ defmodule Membrane.H26x.NALu do
   * `type` - an atom representing the type of the NALu. Atom's name is based on the
   *"Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * `payload` - the binary, which parsing resulted in that structure being produced stripped of it's prefix
+  * `prefixed_payload` - the NALu as it appeared in the input stream, that is the `payload` together with
+  the `stripped_prefix` (`nil` if the NALu was not built by the NALu parser)
   * `status` - `:valid`, if the parsing was successfull, `:error` otherwise
   """
   @type t :: %__MODULE__{
@@ -23,6 +25,7 @@ defmodule Membrane.H26x.NALu do
           type: H264.NALuTypes.nalu_type() | H265.NALuTypes.nalu_type(),
           stripped_prefix: binary(),
           payload: binary(),
+          prefixed_payload: binary() | nil,
           status: :valid | :error,
           timestamps: timestamps()
         }
@@ -30,7 +33,7 @@ defmodule Membrane.H26x.NALu do
   @type timestamps :: {pts :: integer() | nil, dts :: integer() | nil}
 
   @enforce_keys [:parsed_fields, :type, :stripped_prefix, :payload, :status]
-  defstruct @enforce_keys ++ [timestamps: {nil, nil}]
+  defstruct @enforce_keys ++ [prefixed_payload: nil, timestamps: {nil, nil}]
 
   @spec int_type(t()) :: non_neg_integer()
   def int_type(%__MODULE__{parsed_fields: parsed_fields}), do: parsed_fields.nal_unit_type

@@ -20,6 +20,10 @@ defmodule Membrane.H265.Parser do
   * Receiving `%Membrane.H265{alignment: :nalu}` results in the input alignment being set to `:nalu`.
   * Receiving `%Membrane.H265{alignment: :au}` results in the input alignment being set to `:au`.
 
+  If the input stream has already been parsed - the stream format is `%Membrane.H265{alignment: :au, nalu_in_metadata?: true}`
+  and the output is expected AU-aligned in the same stream structure (see `Membrane.H26x.Utils.passthrough?/2`) - the buffers
+  are forwarded without being parsed again, trusting the metadata attached by the previous parser.
+
   The parser also allows for conversion between stream structures. The available structures are:
   * Annex B, `:annexb` - In a stream with this structure each NAL unit is prefixed by three or
   four-byte start code (`0x(00)000001`) that allows to identify boundaries between them.
@@ -202,7 +206,7 @@ defmodule Membrane.H265.Parser do
   @impl true
   def handle_stream_format(:input, stream_format, ctx, state) do
     input = parse_raw_input_stream_structure(stream_format)
-    Utils.handle_stream_format(input, Map.get(stream_format, :framerate), ctx, state)
+    Utils.handle_stream_format(stream_format, input, ctx, state)
   end
 
   @impl true
