@@ -162,14 +162,9 @@ defmodule Membrane.H265.Parser do
                 spec: boolean(),
                 default: false,
                 description: """
-                Infers missing DTS values from incoming PTS values and the H265
-                Picture Order Count. Existing DTS values are preserved.
-
-                This option is intended for timestamped streams that arrive in
-                decode order but only carry presentation timestamps, such as RTP.
-                The stream must begin with a random-access picture and provide a
-                consistent frame cadence. It cannot be combined with
-                `generate_best_effort_timestamps`.
+                Infers missing DTS from PTS and the Picture Order Count, for streams that
+                carry only PTS (e.g. RTP). The stream must start with a random-access picture.
+                Cannot be combined with `generate_best_effort_timestamps`.
                 """
               ]
 

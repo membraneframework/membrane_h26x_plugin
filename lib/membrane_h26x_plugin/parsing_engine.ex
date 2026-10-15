@@ -93,11 +93,8 @@ defmodule Membrane.H26x.ParsingEngine do
             }
 
   @typedoc """
-  If `true`, missing DTS values are inferred from the H264 or H265 Picture Order
-  Count and incoming PTS values. Existing timestamps remain unchanged. Inference
-  requires a random-access picture (IDR for H264) at the start and a consistent
-  frame cadence. H264 streams with `pic_order_cnt_type == 1` are unsupported.
-  This option cannot be combined with `:generate_best_effort_timestamps`.
+  If `true`, missing DTS values are inferred from PTS and the Picture Order Count.
+  Cannot be combined with `:generate_best_effort_timestamps`.
   """
   @type infer_dts_from_pts :: boolean()
 
@@ -177,15 +174,21 @@ defmodule Membrane.H26x.ParsingEngine do
       resolve_input_stream_structure(config.codec, config.input_stream_structure)
 
     generate_best_effort_timestamps = Map.get(config, :generate_best_effort_timestamps, false)
-    infer_dts_from_pts = Map.get(config, :infer_dts_from_pts, false)
-
-    validate_timestamp_options!(generate_best_effort_timestamps, infer_dts_from_pts)
 
     timestamp_mode =
-      cond do
-        generate_best_effort_timestamps != false -> :generate_best_effort_timestamps
-        infer_dts_from_pts -> :infer_dts_from_pts
-        true -> :passthrough
+      case {generate_best_effort_timestamps, Map.get(config, :infer_dts_from_pts, false)} do
+        {false, false} ->
+          :passthrough
+
+        {false, true} ->
+          :infer_dts_from_pts
+
+        {_config, false} ->
+          :generate_best_effort_timestamps
+
+        {_config, true} ->
+          raise ArgumentError,
+                ":infer_dts_from_pts cannot be combined with :generate_best_effort_timestamps"
       end
 
     au_timestamp_generator =
@@ -218,15 +221,6 @@ defmodule Membrane.H26x.ParsingEngine do
     raise ArgumentError,
           "Unsupported codec: #{inspect(config[:codec])}. The supported codecs are :h264 and :h265."
   end
-
-  defp validate_timestamp_options!(generate_best_effort_timestamps, true)
-       when generate_best_effort_timestamps != false do
-    raise ArgumentError,
-          ":infer_dts_from_pts cannot be combined with :generate_best_effort_timestamps"
-  end
-
-  defp validate_timestamp_options!(_generate_best_effort_timestamps, _infer_dts_from_pts),
-    do: :ok
 
   @spec resolve_input_stream_structure(codec(), input_stream_structure()) ::
           {stream_structure(), [binary()]}

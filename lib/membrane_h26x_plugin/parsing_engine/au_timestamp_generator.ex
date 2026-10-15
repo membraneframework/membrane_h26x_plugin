@@ -63,12 +63,9 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   @callback reorder_buffer_depth(NALu.t(), state()) :: non_neg_integer()
 
   @doc """
-  Returns whether the picture can anchor a DTS inference timing epoch.
-  Required only for codecs supporting DTS inference.
+  Returns whether the VCL NALu starts a random-access picture (e.g. IDR).
   """
   @callback random_access?(NALu.t()) :: boolean()
-
-  @optional_callbacks random_access?: 1
 
   @doc """
   Creates the initial state of the timestamp generator.
@@ -112,17 +109,13 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   def new(_module, :passthrough, _config), do: %{mode: :passthrough}
 
   @doc """
-  Processes access units in decode order using the configured timestamp mode.
+  Feeds the access units (in decode order) through the generator, returning
+  those that are ready to be emitted (also in decode order) along with their
+  `pts` and `dts`.
 
-  Best-effort generation applies only to `:bytestream` input alignment (the
-  default). Aligned input preserves timestamps without advancing generator state.
-  With `flush?: true`, buffered best-effort output is drained after processing.
-  Inference and passthrough emit immediately and have no output to drain.
-
-  In inference mode, the first valid access unit selects supplied or inferred DTS
-  for the stream. The first random-access picture anchors inference and the next
-  picture establishes cadence. Later random-access pictures retain that cadence
-  unless their PTS indicates a discontinuity.
+  If `flush?` is set to `true`, all the access units still buffered after
+  feeding the input are drained and returned as well. To be done on end of
+  stream or when the generator is no longer going to be used.
   """
   @spec generate_timestamps(
           module(),
