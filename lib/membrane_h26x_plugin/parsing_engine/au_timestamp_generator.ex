@@ -3,6 +3,9 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
   alias Membrane.H26x.NALu
   alias Membrane.H26x.ParsingEngine.AUSplitter
+  alias Membrane.H26x.ParsingEngine.AUTimestampGenerator
+
+  @type mode :: :generate_best_effort_timestamps | :infer_dts_from_pts | :passthrough
 
   @type framerate :: {frames :: pos_integer(), seconds :: pos_integer()}
 
@@ -11,26 +14,375 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
           optional(:add_dts_offset) => boolean()
         }
 
-  @type buffer_entry :: %{
-          id: non_neg_integer(),
-          au: AUSplitter.access_unit(),
-          poc: integer(),
-          dts: non_neg_integer(),
-          pts: non_neg_integer() | nil
-        }
+  defmodule Passthrough do
+    @moduledoc false
 
-  @type state :: %{
-          framerate: framerate,
-          max_frame_reorder: 0..15,
-          au_counter: non_neg_integer(),
-          pts_counter: non_neg_integer(),
-          buffer_depth: non_neg_integer() | nil,
-          buffer: [buffer_entry()],
-          prev_pic_first_vcl_nalu: NALu.t() | nil,
-          prev_pic_order_cnt_msb: integer()
-        }
+    @type state :: %{mode: :passthrough}
 
-  @type timestamp :: non_neg_integer() | nil
+    @spec new() :: state()
+    def new(), do: %{mode: :passthrough}
+
+    @spec generate_timestamps(module(), [AUSplitter.access_unit()]) ::
+            [AUTimestampGenerator.timestamped_au()]
+    def generate_timestamps(module, access_units) do
+      Enum.map(access_units, fn au ->
+        first_vcl_nalu = module.get_first_vcl_nalu(au)
+        {pts, dts} = if first_vcl_nalu, do: first_vcl_nalu.timestamps, else: {nil, nil}
+        {au, pts, dts}
+      end)
+    end
+  end
+
+  defmodule BestEffortGeneration do
+    @moduledoc false
+
+    @type buffer_entry :: %{
+            id: non_neg_integer(),
+            au: AUSplitter.access_unit(),
+            poc: integer(),
+            dts: integer(),
+            pts: integer() | nil
+          }
+
+    @type state :: %{
+            mode: :generate_best_effort_timestamps,
+            framerate: AUTimestampGenerator.framerate(),
+            max_frame_reorder: non_neg_integer(),
+            au_counter: non_neg_integer(),
+            pts_counter: non_neg_integer(),
+            buffer_depth: non_neg_integer() | nil,
+            buffer: [buffer_entry()],
+            prev_pic_first_vcl_nalu: NALu.t() | nil,
+            prev_pic_order_cnt_msb: integer()
+          }
+
+    @spec new(module(), AUTimestampGenerator.config()) :: state()
+    def new(module, config) do
+      # To make sure that PTS >= DTS at all times, we take the maximal possible
+      # frame reorder and subtract `max_frame_reorder * frame_duration` from each
+      # frame's DTS. This behaviour can be disabled by setting `add_dts_offset: false`.
+      max_frame_reorder =
+        if Map.get(config, :add_dts_offset, true), do: module.max_frame_reorder(), else: 0
+
+      %{
+        mode: :generate_best_effort_timestamps,
+        framerate: config.framerate,
+        max_frame_reorder: max_frame_reorder,
+        au_counter: 0,
+        pts_counter: 0,
+        buffer_depth: nil,
+        buffer: [],
+        prev_pic_first_vcl_nalu: nil,
+        prev_pic_order_cnt_msb: 0
+      }
+    end
+
+    @spec generate_timestamps(
+            module(),
+            [AUSplitter.access_unit()],
+            [flush?: boolean(), input_alignment: :bytestream | :nalu | :au],
+            state()
+          ) :: {[AUTimestampGenerator.timestamped_au()], state()}
+    def generate_timestamps(module, access_units, options, state) do
+      if Keyword.get(options, :input_alignment, :bytestream) == :bytestream do
+        {ready, state} =
+          Enum.flat_map_reduce(access_units, state, fn au, state ->
+            put_access_unit(module, au, state)
+          end)
+
+        {drained, state} =
+          if Keyword.get(options, :flush?, false), do: drain(state), else: {[], state}
+
+        {ready ++ drained, state}
+      else
+        {Passthrough.generate_timestamps(module, access_units), state}
+      end
+    end
+
+    @spec put_access_unit(module(), AUSplitter.access_unit(), state()) ::
+            {[AUTimestampGenerator.timestamped_au()], state()}
+    defp put_access_unit(module, au, state) do
+      first_vcl_nalu = module.get_first_vcl_nalu(au)
+
+      if first_vcl_nalu == nil or Enum.any?(au, &(&1.status != :valid)) do
+        # An access unit without a valid VCL NALu has no POC to compute.
+        {[{au, nil, nil}], state}
+      else
+        buffer_access_unit(module, au, first_vcl_nalu, state)
+      end
+    end
+
+    @spec buffer_access_unit(module(), AUSplitter.access_unit(), NALu.t(), state()) ::
+            {[AUTimestampGenerator.timestamped_au()], state()}
+    defp buffer_access_unit(module, au, first_vcl_nalu, state) do
+      %{
+        au_counter: au_counter,
+        max_frame_reorder: max_frame_reorder,
+        framerate: {frames, seconds}
+      } = state
+
+      {poc, state} = module.calculate_poc(first_vcl_nalu, state)
+      dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
+
+      # The POC counter rolling over to 0 means a new GOP begins, so no
+      # access unit buffered so far can be reordered past this point and
+      # they all can be drained.
+      {flushed, state} =
+        if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
+
+      # we might need to update max_depth for a new GOP
+      state =
+        if poc == 0 or state.buffer_depth == nil do
+          depth = module.reorder_buffer_depth(first_vcl_nalu, state)
+          %{state | buffer_depth: depth}
+        else
+          state
+        end
+
+      entry = %{id: au_counter, au: au, poc: poc, dts: dts, pts: nil}
+
+      state = %{state | buffer: state.buffer ++ [entry], au_counter: au_counter + 1}
+
+      unassigned = Enum.reject(state.buffer, & &1.pts)
+
+      excess = Enum.drop(unassigned, state.buffer_depth)
+
+      state =
+        Enum.reduce(excess, state, fn _excess_entry, acc_state ->
+          assign_next_pts(acc_state)
+        end)
+
+      {ready, state} = pop_ready(state)
+      {flushed ++ ready, state}
+    end
+
+    @spec assign_next_pts(state()) :: state()
+    defp assign_next_pts(state) do
+      %{framerate: {frames, seconds}, pts_counter: pts_counter, buffer: buffer} = state
+
+      {_next, index} =
+        buffer
+        |> Enum.with_index()
+        |> Enum.reject(fn {entry, _idx} -> entry.pts end)
+        |> Enum.min_by(fn {entry, _idx} -> entry.poc end)
+
+      pts = div(pts_counter * seconds * Membrane.Time.second(), frames)
+      updated_buffer = List.update_at(buffer, index, &%{&1 | pts: pts})
+
+      %{state | buffer: updated_buffer, pts_counter: pts_counter + 1}
+    end
+
+    @spec pop_ready(state()) :: {[AUTimestampGenerator.timestamped_au()], state()}
+    defp pop_ready(state) do
+      {ready, rest} = Enum.split_while(state.buffer, &(&1.pts != nil))
+      {Enum.map(ready, &{&1.au, &1.pts, &1.dts}), %{state | buffer: rest}}
+    end
+
+    @spec drain(state()) :: {[AUTimestampGenerator.timestamped_au()], state()}
+    defp drain(state) do
+      state =
+        state.buffer
+        |> Enum.reject(& &1.pts)
+        |> Enum.reduce(state, fn _unassigned_entry, acc_state ->
+          assign_next_pts(acc_state)
+        end)
+
+      outputs = Enum.map(state.buffer, &{&1.au, &1.pts, &1.dts})
+      {outputs, %{state | buffer: []}}
+    end
+  end
+
+  defmodule DTSInference do
+    @moduledoc false
+
+    @type state :: %{
+            mode: :infer_dts_from_pts,
+            dts_source: nil | :supplied | :inferred,
+            frame_duration: pos_integer() | nil,
+            gop_anchor_poc: integer() | nil,
+            gop_anchor_pts: integer() | nil,
+            last_dts: integer() | nil,
+            prev_pic_first_vcl_nalu: NALu.t() | nil,
+            prev_pic_order_cnt_msb: integer()
+          }
+
+    @spec new() :: state()
+    def new() do
+      %{
+        mode: :infer_dts_from_pts,
+        dts_source: nil,
+        frame_duration: nil,
+        gop_anchor_poc: nil,
+        gop_anchor_pts: nil,
+        last_dts: nil,
+        prev_pic_first_vcl_nalu: nil,
+        prev_pic_order_cnt_msb: 0
+      }
+    end
+
+    @spec generate_timestamps(module(), [AUSplitter.access_unit()], state()) ::
+            {[AUTimestampGenerator.timestamped_au()], state()}
+    def generate_timestamps(module, access_units, state) do
+      Enum.map_reduce(access_units, state, &infer_access_unit(module, &1, &2))
+    end
+
+    defp infer_access_unit(module, au, state) do
+      first_vcl_nalu = module.get_first_vcl_nalu(au)
+
+      if is_nil(first_vcl_nalu) or Enum.any?(au, &(&1.status != :valid)) do
+        {{au, nil, nil}, state}
+      else
+        {pts, dts} = first_vcl_nalu.timestamps
+        infer_valid_access_unit(module, au, first_vcl_nalu, pts, dts, state)
+      end
+    end
+
+    defp infer_valid_access_unit(_module, au, _vcl_nalu, pts, dts, %{dts_source: nil} = state)
+         when is_integer(dts) do
+      {{au, pts, dts}, %{state | dts_source: :supplied, last_dts: dts}}
+    end
+
+    defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: nil} = state)
+         when is_integer(pts) do
+      state = %{state | dts_source: :inferred}
+      infer_valid_access_unit(module, au, vcl_nalu, pts, nil, state)
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: nil}) do
+      raise ArgumentError,
+            "cannot infer DTS: the first access unit has neither PTS nor DTS"
+    end
+
+    defp infer_valid_access_unit(
+           _module,
+           au,
+           _vcl_nalu,
+           pts,
+           dts,
+           %{dts_source: :supplied} = state
+         )
+         when is_integer(dts) do
+      {{au, pts, dts}, %{state | last_dts: dts}}
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: :supplied}) do
+      raise ArgumentError,
+            "cannot infer DTS: DTS disappeared after the stream started with supplied DTS"
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, dts, %{dts_source: :inferred})
+         when is_integer(dts) do
+      raise ArgumentError,
+            "cannot infer DTS: supplied DTS appeared after the stream started without DTS"
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, nil, nil, %{dts_source: :inferred}) do
+      raise ArgumentError, "cannot infer DTS: an access unit is missing PTS"
+    end
+
+    defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: :inferred} = state) do
+      if module.random_access?(vcl_nalu) do
+        start_timing_epoch(module, au, vcl_nalu, pts, state)
+      else
+        continue_timing_epoch(module, au, vcl_nalu, pts, state)
+      end
+    end
+
+    defp start_timing_epoch(module, au, vcl_nalu, pts, state) do
+      poc_state = initialize_poc_state(vcl_nalu, state)
+      {poc, poc_state} = module.calculate_poc(vcl_nalu, poc_state)
+
+      {dts, frame_duration} = epoch_dts_and_duration!(module, pts, vcl_nalu, state)
+
+      state = %{
+        poc_state
+        | frame_duration: frame_duration,
+          gop_anchor_poc: poc,
+          gop_anchor_pts: pts,
+          last_dts: dts
+      }
+
+      {{au, pts, dts}, state}
+    end
+
+    defp continue_timing_epoch(_module, _au, _vcl_nalu, _pts, %{gop_anchor_pts: nil}) do
+      raise ArgumentError,
+            "cannot infer DTS: the stream does not start with a random-access picture"
+    end
+
+    defp continue_timing_epoch(module, au, vcl_nalu, pts, %{frame_duration: nil} = state) do
+      {poc, state} = module.calculate_poc(vcl_nalu, state)
+      frame_duration = infer_frame_duration!(pts, poc, state)
+      dts = state.last_dts + frame_duration
+
+      {{au, pts, dts}, %{state | frame_duration: frame_duration, last_dts: dts}}
+    end
+
+    defp continue_timing_epoch(module, au, vcl_nalu, pts, state) do
+      {_poc, state} = module.calculate_poc(vcl_nalu, state)
+      dts = state.last_dts + state.frame_duration
+      {{au, pts, dts}, %{state | last_dts: dts}}
+    end
+
+    defp infer_frame_duration!(pts, poc, state) do
+      pts_delta = pts - state.gop_anchor_pts
+      poc_delta = poc - state.gop_anchor_poc
+
+      duration =
+        cond do
+          poc_delta == 0 and pts_delta > 0 -> pts_delta
+          poc_delta != 0 and pts_delta * poc_delta > 0 -> div(abs(pts_delta), abs(poc_delta))
+          true -> 0
+        end
+
+      if duration > 0 do
+        duration
+      else
+        raise ArgumentError,
+              "cannot infer DTS: PTS and POC do not establish a positive frame duration"
+      end
+    end
+
+    defp initialize_poc_state(vcl_nalu, %{prev_pic_first_vcl_nalu: nil} = state),
+      do: %{state | prev_pic_first_vcl_nalu: vcl_nalu}
+
+    defp initialize_poc_state(_vcl_nalu, state), do: state
+
+    defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{last_dts: nil}), do: {pts, nil}
+
+    defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{frame_duration: nil} = state) do
+      duration = pts - state.gop_anchor_pts
+
+      if duration > 0 do
+        {state.last_dts + duration, duration}
+      else
+        raise ArgumentError,
+              "cannot infer DTS: consecutive random-access pictures do not establish a positive frame duration"
+      end
+    end
+
+    defp epoch_dts_and_duration!(module, pts, vcl_nalu, state) do
+      expected_dts = state.last_dts + state.frame_duration
+      max_reorder = module.reorder_buffer_depth(vcl_nalu, state)
+      max_expected_offset = (max_reorder + 1) * state.frame_duration
+
+      cond do
+        abs(pts - expected_dts) <= max_expected_offset ->
+          {expected_dts, state.frame_duration}
+
+        pts > state.last_dts ->
+          {pts, state.frame_duration}
+
+        true ->
+          raise ArgumentError,
+                "cannot infer DTS: a random-access picture starts a non-monotonic timing epoch"
+      end
+    end
+  end
+
+  @type state :: BestEffortGeneration.state() | DTSInference.state() | Passthrough.state()
+
+  @type timestamp :: integer() | nil
   @type timestamped_au ::
           {AUSplitter.access_unit(), pts :: timestamp(), dts :: timestamp()}
 
@@ -55,27 +407,22 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   @callback reorder_buffer_depth(NALu.t(), state()) :: non_neg_integer()
 
   @doc """
+  Returns whether the VCL NALu starts a random-access picture (e.g. IDR).
+  """
+  @callback random_access?(NALu.t()) :: boolean()
+
+  @doc """
   Creates the initial state of the timestamp generator.
   """
-  @spec new(module(), config()) :: state()
-  def new(module, config) do
-    # To make sure that PTS >= DTS at all times, we take the maximal possible
-    # frame reorder and subtract `max_frame_reorder * frame_duration` from each
-    # frame's DTS. This behaviour can be disabled by setting `add_dts_offset: false`.
-    max_frame_reorder =
-      if Map.get(config, :add_dts_offset, true), do: module.max_frame_reorder(), else: 0
+  @spec new(module(), mode(), config() | %{}) :: state()
+  def new(module, mode, config \\ %{})
 
-    %{
-      framerate: config.framerate,
-      max_frame_reorder: max_frame_reorder,
-      au_counter: 0,
-      pts_counter: 0,
-      buffer_depth: nil,
-      buffer: [],
-      prev_pic_first_vcl_nalu: nil,
-      prev_pic_order_cnt_msb: 0
-    }
-  end
+  def new(module, :generate_best_effort_timestamps, config),
+    do: BestEffortGeneration.new(module, config)
+
+  def new(_module, :infer_dts_from_pts, _config), do: DTSInference.new()
+
+  def new(_module, :passthrough, _config), do: Passthrough.new()
 
   @doc """
   Feeds the access units (in decode order) through the generator, returning
@@ -86,109 +433,29 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   feeding the input are drained and returned as well. To be done on end of
   stream or when the generator is no longer going to be used.
   """
-  @spec generate_timestamps(module(), [AUSplitter.access_unit()], boolean(), state()) ::
-          {[timestamped_au()], state()}
-  def generate_timestamps(module, access_units, flush? \\ false, state) do
-    {ready, state} =
-      Enum.flat_map_reduce(access_units, state, fn au, state ->
-        put_access_unit(module, au, state)
-      end)
+  @spec generate_timestamps(
+          module(),
+          [AUSplitter.access_unit()],
+          [flush?: boolean(), input_alignment: :bytestream | :nalu | :au],
+          state()
+        ) :: {[timestamped_au()], state()}
+  def generate_timestamps(module, access_units, options \\ [], state)
 
-    {drained, state} = if flush?, do: drain(state), else: {[], state}
-
-    {ready ++ drained, state}
+  def generate_timestamps(
+        module,
+        access_units,
+        options,
+        %{mode: :generate_best_effort_timestamps} = state
+      ) do
+    BestEffortGeneration.generate_timestamps(module, access_units, options, state)
   end
 
-  @spec put_access_unit(module(), AUSplitter.access_unit(), state()) ::
-          {[timestamped_au()], state()}
-  defp put_access_unit(module, au, state) do
-    first_vcl_nalu = module.get_first_vcl_nalu(au)
-
-    if first_vcl_nalu == nil or Enum.any?(au, &(&1.status != :valid)) do
-      # An access unit without a valid VCL NALu has no POC to compute.
-      {[{au, nil, nil}], state}
-    else
-      buffer_access_unit(module, au, first_vcl_nalu, state)
-    end
+  def generate_timestamps(module, access_units, _options, %{mode: :infer_dts_from_pts} = state) do
+    DTSInference.generate_timestamps(module, access_units, state)
   end
 
-  @spec buffer_access_unit(module(), AUSplitter.access_unit(), NALu.t(), state()) ::
-          {[timestamped_au()], state()}
-  defp buffer_access_unit(module, au, first_vcl_nalu, state) do
-    %{
-      au_counter: au_counter,
-      max_frame_reorder: max_frame_reorder,
-      framerate: {frames, seconds}
-    } = state
-
-    {poc, state} = module.calculate_poc(first_vcl_nalu, state)
-    dts = div((au_counter - max_frame_reorder) * seconds * Membrane.Time.second(), frames)
-
-    # The POC counter rolling over to 0 means a new GOP begins, so no
-    # access unit buffered so far can be reordered past this point and
-    # they all can be drained.
-    {flushed, state} =
-      if poc == 0 and state.buffer != [], do: drain(state), else: {[], state}
-
-    # we might need to update max_depth for a new GOP
-    state =
-      if poc == 0 or state.buffer_depth == nil do
-        depth = module.reorder_buffer_depth(first_vcl_nalu, state)
-        %{state | buffer_depth: depth}
-      else
-        state
-      end
-
-    entry = %{id: au_counter, au: au, poc: poc, dts: dts, pts: nil}
-
-    state = %{state | buffer: state.buffer ++ [entry], au_counter: au_counter + 1}
-
-    unassigned = Enum.reject(state.buffer, & &1.pts)
-
-    excess = Enum.drop(unassigned, state.buffer_depth)
-
-    state =
-      Enum.reduce(excess, state, fn _excess_entry, acc_state ->
-        assign_next_pts(acc_state)
-      end)
-
-    {ready, state} = pop_ready(state)
-    {flushed ++ ready, state}
-  end
-
-  @spec assign_next_pts(state()) :: state()
-  defp assign_next_pts(state) do
-    %{framerate: {frames, seconds}, pts_counter: pts_counter, buffer: buffer} = state
-
-    {_next, index} =
-      buffer
-      |> Enum.with_index()
-      |> Enum.reject(fn {entry, _idx} -> entry.pts end)
-      |> Enum.min_by(fn {entry, _idx} -> entry.poc end)
-
-    pts = div(pts_counter * seconds * Membrane.Time.second(), frames)
-    updated_buffer = List.update_at(buffer, index, &%{&1 | pts: pts})
-
-    %{state | buffer: updated_buffer, pts_counter: pts_counter + 1}
-  end
-
-  @spec pop_ready(state()) :: {[timestamped_au()], state()}
-  defp pop_ready(state) do
-    {ready, rest} = Enum.split_while(state.buffer, &(&1.pts != nil))
-    {Enum.map(ready, &{&1.au, &1.pts, &1.dts}), %{state | buffer: rest}}
-  end
-
-  @spec drain(state()) :: {[timestamped_au()], state()}
-  defp drain(state) do
-    state =
-      state.buffer
-      |> Enum.reject(& &1.pts)
-      |> Enum.reduce(state, fn _unassigned_entry, acc_state ->
-        assign_next_pts(acc_state)
-      end)
-
-    outputs = Enum.map(state.buffer, &{&1.au, &1.pts, &1.dts})
-    {outputs, %{state | buffer: []}}
+  def generate_timestamps(module, access_units, _options, %{mode: :passthrough} = state) do
+    {Passthrough.generate_timestamps(module, access_units), state}
   end
 end
 
@@ -198,6 +465,9 @@ defmodule Membrane.H264.AUTimestampGenerator do
   @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   require Membrane.H264.NALuTypes, as: NALuTypes
+
+  @impl true
+  def random_access?(vcl_nalu), do: vcl_nalu.type == :idr
 
   @impl true
   def max_frame_reorder(), do: 15
@@ -309,6 +579,10 @@ defmodule Membrane.H265.AUTimestampGenerator do
   @behaviour Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   require Membrane.H265.NALuTypes, as: NALuTypes
+
+  @impl true
+  def random_access?(vcl_nalu),
+    do: vcl_nalu.type in [:bla_w_lp, :bla_w_radl, :bla_n_lp, :idr_w_radl, :idr_n_lp, :cra]
 
   @impl true
   def max_frame_reorder(), do: 15

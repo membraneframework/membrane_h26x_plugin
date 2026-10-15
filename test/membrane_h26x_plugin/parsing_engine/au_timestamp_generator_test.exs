@@ -2,6 +2,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
   @moduledoc false
   use ExUnit.Case, async: true
 
+  alias Membrane.H26x.ParsingEngine
   alias Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
   defmodule FakeGenerator do
@@ -19,18 +20,34 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
 
     @impl true
     def reorder_buffer_depth(vcl_nalu, _state), do: vcl_nalu.parsed_fields.depth
+
+    @impl true
+    def random_access?(vcl_nalu), do: vcl_nalu.parsed_fields.random_access?
   end
 
-  defp au(poc, depth) do
-    [%{parsed_fields: %{poc: poc, depth: depth}, status: :valid, timestamps: {nil, nil}}]
+  defp au(poc, depth, timestamps \\ {nil, nil}, random_access? \\ false) do
+    [
+      %{
+        parsed_fields: %{poc: poc, depth: depth, random_access?: random_access?},
+        status: :valid,
+        timestamps: timestamps
+      }
+    ]
   end
 
   # Returns `[{POC, PTS, DTS}]` in decode order
   defp run(config, depth, pocs) do
     aus = Enum.map(pocs, &au(&1, depth))
-    state = AUTimestampGenerator.new(FakeGenerator, Map.merge(%{framerate: {1, 1}}, config))
 
-    {emitted, _state} = AUTimestampGenerator.generate_timestamps(FakeGenerator, aus, true, state)
+    state =
+      AUTimestampGenerator.new(
+        FakeGenerator,
+        :generate_best_effort_timestamps,
+        Map.merge(%{framerate: {1, 1}}, config)
+      )
+
+    {emitted, _state} =
+      AUTimestampGenerator.generate_timestamps(FakeGenerator, aus, [flush?: true], state)
 
     emitted
     |> Enum.map(fn {au, pts, dts} ->
@@ -41,7 +58,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
     end)
   end
 
-  describe "generate_timestamps/3 with no reordering (depth 0)" do
+  describe "generate_timestamps/4 with no reordering (depth 0)" do
     test "produces consecutive PTS even when POC advances by a step other than 1" do
       result = run(%{add_dts_offset: false}, 0, [0, 2, 4, 6])
 
@@ -60,7 +77,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
     end
   end
 
-  describe "generate_timestamps/3 with reordering" do
+  describe "generate_timestamps/4 with reordering" do
     test "assigns PTS by presentation (POC) order while emitting in decode order" do
       result = run(%{add_dts_offset: false}, 1, [0, 2, 1])
 
@@ -105,7 +122,11 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
 
   describe "invalid access units" do
     test "passes through access units without a valid VCL NALu untouched" do
-      state = AUTimestampGenerator.new(FakeGenerator, %{framerate: {1, 1}, add_dts_offset: false})
+      state =
+        AUTimestampGenerator.new(FakeGenerator, :generate_best_effort_timestamps, %{
+          framerate: {1, 1},
+          add_dts_offset: false
+        })
 
       invalid_au = [%{parsed_fields: %{}, status: :error, timestamps: {nil, nil}}]
 
@@ -113,6 +134,75 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
         AUTimestampGenerator.generate_timestamps(FakeGenerator, [invalid_au], state)
 
       assert emitted == [{invalid_au, nil, nil}]
+    end
+  end
+
+  # Returns `[{POC, PTS, DTS}]` in decode order
+  defp infer(aus) do
+    state = AUTimestampGenerator.new(FakeGenerator, :infer_dts_from_pts)
+    {emitted, _state} = AUTimestampGenerator.generate_timestamps(FakeGenerator, aus, state)
+    Enum.map(emitted, fn {au, pts, dts} -> {hd(au).parsed_fields.poc, pts, dts} end)
+  end
+
+  describe "DTS inference" do
+    test "infers monotonic DTS from PTS while keeping reordered PTS" do
+      result =
+        infer([
+          au(0, 0, {0, nil}, true),
+          au(2, 0, {2, nil}),
+          au(1, 0, {1, nil}),
+          au(3, 0, {3, nil})
+        ])
+
+      assert result == [
+               {0, 0, 0},
+               {2, 2, 1},
+               {1, 1, 2},
+               {3, 3, 3}
+             ]
+    end
+
+    test "keeps DTS monotonic and evenly spaced when a new random-access picture starts a sequence" do
+      result =
+        infer([
+          au(0, 0, {0, nil}, true),
+          au(2, 0, {2, nil}),
+          au(1, 0, {1, nil}),
+          au(0, 0, {3, nil}, true),
+          au(2, 0, {5, nil}),
+          au(1, 0, {4, nil})
+        ])
+
+      assert result == [
+               {0, 0, 0},
+               {2, 2, 1},
+               {1, 1, 2},
+               {0, 3, 3},
+               {2, 5, 4},
+               {1, 4, 5}
+             ]
+    end
+
+    test "preserves supplied DTS" do
+      assert infer([au(2, 0, {2, 1}), au(1, 0, {1, 2})]) == [{2, 2, 1}, {1, 1, 2}]
+    end
+
+    test "requires the stream to start with a random-access picture" do
+      assert_raise ArgumentError, ~r/does not start with a random-access picture/, fn ->
+        infer([au(0, 0, {0, nil})])
+      end
+    end
+
+    test "cannot be combined with best-effort timestamp generation" do
+      assert_raise ArgumentError, ~r/cannot be combined/, fn ->
+        ParsingEngine.new(%{
+          codec: :h264,
+          input_alignment: :au,
+          input_stream_structure: :annexb,
+          infer_dts_from_pts: true,
+          generate_best_effort_timestamps: %{framerate: {30, 1}}
+        })
+      end
     end
   end
 end

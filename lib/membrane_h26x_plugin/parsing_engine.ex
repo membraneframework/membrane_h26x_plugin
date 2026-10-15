@@ -93,6 +93,12 @@ defmodule Membrane.H26x.ParsingEngine do
             }
 
   @typedoc """
+  If `true`, missing DTS values are inferred from PTS and the Picture Order Count.
+  Cannot be combined with `:generate_best_effort_timestamps`.
+  """
+  @type infer_dts_from_pts :: boolean()
+
+  @typedoc """
   Configuration of the parsing engine:
   * `:codec` - the codec of the parsed stream, either `:h264` or `:h265`.
   * `:input_stream_structure` - see `t:input_stream_structure/0`.
@@ -109,6 +115,7 @@ defmodule Membrane.H26x.ParsingEngine do
     the stream, scheduled to be parsed before the first pushed payload. Defaults to `[]`.
   * `:generate_best_effort_timestamps` - see `t:generate_best_effort_timestamps/0`.
     Defaults to `false`.
+  * `:infer_dts_from_pts` - see `t:infer_dts_from_pts/0`. Defaults to `false`.
   """
   @type config :: %{
           :codec => codec(),
@@ -117,7 +124,8 @@ defmodule Membrane.H26x.ParsingEngine do
           optional(:output_stream_structure) => stream_structure() | nil,
           optional(:repeat_parameter_sets) => boolean(),
           optional(:initial_parameter_sets) => [binary()],
-          optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps()
+          optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps(),
+          optional(:infer_dts_from_pts) => infer_dts_from_pts()
         }
 
   @opaque t :: %__MODULE__{
@@ -125,7 +133,7 @@ defmodule Membrane.H26x.ParsingEngine do
             nalu_splitter: NALuSplitter.t(),
             nalu_parser: NALuParser.t(),
             au_splitter: AUSplitter.t(),
-            au_timestamp_generator: AUTimestampGenerator.state() | nil,
+            au_timestamp_generator: AUTimestampGenerator.state(),
             parameter_set_cache: ParameterSetCache.t(),
             input_alignment: input_alignment(),
             input_stream_structure: stream_structure(),
@@ -165,11 +173,30 @@ defmodule Membrane.H26x.ParsingEngine do
     {input_stream_structure, parameter_sets} =
       resolve_input_stream_structure(config.codec, config.input_stream_structure)
 
-    au_timestamp_generator =
-      case Map.get(config, :generate_best_effort_timestamps, false) do
-        false -> nil
-        cfg -> AUTimestampGenerator.new(au_timestamp_generator_mod(config.codec), cfg)
+    generate_best_effort_timestamps = Map.get(config, :generate_best_effort_timestamps, false)
+
+    timestamp_mode =
+      case {generate_best_effort_timestamps, Map.get(config, :infer_dts_from_pts, false)} do
+        {false, false} ->
+          :passthrough
+
+        {false, true} ->
+          :infer_dts_from_pts
+
+        {_config, false} ->
+          :generate_best_effort_timestamps
+
+        {_config, true} ->
+          raise ArgumentError,
+                ":infer_dts_from_pts cannot be combined with :generate_best_effort_timestamps"
       end
+
+    au_timestamp_generator =
+      AUTimestampGenerator.new(
+        au_timestamp_generator_mod(codec),
+        timestamp_mode,
+        generate_best_effort_timestamps || %{}
+      )
 
     %__MODULE__{
       codec: codec,
@@ -439,33 +466,18 @@ defmodule Membrane.H26x.ParsingEngine do
   defp out_of_band_parameter_sets_codec_tags(:h264), do: [:avc1]
   defp out_of_band_parameter_sets_codec_tags(:h265), do: [:hvc1]
 
-  defguardp is_timestamp_generator_active(engine)
-            when engine.input_alignment == :bytestream and
-                   not is_nil(engine.au_timestamp_generator)
-
   @spec maybe_generate_timestamps([AUSplitter.access_unit()], boolean(), t()) ::
           {[{AUSplitter.access_unit(), NALu.timestamps()}], t()}
-  defp maybe_generate_timestamps(aus, flush?, engine)
-       when is_timestamp_generator_active(engine) do
+  defp maybe_generate_timestamps(aus, flush?, engine) do
     {timestamped_aus, generator} =
       AUTimestampGenerator.generate_timestamps(
         engine.au_timestamp_generator_mod,
         aus,
-        flush?,
+        [flush?: flush?, input_alignment: engine.input_alignment],
         engine.au_timestamp_generator
       )
 
     timestamped_aus = Enum.map(timestamped_aus, fn {au, pts, dts} -> {au, {pts, dts}} end)
     {timestamped_aus, %{engine | au_timestamp_generator: generator}}
-  end
-
-  defp maybe_generate_timestamps(aus, _flush?, engine) do
-    timestamped_aus =
-      Enum.map(aus, fn au ->
-        first_vcl_nalu = engine.nalu_parser_mod.get_first_vcl_nalu(au)
-        {au, if(first_vcl_nalu, do: first_vcl_nalu.timestamps, else: {nil, nil})}
-      end)
-
-    {timestamped_aus, engine}
   end
 end

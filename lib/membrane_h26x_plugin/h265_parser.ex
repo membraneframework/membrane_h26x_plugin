@@ -157,6 +157,15 @@ defmodule Membrane.H265.Parser do
                 are present) the DTS is always bigger than PTS. If that is not desired,
                 you can set `add_dts_offset: false`.
                 """
+              ],
+              infer_dts_from_pts: [
+                spec: boolean(),
+                default: false,
+                description: """
+                Infers missing DTS from PTS and the Picture Order Count, for streams that
+                carry only PTS (e.g. RTP). The stream must start with a random-access picture.
+                Cannot be combined with `generate_best_effort_timestamps`.
+                """
               ]
 
   @typedoc """
@@ -180,6 +189,7 @@ defmodule Membrane.H265.Parser do
       Utils.init_state(@codec,
         output_stream_structure: output_stream_structure,
         generate_best_effort_timestamps: opts.generate_best_effort_timestamps,
+        infer_dts_from_pts: opts.infer_dts_from_pts,
         output_alignment: opts.output_alignment,
         skip_until_keyframe: opts.skip_until_keyframe,
         repeat_parameter_sets: opts.repeat_parameter_sets,
