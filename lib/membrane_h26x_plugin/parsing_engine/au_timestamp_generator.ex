@@ -21,22 +21,208 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
           pts: integer() | nil
         }
 
-  @type state :: %{
-          :mode => mode(),
-          optional(:framerate) => framerate(),
-          optional(:max_frame_reorder) => non_neg_integer(),
-          optional(:au_counter) => non_neg_integer(),
-          optional(:pts_counter) => non_neg_integer(),
-          optional(:buffer_depth) => non_neg_integer() | nil,
-          optional(:buffer) => [buffer_entry()],
-          optional(:prev_pic_first_vcl_nalu) => NALu.t() | nil,
-          optional(:prev_pic_order_cnt_msb) => integer(),
-          optional(:dts_source) => nil | :supplied | :inferred,
-          optional(:frame_duration) => pos_integer() | nil,
-          optional(:gop_anchor_poc) => integer() | nil,
-          optional(:gop_anchor_pts) => integer() | nil,
-          optional(:last_dts) => integer() | nil
-        }
+  @type state ::
+          %{
+            mode: :generate_best_effort_timestamps,
+            framerate: framerate(),
+            max_frame_reorder: non_neg_integer(),
+            au_counter: non_neg_integer(),
+            pts_counter: non_neg_integer(),
+            buffer_depth: non_neg_integer() | nil,
+            buffer: [buffer_entry()],
+            prev_pic_first_vcl_nalu: NALu.t() | nil,
+            prev_pic_order_cnt_msb: integer()
+          }
+          | DTSInference.state()
+          | %{mode: :passthrough}
+
+  defmodule DTSInference do
+    @moduledoc false
+
+    @type state :: %{
+            mode: :infer_dts_from_pts,
+            dts_source: nil | :supplied | :inferred,
+            frame_duration: pos_integer() | nil,
+            gop_anchor_poc: integer() | nil,
+            gop_anchor_pts: integer() | nil,
+            last_dts: integer() | nil,
+            prev_pic_first_vcl_nalu: NALu.t() | nil,
+            prev_pic_order_cnt_msb: integer()
+          }
+
+    @spec new() :: state()
+    def new() do
+      %{
+        mode: :infer_dts_from_pts,
+        dts_source: nil,
+        frame_duration: nil,
+        gop_anchor_poc: nil,
+        gop_anchor_pts: nil,
+        last_dts: nil,
+        prev_pic_first_vcl_nalu: nil,
+        prev_pic_order_cnt_msb: 0
+      }
+    end
+
+    @spec generate_timestamps(module(), [AUSplitter.access_unit()], state()) ::
+            {[AUTimestampGenerator.timestamped_au()], state()}
+    def generate_timestamps(module, access_units, state) do
+      Enum.map_reduce(access_units, state, &infer_access_unit(module, &1, &2))
+    end
+
+    defp infer_access_unit(module, au, state) do
+      first_vcl_nalu = module.get_first_vcl_nalu(au)
+
+      if is_nil(first_vcl_nalu) or Enum.any?(au, &(&1.status != :valid)) do
+        {{au, nil, nil}, state}
+      else
+        {pts, dts} = first_vcl_nalu.timestamps
+        infer_valid_access_unit(module, au, first_vcl_nalu, pts, dts, state)
+      end
+    end
+
+    defp infer_valid_access_unit(_module, au, _vcl_nalu, pts, dts, %{dts_source: nil} = state)
+         when is_integer(dts) do
+      {{au, pts, dts}, %{state | dts_source: :supplied, last_dts: dts}}
+    end
+
+    defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: nil} = state)
+         when is_integer(pts) do
+      state = %{state | dts_source: :inferred}
+      infer_valid_access_unit(module, au, vcl_nalu, pts, nil, state)
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: nil}) do
+      raise ArgumentError,
+            "cannot infer DTS: the first access unit has neither PTS nor DTS"
+    end
+
+    defp infer_valid_access_unit(
+           _module,
+           au,
+           _vcl_nalu,
+           pts,
+           dts,
+           %{dts_source: :supplied} = state
+         )
+         when is_integer(dts) do
+      {{au, pts, dts}, %{state | last_dts: dts}}
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: :supplied}) do
+      raise ArgumentError,
+            "cannot infer DTS: DTS disappeared after the stream started with supplied DTS"
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, dts, %{dts_source: :inferred})
+         when is_integer(dts) do
+      raise ArgumentError,
+            "cannot infer DTS: supplied DTS appeared after the stream started without DTS"
+    end
+
+    defp infer_valid_access_unit(_module, _au, _vcl_nalu, nil, nil, %{dts_source: :inferred}) do
+      raise ArgumentError, "cannot infer DTS: an access unit is missing PTS"
+    end
+
+    defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: :inferred} = state) do
+      if module.random_access?(vcl_nalu) do
+        start_timing_epoch(module, au, vcl_nalu, pts, state)
+      else
+        continue_timing_epoch(module, au, vcl_nalu, pts, state)
+      end
+    end
+
+    defp start_timing_epoch(module, au, vcl_nalu, pts, state) do
+      poc_state = initialize_poc_state(vcl_nalu, state)
+      {poc, poc_state} = module.calculate_poc(vcl_nalu, poc_state)
+
+      {dts, frame_duration} = epoch_dts_and_duration!(module, pts, vcl_nalu, state)
+
+      state = %{
+        poc_state
+        | frame_duration: frame_duration,
+          gop_anchor_poc: poc,
+          gop_anchor_pts: pts,
+          last_dts: dts
+      }
+
+      {{au, pts, dts}, state}
+    end
+
+    defp continue_timing_epoch(_module, _au, _vcl_nalu, _pts, %{gop_anchor_pts: nil}) do
+      raise ArgumentError,
+            "cannot infer DTS: the stream does not start with a random-access picture"
+    end
+
+    defp continue_timing_epoch(module, au, vcl_nalu, pts, %{frame_duration: nil} = state) do
+      {poc, state} = module.calculate_poc(vcl_nalu, state)
+      frame_duration = infer_frame_duration!(pts, poc, state)
+      dts = state.last_dts + frame_duration
+
+      {{au, pts, dts}, %{state | frame_duration: frame_duration, last_dts: dts}}
+    end
+
+    defp continue_timing_epoch(module, au, vcl_nalu, pts, state) do
+      {_poc, state} = module.calculate_poc(vcl_nalu, state)
+      dts = state.last_dts + state.frame_duration
+      {{au, pts, dts}, %{state | last_dts: dts}}
+    end
+
+    defp infer_frame_duration!(pts, poc, state) do
+      pts_delta = pts - state.gop_anchor_pts
+      poc_delta = poc - state.gop_anchor_poc
+
+      duration =
+        cond do
+          poc_delta == 0 and pts_delta > 0 -> pts_delta
+          poc_delta != 0 and pts_delta * poc_delta > 0 -> div(abs(pts_delta), abs(poc_delta))
+          true -> 0
+        end
+
+      if duration > 0 do
+        duration
+      else
+        raise ArgumentError,
+              "cannot infer DTS: PTS and POC do not establish a positive frame duration"
+      end
+    end
+
+    defp initialize_poc_state(vcl_nalu, %{prev_pic_first_vcl_nalu: nil} = state),
+      do: %{state | prev_pic_first_vcl_nalu: vcl_nalu}
+
+    defp initialize_poc_state(_vcl_nalu, state), do: state
+
+    defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{last_dts: nil}), do: {pts, nil}
+
+    defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{frame_duration: nil} = state) do
+      duration = pts - state.gop_anchor_pts
+
+      if duration > 0 do
+        {state.last_dts + duration, duration}
+      else
+        raise ArgumentError,
+              "cannot infer DTS: consecutive random-access pictures do not establish a positive frame duration"
+      end
+    end
+
+    defp epoch_dts_and_duration!(module, pts, vcl_nalu, state) do
+      expected_dts = state.last_dts + state.frame_duration
+      max_reorder = module.reorder_buffer_depth(vcl_nalu, state)
+      max_expected_offset = (max_reorder + 1) * state.frame_duration
+
+      cond do
+        abs(pts - expected_dts) <= max_expected_offset ->
+          {expected_dts, state.frame_duration}
+
+        pts > state.last_dts ->
+          {pts, state.frame_duration}
+
+        true ->
+          raise ArgumentError,
+                "cannot infer DTS: a random-access picture starts a non-monotonic timing epoch"
+      end
+    end
+  end
 
   @type timestamp :: integer() | nil
   @type timestamped_au ::
@@ -93,18 +279,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
     }
   end
 
-  def new(_module, :infer_dts_from_pts, _config) do
-    %{
-      mode: :infer_dts_from_pts,
-      dts_source: nil,
-      frame_duration: nil,
-      gop_anchor_poc: nil,
-      gop_anchor_pts: nil,
-      last_dts: nil,
-      prev_pic_first_vcl_nalu: nil,
-      prev_pic_order_cnt_msb: 0
-    }
-  end
+  def new(_module, :infer_dts_from_pts, _config), do: DTSInference.new()
 
   def new(_module, :passthrough, _config), do: %{mode: :passthrough}
 
@@ -147,7 +322,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
   end
 
   def generate_timestamps(module, access_units, _options, %{mode: :infer_dts_from_pts} = state) do
-    Enum.map_reduce(access_units, state, &infer_access_unit(module, &1, &2))
+    DTSInference.generate_timestamps(module, access_units, state)
   end
 
   def generate_timestamps(module, access_units, _options, %{mode: :passthrough} = state) do
@@ -252,152 +427,6 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGenerator do
 
     outputs = Enum.map(state.buffer, &{&1.au, &1.pts, &1.dts})
     {outputs, %{state | buffer: []}}
-  end
-
-  defp infer_access_unit(module, au, state) do
-    first_vcl_nalu = module.get_first_vcl_nalu(au)
-
-    if is_nil(first_vcl_nalu) or Enum.any?(au, &(&1.status != :valid)) do
-      {{au, nil, nil}, state}
-    else
-      {pts, dts} = first_vcl_nalu.timestamps
-      infer_valid_access_unit(module, au, first_vcl_nalu, pts, dts, state)
-    end
-  end
-
-  defp infer_valid_access_unit(_module, au, _vcl_nalu, pts, dts, %{dts_source: nil} = state)
-       when is_integer(dts) do
-    {{au, pts, dts}, %{state | dts_source: :supplied, last_dts: dts}}
-  end
-
-  defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: nil} = state)
-       when is_integer(pts) do
-    state = %{state | dts_source: :inferred}
-    infer_valid_access_unit(module, au, vcl_nalu, pts, nil, state)
-  end
-
-  defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: nil}) do
-    raise ArgumentError,
-          "cannot infer DTS: the first access unit has neither PTS nor DTS"
-  end
-
-  defp infer_valid_access_unit(_module, au, _vcl_nalu, pts, dts, %{dts_source: :supplied} = state)
-       when is_integer(dts) do
-    {{au, pts, dts}, %{state | last_dts: dts}}
-  end
-
-  defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, nil, %{dts_source: :supplied}) do
-    raise ArgumentError,
-          "cannot infer DTS: DTS disappeared after the stream started with supplied DTS"
-  end
-
-  defp infer_valid_access_unit(_module, _au, _vcl_nalu, _pts, dts, %{dts_source: :inferred})
-       when is_integer(dts) do
-    raise ArgumentError,
-          "cannot infer DTS: supplied DTS appeared after the stream started without DTS"
-  end
-
-  defp infer_valid_access_unit(_module, _au, _vcl_nalu, nil, nil, %{dts_source: :inferred}) do
-    raise ArgumentError, "cannot infer DTS: an access unit is missing PTS"
-  end
-
-  defp infer_valid_access_unit(module, au, vcl_nalu, pts, nil, %{dts_source: :inferred} = state) do
-    if module.random_access?(vcl_nalu) do
-      start_timing_epoch(module, au, vcl_nalu, pts, state)
-    else
-      continue_timing_epoch(module, au, vcl_nalu, pts, state)
-    end
-  end
-
-  defp start_timing_epoch(module, au, vcl_nalu, pts, state) do
-    poc_state = initialize_poc_state(vcl_nalu, state)
-    {poc, poc_state} = module.calculate_poc(vcl_nalu, poc_state)
-
-    {dts, frame_duration} = epoch_dts_and_duration!(module, pts, vcl_nalu, state)
-
-    state = %{
-      poc_state
-      | frame_duration: frame_duration,
-        gop_anchor_poc: poc,
-        gop_anchor_pts: pts,
-        last_dts: dts
-    }
-
-    {{au, pts, dts}, state}
-  end
-
-  defp continue_timing_epoch(_module, _au, _vcl_nalu, _pts, %{gop_anchor_pts: nil}) do
-    raise ArgumentError,
-          "cannot infer DTS: the stream does not start with a random-access picture"
-  end
-
-  defp continue_timing_epoch(module, au, vcl_nalu, pts, %{frame_duration: nil} = state) do
-    {poc, state} = module.calculate_poc(vcl_nalu, state)
-    frame_duration = infer_frame_duration!(pts, poc, state)
-    dts = state.last_dts + frame_duration
-
-    {{au, pts, dts}, %{state | frame_duration: frame_duration, last_dts: dts}}
-  end
-
-  defp continue_timing_epoch(module, au, vcl_nalu, pts, state) do
-    {_poc, state} = module.calculate_poc(vcl_nalu, state)
-    dts = state.last_dts + state.frame_duration
-    {{au, pts, dts}, %{state | last_dts: dts}}
-  end
-
-  defp infer_frame_duration!(pts, poc, state) do
-    pts_delta = pts - state.gop_anchor_pts
-    poc_delta = poc - state.gop_anchor_poc
-
-    duration =
-      cond do
-        poc_delta == 0 and pts_delta > 0 -> pts_delta
-        poc_delta != 0 and pts_delta * poc_delta > 0 -> div(abs(pts_delta), abs(poc_delta))
-        true -> 0
-      end
-
-    if duration > 0 do
-      duration
-    else
-      raise ArgumentError,
-            "cannot infer DTS: PTS and POC do not establish a positive frame duration"
-    end
-  end
-
-  defp initialize_poc_state(vcl_nalu, %{prev_pic_first_vcl_nalu: nil} = state),
-    do: %{state | prev_pic_first_vcl_nalu: vcl_nalu}
-
-  defp initialize_poc_state(_vcl_nalu, state), do: state
-
-  defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{last_dts: nil}), do: {pts, nil}
-
-  defp epoch_dts_and_duration!(_module, pts, _vcl_nalu, %{frame_duration: nil} = state) do
-    duration = pts - state.gop_anchor_pts
-
-    if duration > 0 do
-      {state.last_dts + duration, duration}
-    else
-      raise ArgumentError,
-            "cannot infer DTS: consecutive random-access pictures do not establish a positive frame duration"
-    end
-  end
-
-  defp epoch_dts_and_duration!(module, pts, vcl_nalu, state) do
-    expected_dts = state.last_dts + state.frame_duration
-    max_reorder = module.reorder_buffer_depth(vcl_nalu, state)
-    max_expected_offset = (max_reorder + 1) * state.frame_duration
-
-    cond do
-      abs(pts - expected_dts) <= max_expected_offset ->
-        {expected_dts, state.frame_duration}
-
-      pts > state.last_dts ->
-        {pts, state.frame_duration}
-
-      true ->
-        raise ArgumentError,
-              "cannot infer DTS: a random-access picture starts a non-monotonic timing epoch"
-    end
   end
 end
 
