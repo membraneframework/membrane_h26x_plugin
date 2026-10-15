@@ -1,9 +1,9 @@
 defmodule Membrane.H264.NALuParser.Schemes.SPS do
   @moduledoc false
-  @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
+  use Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
+  alias Membrane.H264.NALuParser.Schemes.Common
   alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
-  alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
   @profiles_description [
     high_cavlc_4_4_4_intra: [profile_idc: 44],
@@ -22,12 +22,8 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
     high_4_4_4_predictive: [profile_idc: 244]
   ]
 
-  @impl true
-  def defaults(), do: [chroma_format_idc: 1, separate_colour_plane_flag: 0]
-
-  @impl true
-  def scheme(),
-    do: [
+  defscheme defaults: [chroma_format_idc: 1, separate_colour_plane_flag: 0] do
+    [
       field: {:profile_idc, :u8},
       field: {:constraint_set0, :u1},
       field: {:constraint_set1, :u1},
@@ -100,85 +96,11 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
          field: {:frame_crop_top_offset, :ue},
          field: {:frame_crop_bottom_offset, :ue}},
       field: {:vui_parameters_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:vui_parameters_present_flag]},
-        vui_parameters()
-      },
+      if: {{&(&1 == 1), [:vui_parameters_present_flag]}, Common.vui_parameters()},
       execute: &resolution_and_profile/3,
       save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
     ]
-
-  @spec vui_parameters() :: Scheme.t()
-  def vui_parameters() do
-    [
-      field: {:aspect_ratio_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:aspect_ratio_present_flag]},
-         field: {:aspect_ratio_idc, :u8},
-         if:
-           {{&(&1 == 255), [:aspect_ratio_idc]},
-            field: {:sar_width, :u16}, field: {:sar_height, :u16}}},
-      field: {:overscan_info_present_flag, :u1},
-      if: {{&(&1 == 1), [:overscan_info_present_flag]}, field: {:overscan_appropriate_flag, :u1}},
-      field: {:video_signal_type_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:video_signal_type_present_flag]},
-         field: {:video_format, :u3},
-         field: {:video_full_range_flag, :u1},
-         field: {:colour_description_present_flag, :u1},
-         if:
-           {{&(&1 == 1), [:colour_description_present_flag]},
-            field: {:colour_primaries, :u8},
-            field: {:transfer_characteristics, :u8},
-            field: {:matrix_coefficients, :u8}}},
-      field: {:chroma_loc_info_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:chroma_loc_info_present_flag]},
-         field: {:chroma_sample_loc_type_top_field, :ue},
-         field: {:chroma_sample_loc_type_bottom_field, :ue}},
-      field: {:timing_info_present_flag, :u1},
-      if:
-        {{&(&1 == 1), [:timing_info_present_flag]},
-         field: {:num_units_in_tick, :u32},
-         field: {:time_scale, :u32},
-         field: {:fixed_frame_rate_flag, :u1}},
-      field: {:nal_hrd_parameters_present_flag, :u1},
-      if: {{&(&1 == 1), [:nal_hrd_parameters_present_flag]}, hrd_parameters()},
-      field: {:vcl_hrd_parameters_present_flag, :u1},
-      if: {{&(&1 == 1), [:vcl_hrd_parameters_present_flag]}, hrd_parameters()},
-      if:
-        {{&(&1 == 1 or &2 == 1),
-          [:nal_hrd_parameters_present_flag, :vcl_hrd_parameters_present_flag]},
-         field: {:low_delay_hrd_flag, :u1}},
-      field: {:pic_struct_present_flag, :u1},
-      field: {:bitstream_restriction_flag, :u1},
-      if:
-        {{&(&1 == 1), [:bitstream_restriction_flag]},
-         field: {:motion_vectors_over_pic_boundaries_flag, :u1},
-         field: {:max_bytes_per_pic_denom, :ue},
-         field: {:max_bits_per_mb_denom, :ue},
-         field: {:log2_max_mv_length_horizontal, :ue},
-         field: {:log2_max_mv_length_vertical, :ue},
-         field: {:max_num_reorder_frames, :ue},
-         field: {:max_dec_frame_buffering, :ue}}
-    ]
   end
-
-  defp hrd_parameters(),
-    do: [
-      field: {:cpb_cnt_minus1, :ue},
-      field: {:bit_rate_scale, :u4},
-      field: {:cpb_size_scale, :u4},
-      for:
-        {[iterator: :schedSeiIdx, from: 1, to: {&(&1 + 1), [:cpb_cnt_minus1]}],
-         field: {:bit_rate_value_minus1, :ue},
-         field: {:cpb_size_value_minus1, :ue},
-         field: {:cbr_flag, :u1}},
-      field: {:initial_cpb_removal_delay_length_minus1, :u5},
-      field: {:cpb_removal_delay_length_minus1, :u5},
-      field: {:dpb_output_delay_length_minus1, :u5},
-      field: {:time_offset_length, :u5}
-    ]
 
   defp scaling_list(payload, state, _iterators, size_of_scaling_list) do
     last_scale = 8

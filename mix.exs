@@ -42,6 +42,7 @@ defmodule Membrane.H26x.Plugin.Mixfile do
       {:membrane_h264_format, "~> 0.6.0"},
       {:membrane_h265_format, "~> 0.2.0"},
       {:bunch, "~> 1.4"},
+      {:benchee, "~> 1.3", only: :dev, runtime: false},
       {:membrane_stream_plugin, "~> 0.4.0", only: :test},
       {:membrane_file_plugin, "~> 0.16.0", only: :test},
       {:ex_doc, ">= 0.40.0", only: :dev, runtime: false},

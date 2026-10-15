@@ -2,7 +2,7 @@
 defmodule Membrane.H265.NALuParser.Schemes.SPS do
   @moduledoc false
 
-  @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
+  use Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
   import Bitwise
 
@@ -16,103 +16,96 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
     rext: [profile_idc: 4]
   ]
 
-  @impl true
-  def defaults(), do: [chroma_format_idc: 1, separate_colour_plane_flag: 0]
-
-  @impl true
-  def scheme(),
-    do:
+  defscheme defaults: [chroma_format_idc: 1, separate_colour_plane_flag: 0] do
+    [
+      field: {:video_parameter_set_id, :u4},
+      field: {:max_sub_layers_minus1, :u3},
+      field: {:temporal_id_nesting_flag, :u1}
+    ] ++
+      Common.profile_tier_level() ++
       [
-        field: {:video_parameter_set_id, :u4},
-        field: {:max_sub_layers_minus1, :u3},
-        field: {:temporal_id_nesting_flag, :u1}
-      ] ++
-        Common.profile_tier_level() ++
-        [
-          field: {:seq_parameter_set_id, :ue},
-          field: {:chroma_format_idc, :ue},
+        field: {:seq_parameter_set_id, :ue},
+        field: {:chroma_format_idc, :ue},
+        if: {
+          {&(&1 == 3), [:chroma_format_idc]},
+          field: {:separate_colour_plane_flag, :u1}
+        },
+        field: {:pic_width_in_luma_samples, :ue},
+        field: {:pic_height_in_luma_samples, :ue},
+        field: {:conformance_window_flag, :u1},
+        if: {
+          {&(&1 == 1), [:conformance_window_flag]},
+          field: {:conf_win_left_offset, :ue},
+          field: {:conf_win_right_offset, :ue},
+          field: {:conf_win_top_offset, :ue},
+          field: {:conf_win_bottom_offset, :ue}
+        },
+        field: {:bit_depth_luma_minus8, :ue},
+        field: {:bit_depth_chroma_minus8, :ue},
+        field: {:log2_max_pic_order_cnt_lsb_minus4, :ue},
+        field: {:sub_layer_ordering_info_present_flag, :u1},
+        for: {
+          [
+            iterator: :i,
+            from:
+              {&if(&1 == 1, do: 0, else: &2),
+               [:sub_layer_ordering_info_present_flag, :max_sub_layers_minus1]},
+            to: {& &1, [:max_sub_layers_minus1]}
+          ],
+          field: {:max_dec_pic_buffering_minus1, :ue},
+          field: {:max_num_reorder_pics, :ue},
+          field: {:max_latency_increase_plus1, :ue}
+        },
+        execute: &extract_max_num_reorder_pics/3,
+        field: {:log2_min_luma_coding_block_size_minus3, :ue},
+        field: {:log2_diff_max_min_luma_coding_block_size, :ue},
+        field: {:log2_min_luma_transform_block_size_minus2, :ue},
+        field: {:log2_diff_max_min_luma_transform_block_size, :ue},
+        field: {:max_transform_hierarchy_depth_inter, :ue},
+        field: {:max_transform_hierarchy_depth_intra, :ue},
+        field: {:scaling_list_enabled_flag, :u1},
+        if: {
+          {&(&1 == 1), [:scaling_list_enabled_flag]},
+          field: {:scaling_list_data_present_flag, :u1},
           if: {
-            {&(&1 == 3), [:chroma_format_idc]},
-            field: {:separate_colour_plane_flag, :u1}
-          },
-          field: {:pic_width_in_luma_samples, :ue},
-          field: {:pic_height_in_luma_samples, :ue},
-          field: {:conformance_window_flag, :u1},
-          if: {
-            {&(&1 == 1), [:conformance_window_flag]},
-            field: {:conf_win_left_offset, :ue},
-            field: {:conf_win_right_offset, :ue},
-            field: {:conf_win_top_offset, :ue},
-            field: {:conf_win_bottom_offset, :ue}
-          },
-          field: {:bit_depth_luma_minus8, :ue},
-          field: {:bit_depth_chroma_minus8, :ue},
-          field: {:log2_max_pic_order_cnt_lsb_minus4, :ue},
-          field: {:sub_layer_ordering_info_present_flag, :u1},
+            {&(&1 == 1), [:scaling_list_data_present_flag]},
+            execute: &scaling_list(&1, &2, &3)
+          }
+        },
+        field: {:amp_enabled_flag, :u1},
+        field: {:sample_adaptive_offset_enabled_flag, :u1},
+        field: {:pcm_enabled_flag, :u1},
+        if: {
+          {&(&1 == 1), [:pcm_enabled_flag]},
+          field: {:pcm_sample_bit_depth_luma_minus1, :u4},
+          field: {:pcm_sample_bit_depth_chroma_minus1, :u4},
+          field: {:log2_min_pcm_luma_coding_block_size_minus3, :ue},
+          field: {:log2_diff_max_min_pcm_luma_coding_block_size, :ue},
+          field: {:pcm_loop_filter_disabled_flag, :u1}
+        },
+        field: {:num_short_term_ref_pic_sets, :ue},
+        execute: &st_ref_pic_set/3,
+        field: {:long_term_ref_pics_present_flag, :u1},
+        if: {
+          {&(&1 == 1), [:long_term_ref_pics_present_flag]},
+          field: {:num_long_term_ref_pics_sps, :ue},
           for: {
-            [
-              iterator: :i,
-              from:
-                {&if(&1 == 1, do: 0, else: &2),
-                 [:sub_layer_ordering_info_present_flag, :max_sub_layers_minus1]},
-              to: {& &1, [:max_sub_layers_minus1]}
-            ],
-            field: {:max_dec_pic_buffering_minus1, :ue},
-            field: {:max_num_reorder_pics, :ue},
-            field: {:max_latency_increase_plus1, :ue}
-          },
-          execute: &extract_max_num_reorder_pics/3,
-          field: {:log2_min_luma_coding_block_size_minus3, :ue},
-          field: {:log2_diff_max_min_luma_coding_block_size, :ue},
-          field: {:log2_min_luma_transform_block_size_minus2, :ue},
-          field: {:log2_diff_max_min_luma_transform_block_size, :ue},
-          field: {:max_transform_hierarchy_depth_inter, :ue},
-          field: {:max_transform_hierarchy_depth_intra, :ue},
-          field: {:scaling_list_enabled_flag, :u1},
-          if: {
-            {&(&1 == 1), [:scaling_list_enabled_flag]},
-            field: {:scaling_list_data_present_flag, :u1},
-            if: {
-              {&(&1 == 1), [:scaling_list_data_present_flag]},
-              execute: &scaling_list(&1, &2, &3)
-            }
-          },
-          field: {:amp_enabled_flag, :u1},
-          field: {:sample_adaptive_offset_enabled_flag, :u1},
-          field: {:pcm_enabled_flag, :u1},
-          if: {
-            {&(&1 == 1), [:pcm_enabled_flag]},
-            field: {:pcm_sample_bit_depth_luma_minus1, :u4},
-            field: {:pcm_sample_bit_depth_chroma_minus1, :u4},
-            field: {:log2_min_pcm_luma_coding_block_size_minus3, :ue},
-            field: {:log2_diff_max_min_pcm_luma_coding_block_size, :ue},
-            field: {:pcm_loop_filter_disabled_flag, :u1}
-          },
-          field: {:num_short_term_ref_pic_sets, :ue},
-          execute: &st_ref_pic_set/3,
-          field: {:long_term_ref_pics_present_flag, :u1},
-          if: {
-            {&(&1 == 1), [:long_term_ref_pics_present_flag]},
-            field: {:num_long_term_ref_pics_sps, :ue},
-            for: {
-              [iterator: :j, from: 0, to: {&(&1 - 1), [:num_long_term_ref_pics_sps]}],
-              field:
-                {:lt_ref_pic_poc_lsb_sps, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}},
-              field: {:used_by_curr_pic_lt_sps_flag, :u1}
-            }
-          },
-          field: {:temporal_mvp_enabled_flag, :u1},
-          field: {:strong_intra_smoothing_enabled_flag, :u1},
-          field: {:vui_parameters_present_flag, :u1},
-          if: {
-            {&(&1 == 1), [:vui_parameters_present_flag]},
-            vui_parameters()
-          },
-          execute: &load_timing_info_from_vps/3,
-          execute: &calculate_segment_address_length/3,
-          execute: &resolution_and_profile/3,
-          save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
-        ]
+            [iterator: :j, from: 0, to: {&(&1 - 1), [:num_long_term_ref_pics_sps]}],
+            field:
+              {:lt_ref_pic_poc_lsb_sps, {:uv, &(&1 + 4), [:log2_max_pic_order_cnt_lsb_minus4]}},
+            field: {:used_by_curr_pic_lt_sps_flag, :u1}
+          }
+        },
+        field: {:temporal_mvp_enabled_flag, :u1},
+        field: {:strong_intra_smoothing_enabled_flag, :u1},
+        field: {:vui_parameters_present_flag, :u1},
+        if: {{&(&1 == 1), [:vui_parameters_present_flag]}, Common.vui_parameters()},
+        execute: &load_timing_info_from_vps/3,
+        execute: &calculate_segment_address_length/3,
+        execute: &resolution_and_profile/3,
+        save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
+      ]
+  end
 
   # The `for` loop above stores `max_num_reorder_pics` per sub-layer (keyed by the
   # iterator value). The relevant value is the one for the highest sub-layer; it
@@ -268,67 +261,6 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
 
       {payload, deltas ++ [delta_poc_s0_minus1], used_by_curr ++ [used_by_curr_pic_s0_flag]}
     end)
-  end
-
-  defp vui_parameters() do
-    [
-      field: {:aspect_ratio_info_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:aspect_ratio_info_present_flag]},
-        field: {:aspect_ratio_idc, :u8},
-        if: {
-          {&(&1 == 255), [:aspect_ratio_idc]},
-          field: {:sar_width, :u16}, field: {:sar_height, :u16}
-        }
-      },
-      field: {:overscan_info_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:overscan_info_present_flag]},
-        field: {:overscan_appropriate_flag, :u1}
-      },
-      field: {:video_signal_type_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:video_signal_type_present_flag]},
-        field: {:video_format, :u3},
-        field: {:video_full_range_flag, :u1},
-        field: {:colour_description_present_flag, :u1},
-        if: {
-          {&(&1 == 1), [:colour_description_present_flag]},
-          field: {:colour_primaries, :u8},
-          field: {:transfer_characteristics, :u8},
-          field: {:matrix_coeffs, :u8}
-        }
-      },
-      field: {:chroma_loc_info_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:chroma_loc_info_present_flag]},
-        field: {:chroma_sample_loc_type_top_field, :ue},
-        field: {:chroma_sample_loc_type_bottom_field, :ue}
-      },
-      field: {:neutral_chroma_indication_flag, :u1},
-      field: {:field_seq_flag, :u1},
-      field: {:frame_field_info_present_flag, :u1},
-      field: {:default_display_window_flag, :u1},
-      if: {
-        {&(&1 == 1), [:default_display_window_flag]},
-        field: {:def_disp_win_left_offset, :ue},
-        field: {:def_disp_win_right_offset, :ue},
-        field: {:def_disp_win_top_offset, :ue},
-        field: {:def_disp_win_bottom_offset, :ue}
-      },
-      field: {:vui_timing_info_present_flag, :u1},
-      if: {
-        {&(&1 == 1), [:vui_timing_info_present_flag]},
-        field: {:num_units_in_tick, :u32},
-        field: {:time_scale, :u32},
-        field: {:poc_proportional_to_timing_flag, :u1},
-        if: {
-          {&(&1 == 1), [:poc_proportional_to_timing_flag]},
-          field: {:num_ticks_poc_diff_one_minus1, :ue}
-        },
-        field: {:hrd_parameters_present_flag, :u1}
-      }
-    ]
   end
 
   defp calculate_segment_address_length(payload, state, _iterators) do
