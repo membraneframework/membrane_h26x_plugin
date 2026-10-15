@@ -162,7 +162,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
              ]
     end
 
-    test "keeps the cadence across random-access pictures" do
+    test "keeps DTS monotonic and evenly spaced when a new random-access picture starts a sequence" do
       result =
         infer([
           au(0, 0, {0, nil}, true),
