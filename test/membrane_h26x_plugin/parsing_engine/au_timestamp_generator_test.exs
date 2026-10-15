@@ -2,6 +2,7 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
   @moduledoc false
   use ExUnit.Case, async: true
 
+  alias Membrane.H264.AUTimestampGenerator, as: H264Generator
   alias Membrane.H26x.ParsingEngine
   alias Membrane.H26x.ParsingEngine.AUTimestampGenerator
 
@@ -261,24 +262,128 @@ defmodule Membrane.H26x.ParsingEngine.AUTimestampGeneratorTest do
       end
     end
 
-    test "rejects incompatible parser timestamp options" do
-      base_config = %{
-        codec: :h265,
-        input_alignment: :au,
-        input_stream_structure: :annexb
-      }
+    test "enables inference for both codecs and rejects incompatible timestamp options" do
+      for codec <- [:h264, :h265] do
+        config = %{
+          codec: codec,
+          input_alignment: :au,
+          input_stream_structure: :annexb,
+          infer_dts_from_pts: true
+        }
 
-      assert_raise ArgumentError, ~r/cannot be combined/, fn ->
-        ParsingEngine.new(
-          Map.merge(base_config, %{
-            infer_dts_from_pts: true,
-            generate_best_effort_timestamps: %{framerate: {30, 1}}
-          })
-        )
+        assert %{au_timestamp_generator: %{mode: :infer_dts_from_pts}} = ParsingEngine.new(config)
+
+        assert_raise ArgumentError, ~r/cannot be combined/, fn ->
+          ParsingEngine.new(
+            Map.put(config, :generate_best_effort_timestamps, %{framerate: {30, 1}})
+          )
+        end
       end
+    end
+  end
 
-      assert_raise ArgumentError, ~r/only supported for H265/, fn ->
-        ParsingEngine.new(Map.merge(base_config, %{codec: :h264, infer_dts_from_pts: true}))
+  defp h264_au(type, pts, fields) do
+    [
+      %{
+        type: type,
+        status: :valid,
+        timestamps: {pts, nil},
+        parsed_fields:
+          Map.merge(
+            %{
+              profile: :main,
+              pic_order_cnt_type: 0,
+              log2_max_pic_order_cnt_lsb_minus4: 0,
+              frame_mbs_only_flag: 1,
+              delta_pic_order_cnt_bottom: 0
+            },
+            fields
+          )
+      }
+    ]
+  end
+
+  defp infer_h264(access_units) do
+    state = AUTimestampGenerator.new(H264Generator, :infer_dts_from_pts)
+
+    # Process one AU per call to exercise codec state across buffers.
+    {emitted, _state} =
+      Enum.map_reduce(access_units, state, fn au, state ->
+        {[{^au, pts, dts}], state} =
+          AUTimestampGenerator.generate_timestamps(H264Generator, [au], state)
+
+        {{pts, dts}, state}
+      end)
+
+    emitted
+  end
+
+  describe "H264 DTS inference" do
+    test "only IDR pictures qualify as random-access anchors" do
+      assert H264Generator.random_access?(%{type: :idr})
+
+      for type <- [:non_idr, :part_a, :part_b, :part_c, :sps, :pps, :sei] do
+        refute H264Generator.random_access?(%{type: type})
+      end
+    end
+
+    test "normalizes type 0 POC to frame cadence and preserves reordered PTS" do
+      assert infer_h264([
+               h264_au(:idr, 10_000, %{pic_order_cnt_lsb: 0}),
+               h264_au(:non_idr, 12_000, %{pic_order_cnt_lsb: 4}),
+               h264_au(:non_idr, 11_000, %{pic_order_cnt_lsb: 2})
+             ]) == [{10_000, 10_000}, {12_000, 11_000}, {11_000, 12_000}]
+    end
+
+    test "uses frame numbers for type 2 POC" do
+      assert infer_h264([
+               h264_au(:idr, 0, %{pic_order_cnt_type: 2, frame_num: 0}),
+               h264_au(:non_idr, 1_000, %{pic_order_cnt_type: 2, frame_num: 1}),
+               h264_au(:non_idr, 2_000, %{pic_order_cnt_type: 2, frame_num: 2})
+             ]) == [{0, 0}, {1_000, 1_000}, {2_000, 2_000}]
+    end
+
+    test "resets type 0 POC on a subsequent IDR while retaining DTS cadence" do
+      access_units =
+        for {type, poc, pts} <- [
+              {:idr, 0, 0},
+              {:non_idr, 8, 4_000},
+              {:non_idr, 14, 7_000},
+              {:non_idr, 2, 9_000},
+              {:idr, 0, 10_000},
+              {:non_idr, 4, 12_000}
+            ] do
+          h264_au(type, pts, %{pic_order_cnt_lsb: poc})
+        end
+
+      assert infer_h264(access_units) ==
+               [
+                 {0, 0},
+                 {4_000, 1_000},
+                 {7_000, 2_000},
+                 {9_000, 3_000},
+                 {10_000, 4_000},
+                 {12_000, 5_000}
+               ]
+
+      state = AUTimestampGenerator.new(H264Generator, :infer_dts_from_pts)
+
+      {_emitted, state} =
+        AUTimestampGenerator.generate_timestamps(H264Generator, access_units, state)
+
+      assert state.gop_anchor_poc == 0
+      assert state.prev_pic_order_cnt_msb == 0
+    end
+
+    test "rejects a non-IDR I-slice as the initial timing anchor" do
+      assert_raise ArgumentError, ~r/does not start with a random-access picture/, fn ->
+        infer_h264([h264_au(:non_idr, 0, %{slice_type: 2, pic_order_cnt_lsb: 0})])
+      end
+    end
+
+    test "retains the unsupported POC type 1 error" do
+      assert_raise RuntimeError, ~r/Unsupported field value pic_order_cnt_type=1/, fn ->
+        infer_h264([h264_au(:idr, 0, %{pic_order_cnt_type: 1})])
       end
     end
   end

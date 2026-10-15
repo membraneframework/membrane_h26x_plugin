@@ -416,6 +416,9 @@ defmodule Membrane.H264.AUTimestampGenerator do
   require Membrane.H264.NALuTypes, as: NALuTypes
 
   @impl true
+  def random_access?(vcl_nalu), do: vcl_nalu.type == :idr
+
+  @impl true
   def max_frame_reorder(), do: 15
 
   @impl true
