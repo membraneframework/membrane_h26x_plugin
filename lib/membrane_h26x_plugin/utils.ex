@@ -19,8 +19,7 @@ defmodule Membrane.H26x.Utils do
           repeat_parameter_sets: boolean(),
           initial_parameter_sets: [binary()],
           output_stream_structure: ParsingEngine.stream_structure() | nil,
-          framerate: term() | nil,
-          passthrough?: boolean()
+          framerate: term() | nil
         }
 
   @type action :: Membrane.Element.Action.t()
@@ -44,119 +43,37 @@ defmodule Membrane.H26x.Utils do
       repeat_parameter_sets: opts[:repeat_parameter_sets],
       initial_parameter_sets: opts[:initial_parameter_sets],
       output_stream_structure: opts[:output_stream_structure],
-      framerate: framerate(opts[:generate_best_effort_timestamps]),
-      passthrough?: false
+      framerate: framerate(opts[:generate_best_effort_timestamps])
     }
   end
 
   @doc """
   Handles a new input stream format.
 
-  The element passes the stream format itself along with the input alignment and the
-  raw input stream structure resolved from it.
-
-  When the input is already parsed - AU-aligned, with the NALu metadata attached and
-  in the structure the output is expected in - the element switches to a passthrough
-  mode: the buffers are forwarded as they are, without being split or parsed again,
-  and the input stream format is forwarded as the output one. See `passthrough?/2`
-  for the exact conditions.
+  The element passes the input alignment and the raw input stream structure resolved
+  from the stream format, along with the stream's framerate (or `nil`).
   """
   @spec handle_stream_format(
-          struct(),
           {ParsingEngine.input_alignment(), ParsingEngine.input_stream_structure()},
+          term() | nil,
           map(),
           state()
         ) :: {[action()], state()}
-  def handle_stream_format(stream_format, {alignment, input_stream_structure}, ctx, state) do
-    if passthrough?(stream_format, state) do
-      enter_passthrough(stream_format, ctx, state)
+  def handle_stream_format({alignment, input_stream_structure}, framerate, ctx, state) do
+    if is_nil(ctx.pads.output.stream_format) do
+      {[], start_parsing_engine(state, framerate, alignment, input_stream_structure)}
     else
-      state = %{state | passthrough?: false}
+      {events, parsing_engine} =
+        ParsingEngine.reconfigure_input(state.parsing_engine, alignment, input_stream_structure)
 
-      if is_nil(state.parsing_engine) or is_nil(ctx.pads.output.stream_format) do
-        {[],
-         start_parsing_engine(
-           state,
-           Map.get(stream_format, :framerate),
-           alignment,
-           input_stream_structure
-         )}
-      else
-        {events, parsing_engine} =
-          ParsingEngine.reconfigure_input(state.parsing_engine, alignment, input_stream_structure)
-
-        process_events(events, ctx, %{state | parsing_engine: parsing_engine})
-      end
+      process_events(events, ctx, %{state | parsing_engine: parsing_engine})
     end
-  end
-
-  @doc """
-  Tells whether the buffers of the given input stream format can be forwarded without
-  parsing.
-
-  That is the case when the input is AU-aligned and carries the NALu metadata (so it
-  has already been through a parser), the output is AU-aligned in the same stream
-  structure (Annex B, or the input structure if none is configured and the input
-  carries its parameter sets in-band) and no option requires the parameter sets to be
-  inspected or altered.
-  """
-  @spec passthrough?(struct(), state()) :: boolean()
-  def passthrough?(
-        %{alignment: :au, nalu_in_metadata?: true, stream_structure: input_stream_structure},
-        state
-      ) do
-    state.output_alignment == :au and not state.repeat_parameter_sets and
-      state.initial_parameter_sets == [] and state.generate_best_effort_timestamps == false and
-      passthrough_structure?(input_stream_structure, state.output_stream_structure)
-  end
-
-  def passthrough?(_stream_format, _state), do: false
-
-  defp passthrough_structure?(:annexb, output) when output in [nil, :annexb], do: true
-  defp passthrough_structure?({tag, _dcr}, nil) when tag in [:avc3, :hev1], do: true
-  defp passthrough_structure?(_input, _output), do: false
-
-  # the engine is dropped since the parameter sets forwarded meanwhile never reach it
-  defp enter_passthrough(stream_format, ctx, state) do
-    {actions, state} =
-      if is_nil(state.parsing_engine) do
-        {[], state}
-      else
-        {events, engine} = ParsingEngine.flush(state.parsing_engine)
-        {actions, state} = process_events(events, ctx, %{state | parsing_engine: engine})
-        {actions, %{state | parsing_engine: nil}}
-      end
-
-    stream_format_actions =
-      if last_stream_format(actions, ctx) == stream_format,
-        do: [],
-        else: [stream_format: {:output, stream_format}]
-
-    {actions ++ stream_format_actions, %{state | passthrough?: true}}
-  end
-
-  defp last_stream_format(actions, ctx) do
-    Enum.reduce(actions, ctx.pads.output.stream_format, fn
-      {:stream_format, {:output, stream_format}}, _last -> stream_format
-      _action, last -> last
-    end)
   end
 
   @doc """
   Handles an input buffer.
   """
   @spec handle_buffer(Buffer.t(), map(), state()) :: {[action()], state()}
-  def handle_buffer(buffer, _ctx, %{passthrough?: true} = state) do
-    skip_until_keyframe? =
-      state.skip_until_keyframe and not keyframe_from_metadata(buffer.metadata, state.codec)
-
-    state = %{state | skip_until_keyframe: skip_until_keyframe?}
-
-    if skip_until_keyframe?,
-      do: {[], state},
-      else: {[buffer: {:output, buffer}], state}
-  end
-
   def handle_buffer(buffer, ctx, state) do
     {events, parsing_engine} =
       ParsingEngine.push(state.parsing_engine, buffer.payload, {buffer.pts, buffer.dts})
@@ -169,10 +86,6 @@ defmodule Membrane.H26x.Utils do
   action.
   """
   @spec handle_end_of_stream(map(), state()) :: {[action()], state()}
-  def handle_end_of_stream(_ctx, %{passthrough?: true} = state) do
-    {[end_of_stream: :output], state}
-  end
-
   def handle_end_of_stream(ctx, state) do
     {events, parsing_engine} = ParsingEngine.flush(state.parsing_engine)
     {actions, state} = process_events(events, ctx, %{state | parsing_engine: parsing_engine})
@@ -264,20 +177,6 @@ defmodule Membrane.H26x.Utils do
           nalu_in_metadata?: true,
           stream_structure: output_raw_stream_structure
         )
-    end
-  end
-
-  defp keyframe_from_metadata(metadata, codec) do
-    case metadata do
-      %{^codec => %{key_frame?: keyframe?}} when is_boolean(keyframe?) ->
-        keyframe?
-
-      _metadata ->
-        raise ArgumentError, """
-        The input stream format declares the NALu metadata to be present \
-        (`nalu_in_metadata?: true`), but the buffer metadata lacks the \
-        `#{inspect(codec)}.key_frame?` field: #{inspect(metadata)}
-        """
     end
   end
 

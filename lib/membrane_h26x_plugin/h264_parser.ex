@@ -21,10 +21,6 @@ defmodule Membrane.H264.Parser do
   * Receiving `%Membrane.H264{alignment: :nalu}` results in the input alignment being set to `:nalu`
   * Receiving `%Membrane.H264{alignment: :au}` results in the input alignment being set to `:au`
 
-  If the input stream has already been parsed - the stream format is `%Membrane.H264{alignment: :au, nalu_in_metadata?: true}`
-  and the output is expected AU-aligned in the same stream structure (see `Membrane.H26x.Utils.passthrough?/2`) - the buffers
-  are forwarded without being parsed again, trusting the metadata attached by the previous parser.
-
   The distinction between input alignments was introduced to eliminate the redundant operations and to provide a reliable way
   for rewriting of timestamps:
   * for the `:bytestream` input alignment:
@@ -201,7 +197,7 @@ defmodule Membrane.H264.Parser do
   @impl true
   def handle_stream_format(:input, stream_format, ctx, state) do
     input = parse_raw_input_stream_structure(stream_format)
-    Utils.handle_stream_format(stream_format, input, ctx, state)
+    Utils.handle_stream_format(input, Map.get(stream_format, :framerate), ctx, state)
   end
 
   @impl true
