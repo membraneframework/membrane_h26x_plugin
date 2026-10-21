@@ -27,25 +27,16 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
     # searching for a single zero byte is much faster than for the whole start code
     def find(payload, from) do
       case :binary.match(payload, <<0>>, scope: {from, byte_size(payload) - from}) do
-        {position, 1} when position + 3 <= byte_size(payload) ->
-          case payload do
-            <<_skip::binary-size(position), 0, 0, 1, _rest::binary>> ->
-              start_code_at(payload, position)
-
-            _no_start_code ->
-              find(payload, position + 1)
-          end
-
-        _no_match ->
-          nil
+        :nomatch -> nil
+        {position, 1} -> match_at(payload, position)
       end
     end
 
-    defp start_code_at(payload, position) do
-      if position > 0 and :binary.at(payload, position - 1) == 0 do
-        {position - 1, position + 3}
-      else
-        {position, position + 3}
+    defp match_at(payload, position) do
+      case payload do
+        <<_skip::binary-size(position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
+        <<_skip::binary-size(position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
+        _no_start_code -> find(payload, position + 1)
       end
     end
   end
@@ -115,7 +106,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
 
       {nalu_start, search_from} ->
         # a start code may straddle the already scanned part
-        search_from = max(search_from, scanned_bytes - 2)
+        search_from = max(search_from, scanned_bytes - 3)
         split_annexb(payload, nalu_start, search_from, [])
     end
   end
