@@ -25,21 +25,27 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
     found at or after `from`, or `nil`.
     """
     @spec find(binary(), non_neg_integer()) :: {non_neg_integer(), non_neg_integer()} | nil
-    def find(payload, from) when from + 3 > byte_size(payload), do: nil
+    def find(payload, from) when from + 3 > byte_size(payload) do
+      nil
+    end
 
-    def find(payload, from),
-      do: find_zero(payload, from, :binary.compile_pattern(<<0>>), from, 0)
+    def find(payload, from) do
+      find_zero(payload, from, :binary.compile_pattern(<<0>>), from, 0)
+    end
 
     defp find_zero(payload, from, _pattern, _span_start, _false_candidates)
-         when from + 3 > byte_size(payload),
-         do: nil
+         when from + 3 > byte_size(payload) do
+      nil
+    end
 
     defp find_zero(payload, from, pattern, span_start, false_candidates) do
       case :binary.match(payload, pattern, scope: {from, byte_size(payload) - from}) do
         {position, 1} when position + 3 <= byte_size(payload) ->
-          if :binary.at(payload, position + 1) == 0 and :binary.at(payload, position + 2) == 1,
-            do: start_code_at(payload, position),
-            else: skip_candidate(payload, position, pattern, span_start, false_candidates + 1)
+          if :binary.at(payload, position + 1) == 0 and :binary.at(payload, position + 2) == 1 do
+            start_code_at(payload, position)
+          else
+            skip_candidate(payload, position, pattern, span_start, false_candidates + 1)
+          end
 
         _no_room_or_match ->
           nil
@@ -59,7 +65,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
       end
     end
 
-    defp find_pattern(payload, from) when from + 3 > byte_size(payload), do: nil
+    defp find_pattern(payload, from) when from + 3 > byte_size(payload) do
+      nil
+    end
 
     defp find_pattern(payload, from) do
       case :binary.match(payload, <<0, 0, 1>>, scope: {from, byte_size(payload) - from}) do
@@ -69,9 +77,11 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
     end
 
     defp start_code_at(payload, position) do
-      if position > 0 and :binary.at(payload, position - 1) == 0,
-        do: {position - 1, position + 3},
-        else: {position, position + 3}
+      if position > 0 and :binary.at(payload, position - 1) == 0 do
+        {position - 1, position + 3}
+      else
+        {position, position + 3}
+      end
     end
   end
 
