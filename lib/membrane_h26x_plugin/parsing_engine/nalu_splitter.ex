@@ -105,6 +105,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
         {[], payload}
 
       {nalu_start, search_from} ->
+        # the scanned part may end with up to 3 bytes of a start code
         search_from = max(search_from, scanned_bytes - 3)
         split_annexb(payload, nalu_start, search_from, [])
     end
