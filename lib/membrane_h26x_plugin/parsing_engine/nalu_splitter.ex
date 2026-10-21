@@ -34,8 +34,8 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
 
     defp match_at(payload, position) do
       case payload do
-        <<_skip::binary-size(position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
-        <<_skip::binary-size(position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
+        <<_skip::binary-size(^position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
+        <<_skip::binary-size(^position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
         _no_start_code -> find(payload, position + 1)
       end
     end
