@@ -231,7 +231,10 @@ defmodule Membrane.H26x.Utils do
   defp join_payloads(payloads), do: IO.iodata_to_binary(payloads)
 
   defp prepare_metadata(:au, nalus, keyframe?, metadata_key) do
-    nalus = Enum.map(prepare_metadata(:nalu, nalus, keyframe?, metadata_key), &%{metadata: &1})
+    nalus =
+      prepare_metadata(:nalu, nalus, keyframe?, metadata_key)
+      |> Enum.map(&%{metadata: &1})
+
     %{metadata_key => %{key_frame?: keyframe?, nalus: nalus}}
   end
 
