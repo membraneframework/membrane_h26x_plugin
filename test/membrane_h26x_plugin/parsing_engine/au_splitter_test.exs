@@ -165,6 +165,7 @@ defmodule Membrane.H26x.ParsingEngine.AUSplitterTest do
       parsed_fields: parsed_fields,
       stripped_prefix: <<0, 0, 1>>,
       payload: <<>>,
+      prefixed_payload: <<0, 0, 1>>,
       status: :valid
     }
   end

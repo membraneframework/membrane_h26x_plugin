@@ -10,7 +10,8 @@ defmodule Membrane.H26x.ParsingEngine.AUSplitter do
   @type access_unit() :: list(NALu.t())
 
   @typedoc """
-  A structure holding a state of the access unit splitter.
+  A structure holding a state of the access unit splitter. The NALus of the access unit
+  being accumulated and the completed access units are kept in reverse order.
   """
   @opaque t :: %__MODULE__{
             nalus_acc: [NALu.t()],
@@ -56,13 +57,13 @@ defmodule Membrane.H26x.ParsingEngine.AUSplitter do
 
     {aus, state} =
       if assume_au_aligned do
-        {state.access_units_to_output ++ [state.nalus_acc],
+        {[Enum.reverse(state.nalus_acc) | state.access_units_to_output],
          %__MODULE__{state | access_units_to_output: [], nalus_acc: []}}
       else
         {state.access_units_to_output, %__MODULE__{state | access_units_to_output: []}}
       end
 
-    {Enum.reject(aus, &Enum.empty?/1), state}
+    {aus |> Enum.reject(&Enum.empty?/1) |> Enum.reverse(), state}
   end
 end
 
@@ -102,7 +103,7 @@ defmodule Membrane.H264.AUSplitter do
           rest_nalus,
           %AUSplitter{
             state
-            | nalus_acc: state.nalus_acc ++ [first_nalu],
+            | nalus_acc: [first_nalu | state.nalus_acc],
               fsm_state: :second,
               previous_nalu: first_nalu
           }
@@ -111,7 +112,7 @@ defmodule Membrane.H264.AUSplitter do
       first_nalu.type in @non_vcl_nalu_types_at_au_beginning ->
         split(
           rest_nalus,
-          %AUSplitter{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
+          %AUSplitter{state | nalus_acc: [first_nalu | state.nalus_acc]}
         )
 
       true ->
@@ -130,7 +131,7 @@ defmodule Membrane.H264.AUSplitter do
           rest_nalus,
           %AUSplitter{
             state
-            | nalus_acc: state.nalus_acc ++ [first_nalu]
+            | nalus_acc: [first_nalu | state.nalus_acc]
           }
         )
 
@@ -141,7 +142,9 @@ defmodule Membrane.H264.AUSplitter do
             state
             | nalus_acc: [first_nalu],
               fsm_state: :first,
-              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+              access_units_to_output: [
+                Enum.reverse(state.nalus_acc) | state.access_units_to_output
+              ]
           }
         )
 
@@ -152,14 +155,16 @@ defmodule Membrane.H264.AUSplitter do
             state
             | nalus_acc: [first_nalu],
               previous_nalu: first_nalu,
-              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+              access_units_to_output: [
+                Enum.reverse(state.nalus_acc) | state.access_units_to_output
+              ]
           }
         )
 
       NALuTypes.is_vcl_nalu_type(first_nalu.type) or first_nalu.type == :filler_data ->
         split(
           rest_nalus,
-          %AUSplitter{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
+          %AUSplitter{state | nalus_acc: [first_nalu | state.nalus_acc]}
         )
 
       true ->
@@ -278,7 +283,7 @@ defmodule Membrane.H265.AUSplitter do
           rest_nalus,
           %AUSplitter{
             state
-            | nalus_acc: state.nalus_acc ++ [first_nalu],
+            | nalus_acc: [first_nalu | state.nalus_acc],
               fsm_state: :second,
               previous_nalu: first_nalu
           }
@@ -290,7 +295,7 @@ defmodule Membrane.H265.AUSplitter do
           NALu.int_type(first_nalu) in 48..55 ->
         split(
           rest_nalus,
-          %AUSplitter{state | nalus_acc: state.nalus_acc ++ [first_nalu]}
+          %AUSplitter{state | nalus_acc: [first_nalu | state.nalus_acc]}
         )
 
       true ->
@@ -310,7 +315,9 @@ defmodule Membrane.H265.AUSplitter do
             state
             | nalus_acc: [first_nalu],
               fsm_state: :first,
-              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+              access_units_to_output: [
+                Enum.reverse(state.nalus_acc) | state.access_units_to_output
+              ]
           }
         )
 
@@ -321,7 +328,9 @@ defmodule Membrane.H265.AUSplitter do
             state
             | nalus_acc: [first_nalu],
               previous_nalu: first_nalu,
-              access_units_to_output: state.access_units_to_output ++ [state.nalus_acc]
+              access_units_to_output: [
+                Enum.reverse(state.nalus_acc) | state.access_units_to_output
+              ]
           }
         )
 
@@ -333,7 +342,7 @@ defmodule Membrane.H265.AUSplitter do
           rest_nalus,
           %AUSplitter{
             state
-            | nalus_acc: state.nalus_acc ++ [first_nalu],
+            | nalus_acc: [first_nalu | state.nalus_acc],
               previous_nalu: first_nalu
           }
         )

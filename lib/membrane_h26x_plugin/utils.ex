@@ -203,7 +203,7 @@ defmodule Membrane.H26x.Utils do
     {pts, dts} = au.timestamps
 
     %Buffer{
-      payload: Enum.join(au.nalus_payloads),
+      payload: join_payloads(au.nalus_payloads),
       metadata: prepare_metadata(:au, au.nalus, au.keyframe?, metadata_key),
       pts: pts,
       dts: dts
@@ -230,6 +230,9 @@ defmodule Membrane.H26x.Utils do
 
   defp stream_format_sent?(_actions, _ctx), do: true
 
+  defp join_payloads([payload]), do: payload
+  defp join_payloads(payloads), do: IO.iodata_to_binary(payloads)
+
   defp prepare_metadata(:au, nalus, keyframe?, metadata_key) do
     nalus =
       prepare_metadata(:nalu, nalus, keyframe?, metadata_key)
@@ -240,17 +243,8 @@ defmodule Membrane.H26x.Utils do
 
   defp prepare_metadata(:nalu, nalus, keyframe?, metadata_key) do
     nalus
-    |> Enum.with_index()
-    |> Enum.map(fn {nalu, i} ->
-      Map.put(%{}, metadata_key, %{type: nalu.type})
-      |> Bunch.then_if(
-        i == 0,
-        &put_in(&1, [metadata_key, :new_access_unit], %{key_frame?: keyframe?})
-      )
-      |> Bunch.then_if(
-        i == length(nalus) - 1,
-        &put_in(&1, [metadata_key, :end_access_unit], true)
-      )
-    end)
+    |> Enum.map(&%{metadata_key => %{type: &1.type}})
+    |> List.update_at(0, &put_in(&1, [metadata_key, :new_access_unit], %{key_frame?: keyframe?}))
+    |> List.update_at(-1, &put_in(&1, [metadata_key, :end_access_unit], true))
   end
 end

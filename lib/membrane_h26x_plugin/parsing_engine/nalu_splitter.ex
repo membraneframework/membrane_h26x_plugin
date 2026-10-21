@@ -12,6 +12,35 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
           unparsed_payload: binary()
         }
 
+  defmodule StartCode do
+    @moduledoc false
+
+    @doc """
+    Returns `{start_code_position, position_after_start_code}` of the first Annex B start code
+    found at or after `from`, or `nil`.
+    """
+    @spec find(binary(), non_neg_integer()) :: {non_neg_integer(), non_neg_integer()} | nil
+    def find(payload, from) when from + 3 > byte_size(payload) do
+      nil
+    end
+
+    # searching for a single zero byte is much faster than for the whole start code
+    def find(payload, from) do
+      case :binary.match(payload, <<0>>, scope: {from, byte_size(payload) - from}) do
+        :nomatch -> nil
+        {position, 1} -> match_at(payload, position)
+      end
+    end
+
+    defp match_at(payload, position) do
+      case payload do
+        <<_skip::binary-size(^position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
+        <<_skip::binary-size(^position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
+        _no_start_code -> find(payload, position + 1)
+      end
+    end
+  end
+
   @enforce_keys [:input_stream_structure]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
@@ -43,55 +72,69 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   @spec split(payload :: binary(), assume_nalu_aligned :: boolean, state :: t()) ::
           {[binary()], t()}
   def split(payload, assume_nalu_aligned \\ false, state) do
-    total_payload = state.unparsed_payload <> payload
+    {nalus_acc, remainder} =
+      case state.unparsed_payload do
+        <<>> ->
+          split_payload(payload, 0, state.input_stream_structure)
 
-    nalus_payloads_list = get_complete_nalus_list(total_payload, state.input_stream_structure)
-
-    total_nalus_payloads_size = IO.iodata_length(nalus_payloads_list)
-
-    unparsed_payload =
-      :binary.part(
-        total_payload,
-        total_nalus_payloads_size,
-        byte_size(total_payload) - total_nalus_payloads_size
-      )
+        unparsed_payload ->
+          split_payload(
+            unparsed_payload <> payload,
+            byte_size(unparsed_payload),
+            state.input_stream_structure
+          )
+      end
 
     cond do
-      unparsed_payload == <<>> ->
-        {nalus_payloads_list, %{state | unparsed_payload: <<>>}}
+      remainder == <<>> ->
+        {Enum.reverse(nalus_acc), %{state | unparsed_payload: <<>>}}
 
       assume_nalu_aligned ->
-        {nalus_payloads_list ++ [unparsed_payload], %{state | unparsed_payload: <<>>}}
+        {Enum.reverse([remainder | nalus_acc]), %{state | unparsed_payload: <<>>}}
 
       true ->
-        {nalus_payloads_list, %{state | unparsed_payload: unparsed_payload}}
+        {Enum.reverse(nalus_acc), %{state | unparsed_payload: remainder}}
     end
   end
 
-  defp get_complete_nalus_list(payload, :annexb) do
-    payload
-    |> :binary.matches([<<0, 0, 0, 1>>, <<0, 0, 1>>])
-    |> Enum.chunk_every(2, 1, [{byte_size(payload), nil}])
-    |> then(&Enum.drop(&1, -1))
-    |> Enum.map(fn [{from, _from_prefix_len}, {to, _to_prefix_len}] ->
-      len = to - from
-      :binary.part(payload, from, len)
-    end)
+  @spec split_payload(binary(), non_neg_integer(), ParsingEngine.stream_structure()) ::
+          {[binary()], binary()}
+  defp split_payload(payload, scanned_bytes, :annexb) do
+    case StartCode.find(payload, 0) do
+      nil ->
+        {[], payload}
+
+      {nalu_start, search_from} ->
+        # the scanned part may end with up to 3 bytes of a start code
+        search_from = max(search_from, scanned_bytes - 3)
+        split_annexb(payload, nalu_start, search_from, [])
+    end
   end
 
-  defp get_complete_nalus_list(payload, {_codec_tag, nalu_length_size})
-       when byte_size(payload) < nalu_length_size do
-    []
+  defp split_payload(payload, _scanned_bytes, {_codec_tag, nalu_length_size}) do
+    split_length_prefixed(payload, nalu_length_size, [])
   end
 
-  defp get_complete_nalus_list(payload, {codec_tag, nalu_length_size}) do
-    <<nalu_length::integer-size(^nalu_length_size)-unit(8), rest::binary>> = payload
+  defp split_annexb(payload, nalu_start, search_from, acc) do
+    case StartCode.find(payload, search_from) do
+      nil ->
+        {acc, binary_part(payload, nalu_start, byte_size(payload) - nalu_start)}
 
-    if nalu_length > byte_size(rest) do
-      []
-    else
-      <<nalu::binary-size(^nalu_length + ^nalu_length_size), rest::binary>> = payload
-      [nalu | get_complete_nalus_list(rest, {codec_tag, nalu_length_size})]
+      {next_nalu_start, search_from} ->
+        nalu = binary_part(payload, nalu_start, next_nalu_start - nalu_start)
+        split_annexb(payload, next_nalu_start, search_from, [nalu | acc])
+    end
+  end
+
+  defp split_length_prefixed(payload, nalu_length_size, acc) do
+    case payload do
+      <<nalu_length::integer-size(^nalu_length_size)-unit(8), rest::binary>>
+      when byte_size(rest) >= nalu_length ->
+        <<nalu::binary-size(^nalu_length + ^nalu_length_size), rest::binary>> = payload
+        split_length_prefixed(rest, nalu_length_size, [nalu | acc])
+
+      _incomplete ->
+        {acc, payload}
     end
   end
 end
