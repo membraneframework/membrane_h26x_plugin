@@ -105,7 +105,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
         {[], payload}
 
       {nalu_start, search_from} ->
-        # a start code may straddle the already scanned part
         search_from = max(search_from, scanned_bytes - 3)
         split_annexb(payload, nalu_start, search_from, [])
     end
