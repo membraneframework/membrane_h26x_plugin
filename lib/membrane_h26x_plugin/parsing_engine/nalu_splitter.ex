@@ -12,6 +12,69 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
           unparsed_payload: binary()
         }
 
+  defmodule StartCode do
+    @moduledoc false
+
+    # memchr for a zero byte beats the three-byte pattern search on entropy-coded data,
+    # but loses on zero padding, hence the fallback
+    @false_candidates_limit 32
+    @dense_candidates_span 512
+
+    @doc """
+    Returns `{start_code_position, position_after_start_code}` of the first Annex B start code
+    found at or after `from`, or `nil`.
+    """
+    @spec find(binary(), non_neg_integer()) :: {non_neg_integer(), non_neg_integer()} | nil
+    def find(payload, from) when from + 3 > byte_size(payload), do: nil
+
+    def find(payload, from),
+      do: find_zero(payload, from, :binary.compile_pattern(<<0>>), from, 0)
+
+    defp find_zero(payload, from, _pattern, _span_start, _false_candidates)
+         when from + 3 > byte_size(payload),
+         do: nil
+
+    defp find_zero(payload, from, pattern, span_start, false_candidates) do
+      case :binary.match(payload, pattern, scope: {from, byte_size(payload) - from}) do
+        {position, 1} when position + 3 <= byte_size(payload) ->
+          if :binary.at(payload, position + 1) == 0 and :binary.at(payload, position + 2) == 1,
+            do: start_code_at(payload, position),
+            else: skip_candidate(payload, position, pattern, span_start, false_candidates + 1)
+
+        _no_room_or_match ->
+          nil
+      end
+    end
+
+    defp skip_candidate(payload, position, pattern, span_start, false_candidates) do
+      cond do
+        false_candidates < @false_candidates_limit ->
+          find_zero(payload, position + 1, pattern, span_start, false_candidates)
+
+        position - span_start < @dense_candidates_span ->
+          find_pattern(payload, position + 1)
+
+        true ->
+          find_zero(payload, position + 1, pattern, position + 1, 0)
+      end
+    end
+
+    defp find_pattern(payload, from) when from + 3 > byte_size(payload), do: nil
+
+    defp find_pattern(payload, from) do
+      case :binary.match(payload, <<0, 0, 1>>, scope: {from, byte_size(payload) - from}) do
+        :nomatch -> nil
+        {position, 3} -> start_code_at(payload, position)
+      end
+    end
+
+    defp start_code_at(payload, position) do
+      if position > 0 and :binary.at(payload, position - 1) == 0,
+        do: {position - 1, position + 3},
+        else: {position, position + 3}
+    end
+  end
+
   @enforce_keys [:input_stream_structure]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
@@ -71,7 +134,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   @spec split_payload(binary(), non_neg_integer(), ParsingEngine.stream_structure()) ::
           {[binary()], binary()}
   defp split_payload(payload, scanned_bytes, :annexb) do
-    case find_start_code(payload, 0) do
+    case StartCode.find(payload, 0) do
       nil ->
         {[], payload}
 
@@ -87,7 +150,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   end
 
   defp split_annexb(payload, nalu_start, search_from, acc) do
-    case find_start_code(payload, search_from) do
+    case StartCode.find(payload, search_from) do
       nil ->
         {acc, binary_part(payload, nalu_start, byte_size(payload) - nalu_start)}
 
@@ -95,62 +158,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
         nalu = binary_part(payload, nalu_start, next_nalu_start - nalu_start)
         split_annexb(payload, next_nalu_start, search_from, [nalu | acc])
     end
-  end
-
-  # memchr for a zero byte beats the three-byte pattern search on entropy-coded data,
-  # but loses on zero padding, hence the fallback
-  @false_candidates_limit 32
-  @dense_candidates_span 512
-
-  @spec find_start_code(binary(), non_neg_integer()) ::
-          {non_neg_integer(), non_neg_integer()} | nil
-  defp find_start_code(payload, from) when from + 3 > byte_size(payload), do: nil
-
-  defp find_start_code(payload, from),
-    do: find_zero(payload, from, :binary.compile_pattern(<<0>>), from, 0)
-
-  defp find_zero(payload, from, _pattern, _span_start, _false_candidates)
-       when from + 3 > byte_size(payload),
-       do: nil
-
-  defp find_zero(payload, from, pattern, span_start, false_candidates) do
-    case :binary.match(payload, pattern, scope: {from, byte_size(payload) - from}) do
-      {position, 1} when position + 3 <= byte_size(payload) ->
-        if :binary.at(payload, position + 1) == 0 and :binary.at(payload, position + 2) == 1,
-          do: start_code_at(payload, position),
-          else: skip_candidate(payload, position, pattern, span_start, false_candidates + 1)
-
-      _no_room_or_match ->
-        nil
-    end
-  end
-
-  defp skip_candidate(payload, position, pattern, span_start, false_candidates) do
-    cond do
-      false_candidates < @false_candidates_limit ->
-        find_zero(payload, position + 1, pattern, span_start, false_candidates)
-
-      position - span_start < @dense_candidates_span ->
-        find_start_code_pattern(payload, position + 1)
-
-      true ->
-        find_zero(payload, position + 1, pattern, position + 1, 0)
-    end
-  end
-
-  defp find_start_code_pattern(payload, from) when from + 3 > byte_size(payload), do: nil
-
-  defp find_start_code_pattern(payload, from) do
-    case :binary.match(payload, <<0, 0, 1>>, scope: {from, byte_size(payload) - from}) do
-      :nomatch -> nil
-      {position, 3} -> start_code_at(payload, position)
-    end
-  end
-
-  defp start_code_at(payload, position) do
-    if position > 0 and :binary.at(payload, position - 1) == 0,
-      do: {position - 1, position + 3},
-      else: {position, position + 3}
   end
 
   defp split_length_prefixed(payload, nalu_length_size, acc) do
