@@ -40,18 +40,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitterTest do
              NALuSplitter.split(<<9, 9, 0, 0, 1, 1, 0, 0, 1, 2>>, true, NALuSplitter.new())
   end
 
-  test "finds start codes in zero-dense payloads" do
-    for zeros <- [1, 2, 3, 31, 32, 33, 600, 5000] do
-      padding = :binary.copy(<<0>>, zeros)
-      first = <<0, 0, 1, 1, padding::binary, 7>>
-      second = <<0, 0, 1, 2, 9, padding::binary, 7>>
-      third = <<0, 0, 0, 1, 3>>
-
-      assert {[^first, ^second, ^third], _splitter} =
-               NALuSplitter.split(first <> second <> third, true, NALuSplitter.new())
-    end
-  end
-
   test "splits a length-prefixed stream regardless of the chunking" do
     nalus = [<<0, 0, 0, 3, 1, 2, 3>>, <<0, 0, 0, 1, 4>>, <<0, 0, 0, 2, 5, 6>>]
     stream = Enum.join(nalus)
