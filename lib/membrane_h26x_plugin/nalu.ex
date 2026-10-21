@@ -32,8 +32,8 @@ defmodule Membrane.H26x.NALu do
 
   @type timestamps :: {pts :: integer() | nil, dts :: integer() | nil}
 
-  @enforce_keys [:parsed_fields, :type, :stripped_prefix, :payload, :status]
-  defstruct @enforce_keys ++ [prefixed_payload: nil, timestamps: {nil, nil}]
+  @enforce_keys [:parsed_fields, :type, :stripped_prefix, :payload, :prefixed_payload, :status]
+  defstruct @enforce_keys ++ [timestamps: {nil, nil}]
 
   @spec int_type(t()) :: non_neg_integer()
   def int_type(%__MODULE__{parsed_fields: parsed_fields}), do: parsed_fields.nal_unit_type

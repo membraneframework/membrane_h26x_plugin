@@ -12,6 +12,7 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCacheTest do
       parsed_fields: parsed_fields,
       stripped_prefix: <<0, 0, 0, 1>>,
       payload: payload,
+      prefixed_payload: <<0, 0, 0, 1, payload::binary>>,
       status: :valid
     }
   end
