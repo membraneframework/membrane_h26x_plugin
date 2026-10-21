@@ -17,7 +17,7 @@ defmodule Membrane.H26x.NALu do
   *"Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes"* of the *"ITU-T Rec. H.264 (01/2012)"*.
   * `payload` - the binary, which parsing resulted in that structure being produced stripped of it's prefix
   * `prefixed_payload` - the NALu as it appeared in the input stream, that is the `payload` together with
-  the `stripped_prefix` (`nil` if the NALu was not built by the NALu parser)
+  the `stripped_prefix`
   * `status` - `:valid`, if the parsing was successfull, `:error` otherwise
   """
   @type t :: %__MODULE__{
@@ -25,7 +25,7 @@ defmodule Membrane.H26x.NALu do
           type: H264.NALuTypes.nalu_type() | H265.NALuTypes.nalu_type(),
           stripped_prefix: binary(),
           payload: binary(),
-          prefixed_payload: binary() | nil,
+          prefixed_payload: binary(),
           status: :valid | :error,
           timestamps: timestamps()
         }
