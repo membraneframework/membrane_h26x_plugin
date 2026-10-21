@@ -18,7 +18,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitterTest do
 
   test "splits an Annex B stream regardless of the chunking" do
     for chunk_size <- 1..byte_size(@stream) do
-      chunks = for <<chunk::binary-size(chunk_size) <- @stream>>, do: chunk
+      chunks = for <<chunk::binary-size(^chunk_size) <- @stream>>, do: chunk
 
       rest =
         binary_part(@stream, byte_size(Enum.join(chunks)), rem(byte_size(@stream), chunk_size))
@@ -57,7 +57,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitterTest do
     stream = Enum.join(nalus)
 
     for chunk_size <- 1..byte_size(stream) do
-      chunks = for <<chunk::binary-size(chunk_size) <- stream>>, do: chunk
+      chunks = for <<chunk::binary-size(^chunk_size) <- stream>>, do: chunk
       rest = binary_part(stream, byte_size(Enum.join(chunks)), rem(byte_size(stream), chunk_size))
       chunks = if rest == <<>>, do: chunks, else: chunks ++ [rest]
       assert split_chunks(chunks, {:avc1, 4}) == nalus
