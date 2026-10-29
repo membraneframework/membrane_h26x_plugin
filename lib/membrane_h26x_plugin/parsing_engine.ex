@@ -15,7 +15,7 @@ defmodule Membrane.H26x.ParsingEngine do
 
   require Membrane.Logger
 
-  alias Membrane.H26x.{AccessUnit, NALu}
+  alias Membrane.H26x.{AccessUnit, NALu, Utils}
 
   alias Membrane.H26x.ParsingEngine.{
     AUSplitter,
@@ -317,11 +317,12 @@ defmodule Membrane.H26x.ParsingEngine do
   def push(engine, payload, timestamps \\ {nil, nil}) do
     {pts, dts} = timestamps
 
-    prefixed_parameter_sets =
+    payload =
       NALuParser.prefix_nalus_payloads(
         engine.pending_parameter_sets,
         engine.input_stream_structure
       )
+      |> Utils.prepend_payload(payload)
 
     engine = %{
       engine
@@ -329,7 +330,7 @@ defmodule Membrane.H26x.ParsingEngine do
         previous_buffer_timestamps: {pts || dts, dts || pts}
     }
 
-    parse(engine, prefixed_parameter_sets <> payload, timestamps, _flush? = false)
+    parse(engine, payload, timestamps, _flush? = false)
   end
 
   @doc """

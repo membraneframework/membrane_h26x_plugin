@@ -113,6 +113,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
       status: status,
       stripped_prefix: prefix,
       payload: unprefixed_nalu_payload,
+      prefixed_payload: nalu_payload,
       timestamps: timestamps
     }
 
@@ -130,10 +131,10 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
   def get_prefixed_nalu_payload(nalu, output_stream_structure, stable_prefixing? \\ true) do
     case {output_stream_structure, stable_prefixing?} do
       {:annexb, true} ->
-        case nalu.stripped_prefix do
-          <<0, 0, 1>> -> <<0, 0, 1, nalu.payload::binary>>
-          <<0, 0, 0, 1>> -> <<0, 0, 0, 1, nalu.payload::binary>>
-          _prefix -> @annexb_prefix_code <> nalu.payload
+        if nalu.stripped_prefix in [<<0, 0, 1>>, <<0, 0, 0, 1>>] do
+          nalu.prefixed_payload
+        else
+          @annexb_prefix_code <> nalu.payload
         end
 
       {:annexb, false} ->

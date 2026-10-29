@@ -102,6 +102,12 @@ defmodule Membrane.H26x.Utils do
           ParsingEngine.input_alignment(),
           ParsingEngine.input_stream_structure()
         ) :: state()
+  # `<<>> <> payload` copies the payload, unlike `payload <> <<>>`
+  @doc false
+  @spec prepend_payload(binary(), binary()) :: binary()
+  def prepend_payload(<<>>, payload), do: payload
+  def prepend_payload(prefix, payload), do: prefix <> payload
+
   defp start_parsing_engine(state, framerate, input_alignment, input_stream_structure) do
     parsing_engine =
       ParsingEngine.new(%{
@@ -203,7 +209,7 @@ defmodule Membrane.H26x.Utils do
     {pts, dts} = au.timestamps
 
     %Buffer{
-      payload: Enum.join(au.nalus_payloads),
+      payload: IO.iodata_to_binary(au.nalus_payloads),
       metadata: prepare_metadata(:au, au.nalus, au.keyframe?, metadata_key),
       pts: pts,
       dts: dts
@@ -240,17 +246,8 @@ defmodule Membrane.H26x.Utils do
 
   defp prepare_metadata(:nalu, nalus, keyframe?, metadata_key) do
     nalus
-    |> Enum.with_index()
-    |> Enum.map(fn {nalu, i} ->
-      Map.put(%{}, metadata_key, %{type: nalu.type})
-      |> Bunch.then_if(
-        i == 0,
-        &put_in(&1, [metadata_key, :new_access_unit], %{key_frame?: keyframe?})
-      )
-      |> Bunch.then_if(
-        i == length(nalus) - 1,
-        &put_in(&1, [metadata_key, :end_access_unit], true)
-      )
-    end)
+    |> Enum.map(&%{metadata_key => %{type: &1.type}})
+    |> List.update_at(0, &put_in(&1, [metadata_key, :new_access_unit], %{key_frame?: keyframe?}))
+    |> List.update_at(-1, &put_in(&1, [metadata_key, :end_access_unit], true))
   end
 end
