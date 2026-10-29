@@ -23,7 +23,7 @@ The package can be installed by adding `membrane_h26x_plugin` to your list of de
 ```elixir
 def deps do
   [
-    {:membrane_h26x_plugin, "~> 0.11.3"}
+    {:membrane_h26x_plugin, "~> 0.11.4"}
   ]
 end
 ```
