@@ -1,7 +1,7 @@
 defmodule Membrane.H26x.Plugin.Mixfile do
   use Mix.Project
 
-  @version "0.11.3"
+  @version "0.11.4"
   @github_url "https://github.com/membraneframework/membrane_h26x_plugin"
 
   def project do
