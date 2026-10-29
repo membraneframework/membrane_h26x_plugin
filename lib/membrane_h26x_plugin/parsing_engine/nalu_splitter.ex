@@ -12,35 +12,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
           unparsed_payload: binary()
         }
 
-  defmodule StartCode do
-    @moduledoc false
-
-    @doc """
-    Returns `{start_code_position, position_after_start_code}` of the first Annex B start code
-    found at or after `from`, or `nil`.
-    """
-    @spec find(binary(), non_neg_integer()) :: {non_neg_integer(), non_neg_integer()} | nil
-    def find(payload, from) when from + 3 > byte_size(payload) do
-      nil
-    end
-
-    # searching for a single zero byte is much faster than for the whole start code
-    def find(payload, from) do
-      case :binary.match(payload, <<0>>, scope: {from, byte_size(payload) - from}) do
-        :nomatch -> nil
-        {position, 1} -> match_at(payload, position)
-      end
-    end
-
-    defp match_at(payload, position) do
-      case payload do
-        <<_skip::binary-size(^position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
-        <<_skip::binary-size(^position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
-        _no_start_code -> find(payload, position + 1)
-      end
-    end
-  end
-
   @enforce_keys [:input_stream_structure]
   defstruct @enforce_keys ++ [unparsed_payload: <<>>]
 
@@ -73,17 +44,11 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
           {[binary()], t()}
   def split(payload, assume_nalu_aligned \\ false, state) do
     {nalus_acc, remainder} =
-      case state.unparsed_payload do
-        <<>> ->
-          split_payload(payload, 0, state.input_stream_structure)
-
-        unparsed_payload ->
-          split_payload(
-            unparsed_payload <> payload,
-            byte_size(unparsed_payload),
-            state.input_stream_structure
-          )
-      end
+      split_payload(
+        ParsingEngine.prepend(state.unparsed_payload, payload),
+        byte_size(state.unparsed_payload),
+        state.input_stream_structure
+      )
 
     cond do
       remainder == <<>> ->
@@ -100,7 +65,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   @spec split_payload(binary(), non_neg_integer(), ParsingEngine.stream_structure()) ::
           {[binary()], binary()}
   defp split_payload(payload, scanned_bytes, :annexb) do
-    case StartCode.find(payload, 0) do
+    case find_start_code(payload, 0) do
       nil ->
         {[], payload}
 
@@ -116,13 +81,38 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   end
 
   defp split_annexb(payload, nalu_start, search_from, acc) do
-    case StartCode.find(payload, search_from) do
+    case find_start_code(payload, search_from) do
       nil ->
-        {acc, binary_part(payload, nalu_start, byte_size(payload) - nalu_start)}
+        <<_scanned::binary-size(^nalu_start), rest::binary>> = payload
+        {acc, rest}
 
       {next_nalu_start, search_from} ->
-        nalu = binary_part(payload, nalu_start, next_nalu_start - nalu_start)
+        nalu_size = next_nalu_start - nalu_start
+
+        <<_scanned::binary-size(^nalu_start), nalu::binary-size(^nalu_size), _rest::binary>> =
+          payload
+
         split_annexb(payload, next_nalu_start, search_from, [nalu | acc])
+    end
+  end
+
+  # searching for a single zero byte is much faster than for the whole start code
+  @spec find_start_code(binary(), non_neg_integer()) ::
+          {non_neg_integer(), non_neg_integer()} | nil
+  defp find_start_code(payload, from) when from + 3 > byte_size(payload), do: nil
+
+  defp find_start_code(payload, from) do
+    case :binary.match(payload, <<0>>, scope: {from, byte_size(payload) - from}) do
+      :nomatch -> nil
+      {position, 1} -> start_code_at(payload, position)
+    end
+  end
+
+  defp start_code_at(payload, position) do
+    case payload do
+      <<_skip::binary-size(^position), 0, 0, 0, 1, _rest::binary>> -> {position, position + 4}
+      <<_skip::binary-size(^position), 0, 0, 1, _rest::binary>> -> {position, position + 3}
+      _no_start_code -> find_start_code(payload, position + 1)
     end
   end
 

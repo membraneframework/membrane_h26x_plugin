@@ -200,7 +200,7 @@ defmodule Membrane.H26x.Utils do
     {pts, dts} = au.timestamps
 
     %Buffer{
-      payload: join_payloads(au.nalus_payloads),
+      payload: IO.iodata_to_binary(au.nalus_payloads),
       metadata: prepare_metadata(:au, au.nalus, au.keyframe?, metadata_key),
       pts: pts,
       dts: dts
@@ -226,9 +226,6 @@ defmodule Membrane.H26x.Utils do
     do: Enum.any?(actions, &match?({:stream_format, _stream_format}, &1))
 
   defp stream_format_sent?(_actions, _ctx), do: true
-
-  defp join_payloads([payload]), do: payload
-  defp join_payloads(payloads), do: IO.iodata_to_binary(payloads)
 
   defp prepare_metadata(:au, nalus, keyframe?, metadata_key) do
     nalus =

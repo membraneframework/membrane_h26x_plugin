@@ -291,14 +291,11 @@ defmodule Membrane.H26x.ParsingEngine do
     {pts, dts} = timestamps
 
     payload =
-      case engine.pending_parameter_sets do
-        [] ->
-          payload
-
-        parameter_sets ->
-          NALuParser.prefix_nalus_payloads(parameter_sets, engine.input_stream_structure) <>
-            payload
-      end
+      NALuParser.prefix_nalus_payloads(
+        engine.pending_parameter_sets,
+        engine.input_stream_structure
+      )
+      |> prepend(payload)
 
     engine = %{
       engine
@@ -308,6 +305,12 @@ defmodule Membrane.H26x.ParsingEngine do
 
     parse(engine, payload, timestamps, _flush? = false)
   end
+
+  # `<<>> <> payload` copies the payload, unlike `payload <> <<>>`
+  @doc false
+  @spec prepend(binary(), binary()) :: binary()
+  def prepend(<<>>, payload), do: payload
+  def prepend(prefix, payload), do: prefix <> payload
 
   @doc """
   Drains all buffered data into access units. To be used on an input alignment change
