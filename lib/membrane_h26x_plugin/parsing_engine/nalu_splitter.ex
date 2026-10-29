@@ -2,7 +2,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   @moduledoc false
   # A module with functions responsible for splitting the H26x streams into the NAL units.
 
-  alias Membrane.H26x.ParsingEngine
+  alias Membrane.H26x.{ParsingEngine, Utils}
 
   @typedoc """
   A structure holding the state of the NALu splitter.
@@ -45,7 +45,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuSplitter do
   def split(payload, assume_nalu_aligned \\ false, state) do
     {nalus_acc, remainder} =
       split_payload(
-        ParsingEngine.prepend(state.unparsed_payload, payload),
+        Utils.prepend_payload(state.unparsed_payload, payload),
         byte_size(state.unparsed_payload),
         state.input_stream_structure
       )

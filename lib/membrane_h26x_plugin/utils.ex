@@ -100,6 +100,12 @@ defmodule Membrane.H26x.Utils do
           ParsingEngine.input_alignment(),
           ParsingEngine.input_stream_structure()
         ) :: state()
+  # `<<>> <> payload` copies the payload, unlike `payload <> <<>>`
+  @doc false
+  @spec prepend_payload(binary(), binary()) :: binary()
+  def prepend_payload(<<>>, payload), do: payload
+  def prepend_payload(prefix, payload), do: prefix <> payload
+
   defp start_parsing_engine(state, framerate, input_alignment, input_stream_structure) do
     parsing_engine =
       ParsingEngine.new(%{
