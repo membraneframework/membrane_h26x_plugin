@@ -89,7 +89,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   yet-unparsed `payload` with the updated state, or a failure carrying only the
   state gathered so far.
   """
-  @type parse_result :: {:ok, payload :: bitstring(), t()} | {:error, t()}
+  @type parse_result :: {:ok, payload(), t()} | {:error, t()}
 
   @doc """
   Parses the binary stream representing a NALu, based
@@ -110,20 +110,55 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
         state \\ new(),
         iterators \\ []
       ) do
-    # delete prevention emulation 3 bytes
-    payload = :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
-
     scheme = scheme_module.scheme()
     defaults_map = Map.new(scheme_module.defaults())
     state = Map.update!(state, :__local__, &Map.merge(defaults_map, &1))
 
-    case do_parse_with_scheme(payload, scheme, state, iterators) do
+    case do_parse_with_scheme({<<>>, payload}, scheme, state, iterators) do
       {:error, state} -> {:error, state}
       {:ok, _remaining_payload, state} -> {:ok, get_local_state(state), state}
     end
   end
 
-  @spec do_parse_with_scheme(bitstring(), Scheme.t(), t(), list(integer())) :: parse_result()
+  # The payload is threaded as `{unescaped_bits, escaped_rest}` and unescaped
+  # one chunk at a time, because schemes read only a short header of a NALu
+  # while slices are kilobytes long.
+  @type payload :: {bitstring(), binary()}
+  @chunk_bytes 64
+  # u64, or ue with 32 leading zeros, is the most a single field can consume
+  @max_field_bits 65
+
+  defp ensure_chunk({bits, <<>>} = payload) when is_bitstring(bits), do: payload
+
+  defp ensure_chunk({bits, _escaped} = payload) when bit_size(bits) >= @max_field_bits,
+    do: payload
+
+  defp ensure_chunk({bits, escaped}) do
+    {chunk, escaped} = split_chunk(escaped)
+    {<<bits::bitstring, unescape(chunk)::binary>>, escaped}
+  end
+
+  defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
+
+  # An emulation prevention sequence must not straddle two chunks, so trailing
+  # zero bytes are left for the next chunk.
+  defp split_chunk(escaped) do
+    size =
+      case escaped do
+        <<_head::binary-size(@chunk_bytes - 2), 0, 0, _rest::binary>> -> @chunk_bytes - 2
+        <<_head::binary-size(@chunk_bytes - 1), 0, _rest::binary>> -> @chunk_bytes - 1
+        _other -> @chunk_bytes
+      end
+
+    <<chunk::binary-size(^size), rest::binary>> = escaped
+    {chunk, rest}
+  end
+
+  defp unescape(payload) do
+    :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
+  end
+
+  @spec do_parse_with_scheme(payload(), Scheme.t(), t(), list(integer())) :: parse_result()
   defp do_parse_with_scheme(payload, scheme, state, iterators) do
     reduce_directives(scheme, payload, state, fn directive, payload, state ->
       parse_directive(directive, payload, state, iterators)
@@ -132,8 +167,8 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   # Threads the `payload`/`state` accumulator through `fun`, stopping as soon as
   # `fun` returns `{:error, state}`.
-  @spec reduce_directives(Enumerable.t(), bitstring(), t(), (term(), bitstring(), t() ->
-                                                               parse_result())) :: parse_result()
+  @spec reduce_directives(Enumerable.t(), payload(), t(), (term(), payload(), t() ->
+                                                             parse_result())) :: parse_result()
   defp reduce_directives(enum, payload, state, fun) do
     Enum.reduce_while(enum, {:ok, payload, state}, fn elem, {:ok, payload, state} ->
       case fun.(elem, payload, state) do
@@ -143,10 +178,11 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     end)
   end
 
-  @spec parse_directive(Scheme.directive(), bitstring(), t(), list(integer())) :: parse_result()
+  @spec parse_directive(Scheme.directive(), payload(), t(), list(integer())) :: parse_result()
   defp parse_directive({:field, {name, type}}, payload, state, iterators) do
-    {field_value, payload} = parse_field(payload, state, type)
-    {:ok, payload, insert_into_parser_state(state, field_value, [:__local__, name] ++ iterators)}
+    {bits, escaped} = ensure_chunk(payload)
+    {field_value, bits} = parse_field(bits, state, type)
+    {:ok, {bits, escaped}, put_local(state, [name | iterators], field_value)}
   end
 
   defp parse_directive({:if, {condition, scheme}}, payload, state, _iterators) do
@@ -165,20 +201,31 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   defp parse_directive({:calculate, {name, to_calculate}}, payload, state, _iterators) do
     {function, args_list} = make_function(to_calculate)
     value = apply(function, get_args(args_list, state.__local__))
-    {:ok, payload, Bunch.Access.put_in(state, [:__local__, name], value)}
+    {:ok, payload, put_local(state, [name], value)}
   end
 
-  defp parse_directive({:execute, function}, payload, state, iterators) do
-    function.(payload, state, iterators)
+  defp parse_directive({:execute, function}, payload, state, _iterators)
+       when is_function(function, 1) do
+    case function.(state) do
+      {:ok, state} -> {:ok, payload, state}
+      {:error, state} -> {:error, state}
+    end
+  end
+
+  defp parse_directive({:execute, function}, {bits, escaped}, state, iterators) do
+    case function.(<<bits::bitstring, unescape(escaped)::binary>>, state, iterators) do
+      {:ok, bits, state} -> {:ok, {bits, <<>>}, state}
+      {:error, state} -> {:error, state}
+    end
   end
 
   defp parse_directive({:save_state_as_global_state, key_generator}, payload, state, _iterators) do
     {key_generating_function, args_list} = make_function(key_generator)
     key = apply(key_generating_function, get_args(args_list, state.__local__))
-    {:ok, payload, Bunch.Access.put_in(state, [:__global__, key], state.__local__)}
+    {:ok, payload, %{state | __global__: Map.put(state.__global__, key, state.__local__)}}
   end
 
-  @spec run_conditionally(bitstring(), t(), Scheme.t(), value_provider(boolean())) ::
+  @spec run_conditionally(payload(), t(), Scheme.t(), value_provider(boolean())) ::
           parse_result()
   defp run_conditionally(payload, state, scheme, condition) do
     {condition_function, args_list} = make_function(condition)
@@ -188,7 +235,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
       else: {:ok, payload, state}
   end
 
-  @spec loop(bitstring(), t(), Scheme.t(), list(integer()), atom(), term(), term()) ::
+  @spec loop(payload(), t(), Scheme.t(), list(integer()), atom(), term(), term()) ::
           parse_result()
   defp loop(payload, state, scheme, previous_iterators, iterator_name, min_value, max_value) do
     {min_value, min_args_list} = make_function(min_value)
@@ -202,12 +249,12 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     range = if min_value > max_value, do: [], else: min_value..max_value
 
     reduce_directives(range, payload, state, fn iterator, payload, state ->
-      state = Bunch.Access.put_in(state, [:__local__, iterator_name], iterator)
+      state = put_local(state, [iterator_name], iterator)
       do_parse_with_scheme(payload, scheme, state, previous_iterators ++ [iterator])
     end)
     |> case do
       {:ok, payload, state} ->
-        {:ok, payload, Bunch.Access.delete_in(state, [:__local__, iterator_name])}
+        {:ok, payload, %{state | __local__: Map.delete(state.__local__, iterator_name)}}
 
       {:error, state} ->
         {:error, state}
@@ -217,6 +264,8 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   defp get_args(args_names, state) do
     Enum.map(args_names, &Map.fetch!(state, &1))
   end
+
+  @unsigned_field_sizes Map.new(1..64, &{:"u#{&1}", &1})
 
   defp parse_field(payload, state, type) do
     case type do
@@ -232,9 +281,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
         ExpGolombConverter.to_integer(payload, negatives: true)
 
       unsigned_int ->
-        how_many_bits =
-          Atom.to_string(unsigned_int) |> String.slice(1..-1//1) |> String.to_integer()
-
+        how_many_bits = Map.fetch!(@unsigned_field_sizes, unsigned_int)
         <<value::unsigned-size(^how_many_bits), rest::bitstring>> = payload
         {value, rest}
     end
@@ -243,17 +290,13 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   defp make_function({function, args}) when is_function(function), do: {function, args}
   defp make_function(value), do: {fn -> value end, []}
 
-  defp insert_into_parser_state(state, value, iterators_list, already_consumed_iterators \\ [])
-
-  defp insert_into_parser_state(state, value, [], already_consumed_iterators) do
-    Bunch.Access.put_in(state, already_consumed_iterators, value)
+  defp put_local(state, path, value) do
+    %{state | __local__: put_nested(state.__local__, path, value)}
   end
 
-  defp insert_into_parser_state(state, value, iterators_list, already_consumed_iterators) do
-    [first | rest] = iterators_list
-    to_insert = Bunch.Access.get_in(state, already_consumed_iterators ++ [first])
-    to_insert = if to_insert == nil, do: %{}, else: to_insert
-    state = Bunch.Access.put_in(state, already_consumed_iterators ++ [first], to_insert)
-    insert_into_parser_state(state, value, rest, already_consumed_iterators ++ [first])
+  defp put_nested(map, [key], value), do: Map.put(map, key, value)
+
+  defp put_nested(map, [key | rest], value) do
+    Map.put(map, key, put_nested(Map.get(map, key) || %{}, rest, value))
   end
 end
