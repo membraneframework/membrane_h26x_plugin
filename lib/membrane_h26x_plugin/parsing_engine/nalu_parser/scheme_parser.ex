@@ -120,10 +120,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     end
   end
 
-  # The payload is threaded as `{unescaped_bits, escaped_rest}` and unescaped
-  # one chunk at a time, because schemes read only a short header of a NALu
-  # while slices are kilobytes long.
-  @opaque payload :: {bitstring(), binary()}
+  @opaque payload :: {unescaped_bits :: bitstring(), escaped_rest :: binary()}
   @chunk_bytes 64
   # u64, or ue with 32 leading zeros, is the most a single field can consume
   @max_field_bits 65
