@@ -8,6 +8,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
 
   alias Membrane.H265.NALuParser.Schemes.Common
   alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @profiles_description [
     main: [profile_idc: 1],
@@ -128,6 +129,8 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
   end
 
   defp scaling_list(payload, state, _iterators) do
+    payload = SchemeParser.unescape(payload)
+
     {payload, state} =
       Enum.reduce(0..3, {payload, state}, fn i, {payload, state} ->
         {payload, state, _next_coeff} = read_scaling_list(payload, state, i)
@@ -185,6 +188,8 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
        do: {:ok, payload, state}
 
   defp st_ref_pic_set(payload, state, _iterators) do
+    payload = SchemeParser.unescape(payload)
+
     {payload, ref_pic_set} =
       Enum.reduce(0..(state.__local__.num_short_term_ref_pic_sets - 1), {payload, []}, fn idx,
                                                                                           {payload,

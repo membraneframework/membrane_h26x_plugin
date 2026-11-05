@@ -20,8 +20,8 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
   #   under the given key.
   # * execute: allows to perform the custom actions with the payload and state, can be
   #   used to process the payload in a way which couldn't be acheived with the scheme syntax.
-  #   A one-argument function receives only the state and never forces the whole
-  #   payload to be unescaped, so prefer it when the payload is not needed.
+  #   The payload is opaque; a callback that reads bits from it must first call
+  #   `SchemeParser.unescape/1` and then returns the remaining bitstring.
   # * save_as_global_state_t: saves the current parser state, concerning the NALu which is
   #   currently processed, in the map under the `:__global__` key in the state. Information
   #   from the saved state can be used while parsing the following NALus.
@@ -40,9 +40,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
            ], t()}
   @type calculate :: {any(), SchemeParser.value_provider(any())}
   @type execute ::
-          (bitstring(), SchemeParser.t(), list(integer()) ->
-             {:ok, bitstring(), SchemeParser.t()} | {:error, SchemeParser.t()})
-          | (SchemeParser.t() -> {:ok, SchemeParser.t()} | {:error, SchemeParser.t()})
+          (SchemeParser.payload(), SchemeParser.t(), list(integer()) ->
+             {:ok, SchemeParser.payload() | bitstring(), SchemeParser.t()}
+             | {:error, SchemeParser.t()})
   @type save_as_global_state :: SchemeParser.value_provider(any())
 
   @type directive ::

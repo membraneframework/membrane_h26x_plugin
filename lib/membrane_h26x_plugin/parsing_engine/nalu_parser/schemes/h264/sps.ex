@@ -4,6 +4,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
 
   alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
   alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @profiles_description [
     high_cavlc_4_4_4_intra: [profile_idc: 44],
@@ -181,6 +182,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
     ]
 
   defp scaling_list(payload, state, _iterators, size_of_scaling_list) do
+    payload = SchemeParser.unescape(payload)
     last_scale = 8
     next_scale = 8
 

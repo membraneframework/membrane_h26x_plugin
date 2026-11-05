@@ -123,7 +123,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   # The payload is threaded as `{unescaped_bits, escaped_rest}` and unescaped
   # one chunk at a time, because schemes read only a short header of a NALu
   # while slices are kilobytes long.
-  @type payload :: {bitstring(), binary()}
+  @opaque payload :: {bitstring(), binary()}
   @chunk_bytes 64
   # u64, or ue with 32 leading zeros, is the most a single field can consume
   @max_field_bits 65
@@ -135,7 +135,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   defp ensure_chunk({bits, escaped}) do
     {chunk, escaped} = split_chunk(escaped)
-    {<<bits::bitstring, unescape(chunk)::binary>>, escaped}
+    {<<bits::bitstring, unescape_bytes(chunk)::binary>>, escaped}
   end
 
   defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
@@ -154,7 +154,14 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     {chunk, rest}
   end
 
-  defp unescape(payload) do
+  @doc """
+  Unescapes the whole remaining payload, so that an `execute` callback can read it
+  as a plain bitstring.
+  """
+  @spec unescape(payload()) :: bitstring()
+  def unescape({bits, escaped}), do: <<bits::bitstring, unescape_bytes(escaped)::binary>>
+
+  defp unescape_bytes(payload) do
     :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
   end
 
@@ -204,18 +211,10 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     {:ok, payload, put_local(state, [name], value)}
   end
 
-  defp parse_directive({:execute, function}, payload, state, _iterators)
-       when is_function(function, 1) do
-    case function.(state) do
-      {:ok, state} -> {:ok, payload, state}
-      {:error, state} -> {:error, state}
-    end
-  end
-
-  defp parse_directive({:execute, function}, {bits, escaped}, state, iterators) do
-    case function.(<<bits::bitstring, unescape(escaped)::binary>>, state, iterators) do
-      {:ok, bits, state} -> {:ok, {bits, <<>>}, state}
-      {:error, state} -> {:error, state}
+  defp parse_directive({:execute, function}, payload, state, iterators) do
+    case function.(payload, state, iterators) do
+      {:ok, rest, state} when is_bitstring(rest) -> {:ok, {rest, <<>>}, state}
+      result -> result
     end
   end
 
