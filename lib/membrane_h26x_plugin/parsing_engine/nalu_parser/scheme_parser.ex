@@ -290,15 +290,20 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   defp make_function({function, args}) when is_function(function), do: {function, args}
   defp make_function(value), do: {fn -> value end, []}
 
-  defp put_local(state, path, value) do
+  @doc "Puts the value under the given path in the `__local__` state, creating intermediate maps."
+  @spec put_local(t(), [term(), ...], term()) :: t()
+  def put_local(state, path, value) do
     %{state | __local__: put_nested(state.__local__, path, value)}
   end
 
-  defp delete_local(state, key), do: %{state | __local__: Map.delete(state.__local__, key)}
-
-  defp put_global(state, path, value) do
+  @doc "Puts the value under the given path in the `__global__` state, creating intermediate maps."
+  @spec put_global(t(), [term(), ...], term()) :: t()
+  def put_global(state, path, value) do
     %{state | __global__: put_nested(state.__global__, path, value)}
   end
+
+  @spec delete_local(t(), term()) :: t()
+  def delete_local(state, key), do: %{state | __local__: Map.delete(state.__local__, key)}
 
   defp put_nested(map, [key], value), do: Map.put(map, key, value)
 

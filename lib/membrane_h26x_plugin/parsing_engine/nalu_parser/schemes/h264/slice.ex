@@ -2,6 +2,8 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
   @moduledoc false
   @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
+
   @impl true
   def defaults(), do: [field_pic_flag: 0, delta_pic_order_cnt_bottom: 0]
 
@@ -40,9 +42,9 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
            Map.get(pps, :seq_parameter_set_id),
          sps <- Map.get(state.__global__, {:sps, seq_parameter_set_id}) do
       state =
-        Bunch.Access.put_in(
+        SchemeParser.put_local(
           state,
-          [:__local__, :separate_colour_plane_flag],
+          [:separate_colour_plane_flag],
           Map.get(sps, :separate_colour_plane_flag, 0)
         )
 

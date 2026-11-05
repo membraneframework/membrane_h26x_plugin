@@ -124,7 +124,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
     reorder_pics_per_sub_layer = get_in(state, [:__local__, :max_num_reorder_pics]) || %{}
     sps_max_num_reorder_pics = Map.get(reorder_pics_per_sub_layer, highest_sub_layer, 0)
 
-    {:ok, put_in(state, [:__local__, :sps_max_num_reorder_pics], sps_max_num_reorder_pics)}
+    {:ok, SchemeParser.put_local(state, [:sps_max_num_reorder_pics], sps_max_num_reorder_pics)}
   end
 
   defp scaling_list(payload, state, _iterators) do
@@ -259,7 +259,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
         end
       end)
 
-    {:ok, payload, put_in(state, [:__local__, :st_ref_pic_set], ref_pic_set)}
+    {:ok, payload, SchemeParser.put_local(state, [:st_ref_pic_set], ref_pic_set)}
   end
 
   defp read_delta_poc(payload, 0), do: {payload, [], []}
@@ -355,7 +355,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
       |> :math.log2()
       |> ceil()
 
-    state = put_in(state, [:__local__, :segment_addr_length], segment_addr_length)
+    state = SchemeParser.put_local(state, [:segment_addr_length], segment_addr_length)
     {:ok, state}
   end
 
