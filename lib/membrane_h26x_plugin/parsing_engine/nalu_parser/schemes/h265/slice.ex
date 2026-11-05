@@ -2,6 +2,8 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
   @moduledoc false
   @behaviour Membrane.H26x.ParsingEngine.NALuParser.Scheme
 
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
+
   @impl true
   def defaults(),
     do: [
@@ -51,7 +53,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
       }
     ]
 
-  defp load_data_from_sps(payload, state, _iterators) do
+  defp load_data_from_sps(_payload, state, _iterators) do
     with pic_parameter_set_id when pic_parameter_set_id != nil <-
            Map.get(state.__local__, :pic_parameter_set_id),
          pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
@@ -59,9 +61,9 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
            Map.get(pps, :seq_parameter_set_id),
          sps <- Map.get(state.__global__, {:sps, seq_parameter_set_id}) do
       state =
-        Bunch.Access.put_in(
+        SchemeParser.put_local(
           state,
-          [:__local__, :separate_colour_plane_flag],
+          [:separate_colour_plane_flag],
           Map.get(sps, :separate_colour_plane_flag, 0)
         )
 
@@ -84,7 +86,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
 
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
-      {:ok, payload, state}
+      {:ok, state}
     else
       _error -> {:error, state}
     end

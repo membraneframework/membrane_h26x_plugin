@@ -4,6 +4,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
 
   alias Membrane.H26x.ParsingEngine.NALuParser.ExpGolombConverter
   alias Membrane.H26x.ParsingEngine.NALuParser.Scheme
+  alias Membrane.H26x.ParsingEngine.NALuParser.SchemeParser
 
   @profiles_description [
     high_cavlc_4_4_4_intra: [profile_idc: 44],
@@ -181,6 +182,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
     ]
 
   defp scaling_list(payload, state, _iterators, size_of_scaling_list) do
+    payload = SchemeParser.unescape(payload)
     last_scale = 8
     next_scale = 8
 
@@ -205,7 +207,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
     {:ok, payload, state}
   end
 
-  defp resolution_and_profile(payload, state, _iterators) do
+  defp resolution_and_profile(_payload, state, _iterators) do
     sps = state.__local__
 
     chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
@@ -240,7 +242,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
 
     profile = parse_profile(sps)
 
-    {:ok, payload,
+    {:ok,
      Map.update(
        state,
        :__local__,
