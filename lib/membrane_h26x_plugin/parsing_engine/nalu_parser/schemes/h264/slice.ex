@@ -32,7 +32,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
             field: {:delta_pic_order_cnt_bottom, :se}}}
     ]
 
-  defp load_data_from_sps_and_pps(payload, state, _iterators) do
+  defp load_data_from_sps_and_pps(_payload, state, _iterators) do
     with pic_parameter_set_id when pic_parameter_set_id != nil <-
            Map.get(state.__local__, :pic_parameter_set_id),
          pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),
@@ -66,7 +66,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
       state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
-      {:ok, payload, state}
+      {:ok, state}
     else
       _error -> {:error, state}
     end

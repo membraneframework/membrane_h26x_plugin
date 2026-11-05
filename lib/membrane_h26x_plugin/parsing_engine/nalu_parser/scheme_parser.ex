@@ -213,8 +213,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   defp parse_directive({:execute, function}, payload, state, iterators) do
     case function.(payload, state, iterators) do
-      {:ok, rest, state} when is_bitstring(rest) -> {:ok, {rest, <<>>}, state}
-      result -> result
+      {:ok, state} -> {:ok, payload, state}
+      {:ok, rest, state} -> {:ok, {rest, <<>>}, state}
+      {:error, state} -> {:error, state}
     end
   end
 

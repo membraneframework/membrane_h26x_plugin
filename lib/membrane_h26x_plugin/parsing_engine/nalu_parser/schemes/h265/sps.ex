@@ -119,13 +119,12 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
   # iterator value). The relevant value is the one for the highest sub-layer; it
   # states the maximal number of pictures that can precede any picture in decode
   # order and follow it in output order, i.e. the reorder buffer depth.
-  defp extract_max_num_reorder_pics(payload, state, _iterators) do
+  defp extract_max_num_reorder_pics(_payload, state, _iterators) do
     highest_sub_layer = get_in(state, [:__local__, :max_sub_layers_minus1])
     reorder_pics_per_sub_layer = get_in(state, [:__local__, :max_num_reorder_pics]) || %{}
     sps_max_num_reorder_pics = Map.get(reorder_pics_per_sub_layer, highest_sub_layer, 0)
 
-    {:ok, payload,
-     put_in(state, [:__local__, :sps_max_num_reorder_pics], sps_max_num_reorder_pics)}
+    {:ok, put_in(state, [:__local__, :sps_max_num_reorder_pics], sps_max_num_reorder_pics)}
   end
 
   defp scaling_list(payload, state, _iterators) do
@@ -181,11 +180,11 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
   end
 
   defp st_ref_pic_set(
-         payload,
+         _payload,
          %{__local__: %{num_short_term_ref_pic_sets: 0}} = state,
          _iterators
        ),
-       do: {:ok, payload, state}
+       do: {:ok, state}
 
   defp st_ref_pic_set(payload, state, _iterators) do
     payload = SchemeParser.unescape(payload)
@@ -336,7 +335,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
     ]
   end
 
-  defp calculate_segment_address_length(payload, state, _iterators) do
+  defp calculate_segment_address_length(_payload, state, _iterators) do
     pic_width = get_in(state, [:__local__, :pic_width_in_luma_samples])
     pic_height = get_in(state, [:__local__, :pic_height_in_luma_samples])
 
@@ -357,10 +356,10 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
       |> ceil()
 
     state = put_in(state, [:__local__, :segment_addr_length], segment_addr_length)
-    {:ok, payload, state}
+    {:ok, state}
   end
 
-  defp load_timing_info_from_vps(payload, state, _iterators) do
+  defp load_timing_info_from_vps(_payload, state, _iterators) do
     with 0 <- Map.get(state.__local__, :vui_timing_info_present_flag, 0),
          vps_id <- Map.get(state.__local__, :video_parameter_set_id),
          vps when vps != nil <- Map.get(state.__global__, {:vps, vps_id}),
@@ -372,13 +371,13 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
           vui_timing_info_present_flag: 1
         })
 
-      {:ok, payload, state}
+      {:ok, state}
     else
-      _other -> {:ok, payload, state}
+      _other -> {:ok, state}
     end
   end
 
-  defp resolution_and_profile(payload, state, _iterators) do
+  defp resolution_and_profile(_payload, state, _iterators) do
     sps = state.__local__
 
     {sub_width_c, sub_height_c} =
@@ -401,7 +400,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
 
     profile = parse_profile(sps)
 
-    {:ok, payload,
+    {:ok,
      Map.update(
        state,
        :__local__,
