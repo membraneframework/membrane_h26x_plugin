@@ -137,8 +137,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
 
-  # An emulation prevention sequence must not straddle two chunks, so trailing
-  # zero bytes are left for the next chunk.
+  # Never split a chunk in the middle of a `0 0 3` sequence.
   defp split_chunk(escaped) do
     size =
       case escaped do
