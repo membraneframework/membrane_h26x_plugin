@@ -222,7 +222,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   defp parse_directive({:save_state_as_global_state, key_generator}, payload, state, _iterators) do
     {key_generating_function, args_list} = make_function(key_generator)
     key = apply(key_generating_function, get_args(args_list, state.__local__))
-    {:ok, payload, %{state | __global__: Map.put(state.__global__, key, state.__local__)}}
+    {:ok, payload, put_global(state, key, state.__local__)}
   end
 
   @spec run_conditionally(payload(), t(), Scheme.t(), value_provider(boolean())) ::
@@ -254,7 +254,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     end)
     |> case do
       {:ok, payload, state} ->
-        {:ok, payload, %{state | __local__: Map.delete(state.__local__, iterator_name)}}
+        {:ok, payload, delete_local(state, iterator_name)}
 
       {:error, state} ->
         {:error, state}
@@ -292,6 +292,12 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   defp put_local(state, path, value) do
     %{state | __local__: put_nested(state.__local__, path, value)}
+  end
+
+  defp delete_local(state, key), do: %{state | __local__: Map.delete(state.__local__, key)}
+
+  defp put_global(state, key, value) do
+    %{state | __global__: Map.put(state.__global__, key, value)}
   end
 
   defp put_nested(map, [key], value), do: Map.put(map, key, value)
