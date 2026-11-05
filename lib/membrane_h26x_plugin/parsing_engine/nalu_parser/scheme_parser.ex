@@ -25,7 +25,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   the `:__global__` key of the parser's state, which can be done i.e.
   with the `save_as_global_state` statements of the scheme syntax.
   """
-  @opaque t :: %__MODULE__{__global__: map(), __local__: map()}
+  @type t :: %__MODULE__{__global__: map(), __local__: map()}
 
   @enforce_keys [:__global__, :__local__]
   defstruct @enforce_keys
@@ -301,9 +301,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   def put_global(state, path, value) do
     %{state | __global__: put_nested(state.__global__, path, value)}
   end
-
-  @spec merge_local(t(), map()) :: t()
-  def merge_local(state, fields), do: %{state | __local__: Map.merge(state.__local__, fields)}
 
   @spec delete_local(t(), term()) :: t()
   def delete_local(state, key), do: %{state | __local__: Map.delete(state.__local__, key)}

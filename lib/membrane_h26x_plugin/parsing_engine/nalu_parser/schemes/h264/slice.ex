@@ -65,8 +65,8 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
           :bottom_field_pic_order_in_frame_present_flag
         ])
 
-      state =
-        state |> SchemeParser.merge_local(sps_fields) |> SchemeParser.merge_local(pps_fields)
+      state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
+      state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
 
       {:ok, state}
     else
