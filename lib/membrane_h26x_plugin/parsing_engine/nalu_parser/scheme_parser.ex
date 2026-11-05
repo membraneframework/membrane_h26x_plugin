@@ -137,7 +137,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
 
   defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
 
-  # Never split a chunk in the middle of a `0 0 3` sequence.
+  # We need to make sure not to split a chunk in the middle of a `0 0 3` sequence.
   defp split_chunk(escaped) do
     size =
       case escaped do
