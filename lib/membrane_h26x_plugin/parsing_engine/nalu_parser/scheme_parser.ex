@@ -302,6 +302,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     %{state | __global__: put_nested(state.__global__, path, value)}
   end
 
+  @spec merge_local(t(), map()) :: t()
+  def merge_local(state, fields), do: %{state | __local__: Map.merge(state.__local__, fields)}
+
   @spec delete_local(t(), term()) :: t()
   def delete_local(state, key), do: %{state | __local__: Map.delete(state.__local__, key)}
 

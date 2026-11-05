@@ -74,7 +74,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
           :sps_max_num_reorder_pics
         ])
 
-      state = Map.update(state, :__local__, %{}, &Map.merge(&1, sps_fields))
+      state = SchemeParser.merge_local(state, sps_fields)
 
       # PPS fields
       pps_fields =
@@ -84,7 +84,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
           :num_extra_slice_header_bits
         ])
 
-      state = Map.update(state, :__local__, %{}, &Map.merge(&1, pps_fields))
+      state = SchemeParser.merge_local(state, pps_fields)
 
       {:ok, state}
     else
