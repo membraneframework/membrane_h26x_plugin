@@ -16,7 +16,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
       field: {:first_mb_in_slice, :ue},
       field: {:slice_type, :ue},
       field: {:pic_parameter_set_id, :ue},
-      execute: &load_data_from_sps_and_pps/3,
+      execute: &load_data_from_sps_and_pps/2,
       if: {{&(&1 == 1), [:separate_colour_plane_flag]}, field: {:colour_plane_id, :u2}},
       field: {:frame_num, {:uv, &(&1 + 4), [:log2_max_frame_num_minus4]}},
       if:
@@ -34,7 +34,7 @@ defmodule Membrane.H264.NALuParser.Schemes.Slice do
             field: {:delta_pic_order_cnt_bottom, :se}}}
     ]
 
-  defp load_data_from_sps_and_pps(_payload, state, _iterators) do
+  defp load_data_from_sps_and_pps(state, _iterators) do
     with pic_parameter_set_id when pic_parameter_set_id != nil <-
            Map.get(state.__local__, :pic_parameter_set_id),
          pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),

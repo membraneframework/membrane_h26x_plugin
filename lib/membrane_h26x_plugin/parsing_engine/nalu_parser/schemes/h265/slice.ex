@@ -22,7 +22,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
         field: {:no_output_of_prior_pics_flag, :u1}
       },
       field: {:pic_parameter_set_id, :ue},
-      execute: &load_data_from_sps/3,
+      execute: &load_data_from_sps/2,
       if: {
         {&(&1 == 0), [:first_slice_segment_in_pic_flag]},
         if: {
@@ -53,7 +53,7 @@ defmodule Membrane.H265.NALuParser.Schemes.Slice do
       }
     ]
 
-  defp load_data_from_sps(_payload, state, _iterators) do
+  defp load_data_from_sps(state, _iterators) do
     with pic_parameter_set_id when pic_parameter_set_id != nil <-
            Map.get(state.__local__, :pic_parameter_set_id),
          pps when pps != nil <- Map.get(state.__global__, {:pps, pic_parameter_set_id}),

@@ -125,12 +125,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   # u64, or ue with 32 leading zeros, is the most a single field can consume
   @max_field_bits 65
 
-  @doc """
-  Unescapes the whole remaining payload, so that an `execute` callback can read it
-  as a plain bitstring.
-  """
-  @spec unescape(payload()) :: bitstring()
-  def unescape({bits, escaped}), do: <<bits::bitstring, unescape_bytes(escaped)::binary>>
+  defp unescape({bits, escaped}), do: <<bits::bitstring, unescape_bytes(escaped)::binary>>
 
   defp unescape_bytes(payload) do
     :binary.split(payload, <<0, 0, 3>>, [:global]) |> Enum.join(<<0, 0>>)
@@ -183,8 +178,15 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   end
 
   defp parse_directive({:execute, function}, payload, state, iterators) do
-    case function.(payload, state, iterators) do
+    case function.(state, iterators) do
       {:ok, state} -> {:ok, payload, state}
+      {:error, state} -> {:error, state}
+    end
+  end
+
+  # This unescapes the whole remaining payload, so it's expensive.
+  defp parse_directive({:consume, function}, payload, state, iterators) do
+    case function.(unescape(payload), state, iterators) do
       {:ok, rest, state} -> {:ok, {rest, <<>>}, state}
       {:error, state} -> {:error, state}
     end

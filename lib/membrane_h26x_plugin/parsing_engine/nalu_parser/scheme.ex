@@ -18,11 +18,10 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
   # * for: allows to parse the scheme nested in the statement the desired number of times.
   # * calculate: allows to add to the parser's state map the desired value,
   #   under the given key.
-  # * execute: allows to perform the custom actions with the payload and state, can be
-  #   used to process the payload in a way which couldn't be acheived with the scheme syntax.
-  #   A callback that reads bits from the payload must first call `SchemeParser.unescape/1`
-  #   and return the remaining bitstring; one that only updates the state returns
-  #   just the state.
+  # * execute: allows to perform the custom actions with the state, can be used to
+  #   calculate values in a way which couldn't be achieved with the scheme syntax.
+  # * consume: like execute, but the callback also receives the remaining payload as an
+  #   unescaped bitstring and returns what is left of it.
   # * save_as_global_state_t: saves the current parser state, concerning the NALu which is
   #   currently processed, in the map under the `:__global__` key in the state. Information
   #   from the saved state can be used while parsing the following NALus.
@@ -41,10 +40,11 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
            ], t()}
   @type calculate :: {any(), SchemeParser.value_provider(any())}
   @type execute ::
-          (SchemeParser.payload(), SchemeParser.t(), list(integer()) ->
-             {:ok, SchemeParser.t()}
-             | {:ok, bitstring(), SchemeParser.t()}
-             | {:error, SchemeParser.t()})
+          (SchemeParser.t(), list(integer()) ->
+             {:ok, SchemeParser.t()} | {:error, SchemeParser.t()})
+  @type consume ::
+          (bitstring(), SchemeParser.t(), list(integer()) ->
+             {:ok, bitstring(), SchemeParser.t()} | {:error, SchemeParser.t()})
   @type save_as_global_state :: SchemeParser.value_provider(any())
 
   @type directive ::
@@ -53,6 +53,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
           | {:for, for_loop()}
           | {:calculate, calculate()}
           | {:execute, execute()}
+          | {:consume, consume()}
           | {:save_as_global_state, save_as_global_state()}
   @type t :: list(directive())
 
