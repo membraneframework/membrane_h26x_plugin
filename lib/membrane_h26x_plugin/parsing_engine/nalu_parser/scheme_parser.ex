@@ -125,31 +125,6 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   # u64, or ue with 32 leading zeros, is the most a single field can consume
   @max_field_bits 65
 
-  defp ensure_chunk({bits, <<>>} = payload) when is_bitstring(bits), do: payload
-
-  defp ensure_chunk({bits, _escaped} = payload) when bit_size(bits) >= @max_field_bits,
-    do: payload
-
-  defp ensure_chunk({bits, escaped}) do
-    {chunk, escaped} = split_chunk(escaped)
-    {<<bits::bitstring, unescape_bytes(chunk)::binary>>, escaped}
-  end
-
-  defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
-
-  # We need to make sure not to split a chunk in the middle of a `0 0 3` sequence.
-  defp split_chunk(escaped) do
-    size =
-      case escaped do
-        <<_head::binary-size(@chunk_bytes - 2), 0, 0, _rest::binary>> -> @chunk_bytes - 2
-        <<_head::binary-size(@chunk_bytes - 1), 0, _rest::binary>> -> @chunk_bytes - 1
-        _other -> @chunk_bytes
-      end
-
-    <<chunk::binary-size(^size), rest::binary>> = escaped
-    {chunk, rest}
-  end
-
   @doc """
   Unescapes the whole remaining payload, so that an `execute` callback can read it
   as a plain bitstring.
@@ -219,6 +194,31 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
     {key_generating_function, args_list} = make_function(key_generator)
     key = apply(key_generating_function, get_args(args_list, state.__local__))
     {:ok, payload, put_global(state, [key], state.__local__)}
+  end
+
+  defp ensure_chunk({bits, <<>>} = payload) when is_bitstring(bits), do: payload
+
+  defp ensure_chunk({bits, _escaped} = payload) when bit_size(bits) >= @max_field_bits,
+    do: payload
+
+  defp ensure_chunk({bits, escaped}) do
+    {chunk, escaped} = split_chunk(escaped)
+    {<<bits::bitstring, unescape_bytes(chunk)::binary>>, escaped}
+  end
+
+  defp split_chunk(escaped) when byte_size(escaped) <= @chunk_bytes + 2, do: {escaped, <<>>}
+
+  # We need to make sure not to split a chunk in the middle of a `0 0 3` sequence.
+  defp split_chunk(escaped) do
+    size =
+      case escaped do
+        <<_head::binary-size(@chunk_bytes - 2), 0, 0, _rest::binary>> -> @chunk_bytes - 2
+        <<_head::binary-size(@chunk_bytes - 1), 0, _rest::binary>> -> @chunk_bytes - 1
+        _other -> @chunk_bytes
+      end
+
+    <<chunk::binary-size(^size), rest::binary>> = escaped
+    {chunk, rest}
   end
 
   @spec run_conditionally(payload(), t(), Scheme.t(), value_provider(boolean())) ::
