@@ -21,8 +21,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
   # * execute: allows to perform the custom actions with the state, can be used to
   #   calculate values in a way which couldn't be achieved with the scheme syntax.
   # * consume_unescaped: like execute, but the callback also receives the remaining payload
-  #   as an unescaped bitstring and returns what is left of it. It is computationally
-  #   expensive, as the whole remaining payload gets unescaped.
+  #   as an unescaped bitstring and returns what is left of it.
   # * save_as_global_state_t: saves the current parser state, concerning the NALu which is
   #   currently processed, in the map under the `:__global__` key in the state. Information
   #   from the saved state can be used while parsing the following NALus.
