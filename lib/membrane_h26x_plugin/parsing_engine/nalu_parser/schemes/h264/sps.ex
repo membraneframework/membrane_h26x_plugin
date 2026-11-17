@@ -61,16 +61,18 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
                 {{fn seq_scaling_list_present_flag, i ->
                     seq_scaling_list_present_flag[i] == 1
                   end, [:seq_scaling_list_present_flag, :i]},
-                 if:
-                   {{&(&1 <= 6), [:i]},
-                    execute: fn payload, state, iterators ->
-                      scaling_list(payload, state, iterators, 16)
-                    end},
-                 if:
-                   {{&(&1 > 6), [:i]},
-                    execute: fn payload, state, iterators ->
-                      scaling_list(payload, state, iterators, 64)
-                    end}}
+                 if: {
+                   {&(&1 <= 6), [:i]},
+                   consume_unescaped: fn payload, state, iterators ->
+                     scaling_list(payload, state, iterators, 16)
+                   end
+                 },
+                 if: {
+                   {&(&1 > 6), [:i]},
+                   consume_unescaped: fn payload, state, iterators ->
+                     scaling_list(payload, state, iterators, 64)
+                   end
+                 }}
             }}},
       field: {:log2_max_frame_num_minus4, :ue},
       field: {:pic_order_cnt_type, :ue},
@@ -104,7 +106,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
         {&(&1 == 1), [:vui_parameters_present_flag]},
         vui_parameters()
       },
-      execute: &resolution_and_profile/3,
+      execute: &resolution_and_profile/2,
       save_state_as_global_state: {&{:sps, &1}, [:seq_parameter_set_id]}
     ]
 
@@ -205,7 +207,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
     {:ok, payload, state}
   end
 
-  defp resolution_and_profile(payload, state, _iterators) do
+  defp resolution_and_profile(state, _iterators) do
     sps = state.__local__
 
     chroma_array_type = if sps.separate_colour_plane_flag == 0, do: sps.chroma_format_idc, else: 0
@@ -240,7 +242,7 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
 
     profile = parse_profile(sps)
 
-    {:ok, payload,
+    {:ok,
      Map.update(
        state,
        :__local__,
