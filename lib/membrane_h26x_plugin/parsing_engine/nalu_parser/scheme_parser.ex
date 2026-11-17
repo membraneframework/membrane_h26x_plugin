@@ -185,7 +185,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.SchemeParser do
   end
 
   # This unescapes the whole remaining payload, so it's expensive.
-  defp parse_directive({:consume, function}, payload, state, iterators) do
+  defp parse_directive({:consume_unescaped, function}, payload, state, iterators) do
     case function.(unescape(payload), state, iterators) do
       {:ok, rest, state} -> {:ok, {rest, <<>>}, state}
       {:error, state} -> {:error, state}

@@ -20,9 +20,9 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
   #   under the given key.
   # * execute: allows to perform the custom actions with the state, can be used to
   #   calculate values in a way which couldn't be achieved with the scheme syntax.
-  # * consume: like execute, but the callback also receives the remaining payload as an
-  #   unescaped bitstring and returns what is left of it. It is computationally expensive,
-  #   as the whole remaining payload gets unescaped.
+  # * consume_unescaped: like execute, but the callback also receives the remaining payload
+  #   as an unescaped bitstring and returns what is left of it. It is computationally
+  #   expensive, as the whole remaining payload gets unescaped.
   # * save_as_global_state_t: saves the current parser state, concerning the NALu which is
   #   currently processed, in the map under the `:__global__` key in the state. Information
   #   from the saved state can be used while parsing the following NALus.
@@ -43,7 +43,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
   @type execute ::
           (SchemeParser.t(), list(integer()) ->
              {:ok, SchemeParser.t()} | {:error, SchemeParser.t()})
-  @type consume ::
+  @type consume_unescaped ::
           (bitstring(), SchemeParser.t(), list(integer()) ->
              {:ok, bitstring(), SchemeParser.t()} | {:error, SchemeParser.t()})
   @type save_as_global_state :: SchemeParser.value_provider(any())
@@ -54,7 +54,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser.Scheme do
           | {:for, for_loop()}
           | {:calculate, calculate()}
           | {:execute, execute()}
-          | {:consume, consume()}
+          | {:consume_unescaped, consume_unescaped()}
           | {:save_as_global_state, save_as_global_state()}
   @type t :: list(directive())
 

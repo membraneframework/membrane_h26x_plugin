@@ -63,15 +63,13 @@ defmodule Membrane.H264.NALuParser.Schemes.SPS do
                   end, [:seq_scaling_list_present_flag, :i]},
                  if: {
                    {&(&1 <= 6), [:i]},
-                   # This unescapes the whole remaining payload, so it's expensive.
-                   consume: fn payload, state, iterators ->
+                   consume_unescaped: fn payload, state, iterators ->
                      scaling_list(payload, state, iterators, 16)
                    end
                  },
                  if: {
                    {&(&1 > 6), [:i]},
-                   # This unescapes the whole remaining payload, so it's expensive.
-                   consume: fn payload, state, iterators ->
+                   consume_unescaped: fn payload, state, iterators ->
                      scaling_list(payload, state, iterators, 64)
                    end
                  }}

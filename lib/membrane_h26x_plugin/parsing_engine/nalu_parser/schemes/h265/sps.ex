@@ -75,8 +75,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
             field: {:scaling_list_data_present_flag, :u1},
             if: {
               {&(&1 == 1), [:scaling_list_data_present_flag]},
-              # This unescapes the whole remaining payload, so it's expensive.
-              consume: &scaling_list/3
+              consume_unescaped: &scaling_list/3
             }
           },
           field: {:amp_enabled_flag, :u1},
@@ -93,8 +92,7 @@ defmodule Membrane.H265.NALuParser.Schemes.SPS do
           field: {:num_short_term_ref_pic_sets, :ue},
           if: {
             {&(&1 > 0), [:num_short_term_ref_pic_sets]},
-            # This unescapes the whole remaining payload, so it's expensive.
-            consume: &st_ref_pic_set/3
+            consume_unescaped: &st_ref_pic_set/3
           },
           field: {:long_term_ref_pics_present_flag, :u1},
           if: {
