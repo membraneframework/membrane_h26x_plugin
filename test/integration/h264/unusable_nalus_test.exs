@@ -61,6 +61,27 @@ defmodule Membrane.H264.UnusableNALusTest do
     end
   end
 
+  test "a parameter set given in the options with start codes around it is used without them",
+       %{access_units: access_units} do
+    {parameter_sets, rest} =
+      Enum.split_with(nalus(), &(Bitwise.band(:binary.first(&1), 0x1F) in [7, 8]))
+
+    {spss, ppss} =
+      Enum.split_with(Enum.uniq(parameter_sets), &(Bitwise.band(:binary.first(&1), 0x1F) == 7))
+
+    for wrap <- [
+          &(<<0, 0, 0, 1>> <> &1),
+          &(&1 <> <<0, 0, 0, 1>>),
+          &(<<0, 0, 1>> <> &1 <> <<0, 0, 1>>)
+        ] do
+      {parsed, log} =
+        with_log(fn -> parse(rest, spss: Enum.map(spss, wrap), ppss: Enum.map(ppss, wrap)) end)
+
+      assert parsed == access_units
+      assert log =~ "Removed an Annex B start code from a parameter set"
+    end
+  end
+
   test "a parameter set in the stream that cannot be parsed does not stop the stream",
        %{access_units: access_units} do
     {head, tail} = Enum.split(nalus(), 20)

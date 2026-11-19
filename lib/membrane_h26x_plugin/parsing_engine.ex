@@ -339,6 +339,8 @@ defmodule Membrane.H26x.ParsingEngine do
 
   defp usable_pending_parameter_sets(engine) do
     engine.pending_parameter_sets
+    |> Enum.map(&without_start_codes/1)
+    |> Enum.reject(&(&1 == <<>>))
     |> Enum.filter(fn parameter_set ->
       {nalus, _nalu_parser} =
         NALuParser.parse_nalus(
@@ -359,6 +361,38 @@ defmodule Membrane.H26x.ParsingEngine do
 
       usable?
     end)
+  end
+
+  @spec without_start_codes(binary()) :: binary()
+  defp without_start_codes(parameter_set) do
+    case strip_start_codes(parameter_set) do
+      ^parameter_set ->
+        parameter_set
+
+      stripped ->
+        Membrane.Logger.warning(
+          "Removed an Annex B start code from a parameter set given to the parser"
+        )
+
+        stripped
+    end
+  end
+
+  @spec strip_start_codes(binary()) :: binary()
+  defp strip_start_codes(<<0, 0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+  defp strip_start_codes(<<0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+
+  defp strip_start_codes(parameter_set) do
+    cond do
+      String.ends_with?(parameter_set, <<0, 0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 4))
+
+      String.ends_with?(parameter_set, <<0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 3))
+
+      true ->
+        parameter_set
+    end
   end
 
   @doc """
