@@ -21,7 +21,7 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   @spec put(t(), [NALu.t()]) :: t()
   def put(cache, nalus) do
     nalus
-    |> Enum.filter(&parameter_set?/1)
+    |> Enum.filter(&(parameter_set?(&1) and &1.status == :valid))
     |> Enum.reduce(cache, fn new_ps, cache ->
       case Enum.find_index(cache, &(parameter_set_id(&1) == parameter_set_id(new_ps))) do
         nil -> cache ++ [new_ps]
