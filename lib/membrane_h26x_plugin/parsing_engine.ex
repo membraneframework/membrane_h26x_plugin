@@ -318,10 +318,9 @@ defmodule Membrane.H26x.ParsingEngine do
     {pts, dts} = timestamps
 
     payload =
-      NALuParser.prefix_nalus_payloads(
-        engine.pending_parameter_sets,
-        engine.input_stream_structure
-      )
+      engine
+      |> usable_pending_parameter_sets()
+      |> NALuParser.prefix_nalus_payloads(engine.input_stream_structure)
       |> Utils.prepend_payload(payload)
 
     engine = %{
@@ -331,6 +330,69 @@ defmodule Membrane.H26x.ParsingEngine do
     }
 
     parse(engine, payload, timestamps, _flush? = false)
+  end
+
+  # A set that cannot be parsed would make the access unit it is prepended to
+  # undecodable, so it is left out.
+  @spec usable_pending_parameter_sets(t()) :: [binary()]
+  defp usable_pending_parameter_sets(%__MODULE__{pending_parameter_sets: []}), do: []
+
+  defp usable_pending_parameter_sets(engine) do
+    engine.pending_parameter_sets
+    |> Enum.map(&without_start_codes/1)
+    |> Enum.reject(&(&1 == <<>>))
+    |> Enum.filter(fn parameter_set ->
+      {nalus, _nalu_parser} =
+        NALuParser.parse_nalus(
+          engine.nalu_parser_mod,
+          [parameter_set],
+          {nil, nil},
+          false,
+          engine.nalu_parser
+        )
+
+      usable? = match?([%NALu{status: :valid}], nalus)
+
+      if not usable? do
+        Membrane.Logger.warning(
+          "Ignoring a parameter set that cannot be parsed: #{inspect(parameter_set)}"
+        )
+      end
+
+      usable?
+    end)
+  end
+
+  @spec without_start_codes(binary()) :: binary()
+  defp without_start_codes(parameter_set) do
+    case strip_start_codes(parameter_set) do
+      ^parameter_set ->
+        parameter_set
+
+      stripped ->
+        Membrane.Logger.warning(
+          "Removed an Annex B start code from a parameter set given to the parser"
+        )
+
+        stripped
+    end
+  end
+
+  @spec strip_start_codes(binary()) :: binary()
+  defp strip_start_codes(<<0, 0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+  defp strip_start_codes(<<0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+
+  defp strip_start_codes(parameter_set) do
+    cond do
+      String.ends_with?(parameter_set, <<0, 0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 4))
+
+      String.ends_with?(parameter_set, <<0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 3))
+
+      true ->
+        parameter_set
+    end
   end
 
   @doc """

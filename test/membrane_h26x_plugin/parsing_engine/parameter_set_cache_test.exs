@@ -28,6 +28,13 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCacheTest do
       assert [%NALu{type: :pps, payload: <<2>>}] = cache
     end
 
+    test "a parameter set that failed to parse is not cached" do
+      erroneous = %NALu{sps(0, <<7>>) | status: :error, parsed_fields: %{nal_unit_type: 7}}
+
+      cache = ParameterSetCache.put(ParameterSetCache.new(), [pps(0, <<1>>)])
+      assert ParameterSetCache.put(cache, [erroneous]) == cache
+    end
+
     test "a parameter set under a new id is kept alongside earlier ids" do
       cache = ParameterSetCache.put(ParameterSetCache.new(), [pps(0, <<1>>)])
       cache = ParameterSetCache.put(cache, [pps(1, <<9>>)])
