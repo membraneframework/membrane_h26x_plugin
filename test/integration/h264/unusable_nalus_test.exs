@@ -47,6 +47,20 @@ defmodule Membrane.H264.UnusableNALusTest do
     %{access_units: parse(nalus())}
   end
 
+  test "a parameter set given in the options that cannot be parsed does not stop the stream",
+       %{access_units: access_units} do
+    for options <- [
+          [spss: [<<0x67, 1, 2>>]],
+          [ppss: [<<0x68>>]],
+          [spss: [<<0x67, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF>>], ppss: [<<0x68, 0xFF>>]]
+        ] do
+      {parsed, log} = with_log(fn -> parse(nalus(), options) end)
+
+      assert parsed == access_units
+      assert log =~ "Ignoring a parameter set that cannot be parsed"
+    end
+  end
+
   test "a parameter set in the stream that cannot be parsed does not stop the stream",
        %{access_units: access_units} do
     {head, tail} = Enum.split(nalus(), 20)
