@@ -5,8 +5,8 @@ defmodule Membrane.H26x.ParsingEngine do
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. The access units
   are returned interleaved with parameter set change notifications - see
-  `t:event/0`. Access units that are not decodable - containing NALus that
-  failed to parse or no VCL NALu - are dropped (their parameter sets are still
+  `t:event/0`. NALus that failed to parse are left out of their access units.
+  Access units with no VCL NALu are dropped (their parameter sets are still
   taken into account). Depending on the configured output stream structure, the
   engine also repeats the active parameter sets on keyframes or strips them from
   the access units altogether (for the structures carrying them out-of-band).
@@ -399,7 +399,7 @@ defmodule Membrane.H26x.ParsingEngine do
         engine.au_splitter
       )
 
-    access_units = Enum.map(access_units, &reject_unparsable_parameter_sets/1)
+    access_units = Enum.map(access_units, &reject_unparsable_nalus/1)
 
     engine = %{
       engine
@@ -435,16 +435,14 @@ defmodule Membrane.H26x.ParsingEngine do
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
   end
 
-  # A parameter set that cannot be parsed is never activated, so the rest of
-  # the access unit is still decodable with the sets active so far.
-  @spec reject_unparsable_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
-  defp reject_unparsable_parameter_sets(nalus) do
+  @spec reject_unparsable_nalus(AUSplitter.access_unit()) :: AUSplitter.access_unit()
+  defp reject_unparsable_nalus(nalus) do
     Enum.reject(nalus, fn nalu ->
-      unparsable? = ParameterSetCache.parameter_set?(nalu) and nalu.status == :error
+      unparsable? = nalu.status == :error
 
       if unparsable? do
         Membrane.Logger.warning(
-          "Ignoring a parameter set that cannot be parsed: #{inspect(nalu.payload)}"
+          "Ignoring a #{nalu.type} NALu that cannot be parsed: #{inspect(nalu.payload)}"
         )
       end
 
@@ -454,18 +452,13 @@ defmodule Membrane.H26x.ParsingEngine do
 
   @spec decodable?(t(), AUSplitter.access_unit()) :: boolean()
   defp decodable?(engine, nalus) do
-    cond do
-      Enum.any?(nalus, &(&1.status == :error)) ->
-        Membrane.Logger.warning("Dropping an access unit containing NALus that failed to parse")
-        false
+    decodable? = engine.nalu_parser_mod.get_first_vcl_nalu(nalus) != nil
 
-      engine.nalu_parser_mod.get_first_vcl_nalu(nalus) == nil ->
-        Membrane.Logger.debug("Dropping an access unit without a VCL NALu")
-        false
-
-      true ->
-        true
+    if not decodable? do
+      Membrane.Logger.debug("Dropping an access unit without a VCL NALu")
     end
+
+    decodable?
   end
 
   @spec output_raw_stream_structure(t(), [NALu.t()]) :: raw_stream_structure()
