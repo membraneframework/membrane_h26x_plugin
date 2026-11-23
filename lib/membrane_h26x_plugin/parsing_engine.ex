@@ -318,8 +318,9 @@ defmodule Membrane.H26x.ParsingEngine do
     {pts, dts} = timestamps
 
     payload =
-      engine
-      |> usable_pending_parameter_sets()
+      engine.pending_parameter_sets
+      |> Enum.map(&without_start_codes/1)
+      |> Enum.reject(&(&1 == <<>>))
       |> NALuParser.prefix_nalus_payloads(engine.input_stream_structure)
       |> Utils.prepend_payload(payload)
 
@@ -330,37 +331,6 @@ defmodule Membrane.H26x.ParsingEngine do
     }
 
     parse(engine, payload, timestamps, _flush? = false)
-  end
-
-  # A set that cannot be parsed would make the access unit it is prepended to
-  # undecodable, so it is left out.
-  @spec usable_pending_parameter_sets(t()) :: [binary()]
-  defp usable_pending_parameter_sets(%__MODULE__{pending_parameter_sets: []}), do: []
-
-  defp usable_pending_parameter_sets(engine) do
-    engine.pending_parameter_sets
-    |> Enum.map(&without_start_codes/1)
-    |> Enum.reject(&(&1 == <<>>))
-    |> Enum.filter(fn parameter_set ->
-      {nalus, _nalu_parser} =
-        NALuParser.parse_nalus(
-          engine.nalu_parser_mod,
-          [parameter_set],
-          {nil, nil},
-          false,
-          engine.nalu_parser
-        )
-
-      usable? = match?([%NALu{status: :valid}], nalus)
-
-      if not usable? do
-        Membrane.Logger.warning(
-          "Ignoring a parameter set that cannot be parsed: #{inspect(parameter_set)}"
-        )
-      end
-
-      usable?
-    end)
   end
 
   @spec without_start_codes(binary()) :: binary()
@@ -429,6 +399,8 @@ defmodule Membrane.H26x.ParsingEngine do
         engine.au_splitter
       )
 
+    access_units = Enum.map(access_units, &reject_unparsable_parameter_sets/1)
+
     engine = %{
       engine
       | nalu_splitter: nalu_splitter,
@@ -461,6 +433,23 @@ defmodule Membrane.H26x.ParsingEngine do
       end)
 
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
+  end
+
+  # A parameter set that cannot be parsed is never activated, so the rest of
+  # the access unit is still decodable with the sets active so far.
+  @spec reject_unparsable_parameter_sets(AUSplitter.access_unit()) :: AUSplitter.access_unit()
+  defp reject_unparsable_parameter_sets(nalus) do
+    Enum.reject(nalus, fn nalu ->
+      unparsable? = ParameterSetCache.parameter_set?(nalu) and nalu.status == :error
+
+      if unparsable? do
+        Membrane.Logger.warning(
+          "Ignoring a parameter set that cannot be parsed: #{inspect(nalu.payload)}"
+        )
+      end
+
+      unparsable?
+    end)
   end
 
   @spec decodable?(t(), AUSplitter.access_unit()) :: boolean()

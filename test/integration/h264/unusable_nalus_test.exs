@@ -82,7 +82,7 @@ defmodule Membrane.H264.UnusableNALusTest do
     end
   end
 
-  test "a parameter set in the stream that cannot be parsed does not stop the stream",
+  test "a parameter set in the stream that cannot be parsed does not cost an access unit",
        %{access_units: access_units} do
     {head, tail} = Enum.split(nalus(), 20)
 
@@ -91,9 +91,10 @@ defmodule Membrane.H264.UnusableNALusTest do
         parse(head ++ [<<0x67, 1, 2>>, <<0x68>>] ++ tail, skip_until_keyframe: false)
       end)
 
-    assert parsed in (access_units - 2)..(access_units - 1)
+    assert parsed == access_units
     assert log =~ "Failed to parse a sps NALu"
-    assert log =~ "Dropping an access unit containing NALus that failed to parse"
+    assert log =~ "Ignoring a parameter set that cannot be parsed"
+    refute log =~ "Dropping an access unit"
   end
 
   test "an empty NAL unit is ignored", %{access_units: access_units} do
