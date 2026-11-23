@@ -5,10 +5,11 @@ defmodule Membrane.H26x.ParsingEngine do
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. The access units
   are returned interleaved with parameter set change notifications - see
-  `t:event/0`. Access units that are not decodable - containing NALus that
-  failed to parse or no VCL NALu - are dropped (their parameter sets are still
-  taken into account). Depending on the configured output stream structure, the
-  engine also repeats the active parameter sets on keyframes or strips them from
+  `t:event/0`. NALus that failed to parse are left out of their access units.
+  Access units with no VCL NALu are dropped (their parameter sets are still
+  taken into account), and so are the ones with a VCL NALu that failed to parse
+  if `:skip_damaged_access_units` is `true`. Depending on the configured output
+  stream structure, the engine also repeats the active parameter sets on keyframes or strips them from
   the access units altogether (for the structures carrying them out-of-band).
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
@@ -116,6 +117,9 @@ defmodule Membrane.H26x.ParsingEngine do
   * `:generate_best_effort_timestamps` - see `t:generate_best_effort_timestamps/0`.
     Defaults to `false`.
   * `:infer_dts_from_pts` - see `t:infer_dts_from_pts/0`. Defaults to `false`.
+  * `:skip_damaged_access_units` - if `true`, an access unit with a VCL NALu that
+    failed to parse is dropped. If `false`, only that NALu is left out and the rest
+    of the access unit is returned. Defaults to `false`.
   """
   @type config :: %{
           :codec => codec(),
@@ -125,7 +129,8 @@ defmodule Membrane.H26x.ParsingEngine do
           optional(:repeat_parameter_sets) => boolean(),
           optional(:initial_parameter_sets) => [binary()],
           optional(:generate_best_effort_timestamps) => generate_best_effort_timestamps(),
-          optional(:infer_dts_from_pts) => infer_dts_from_pts()
+          optional(:infer_dts_from_pts) => infer_dts_from_pts(),
+          optional(:skip_damaged_access_units) => boolean()
         }
 
   @opaque t :: %__MODULE__{
@@ -139,6 +144,7 @@ defmodule Membrane.H26x.ParsingEngine do
             input_stream_structure: stream_structure(),
             output_stream_structure: stream_structure(),
             repeat_parameter_sets: boolean(),
+            skip_damaged_access_units: boolean(),
             previous_buffer_timestamps: NALu.timestamps() | nil,
             pending_parameter_sets: [binary()],
             nalu_parser_mod: module(),
@@ -157,6 +163,7 @@ defmodule Membrane.H26x.ParsingEngine do
     :input_stream_structure,
     :output_stream_structure,
     :repeat_parameter_sets,
+    :skip_damaged_access_units,
     :nalu_parser_mod,
     :au_splitter_mod,
     :au_timestamp_generator_mod
@@ -210,6 +217,7 @@ defmodule Membrane.H26x.ParsingEngine do
       output_stream_structure:
         Map.get(config, :output_stream_structure) || input_stream_structure,
       repeat_parameter_sets: Map.get(config, :repeat_parameter_sets, false),
+      skip_damaged_access_units: Map.get(config, :skip_damaged_access_units, false),
       nalu_parser_mod: nalu_parser_mod(config.codec),
       au_splitter_mod: au_splitter_mod(config.codec),
       au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
@@ -318,10 +326,10 @@ defmodule Membrane.H26x.ParsingEngine do
     {pts, dts} = timestamps
 
     payload =
-      NALuParser.prefix_nalus_payloads(
-        engine.pending_parameter_sets,
-        engine.input_stream_structure
-      )
+      engine.pending_parameter_sets
+      |> Enum.map(&without_start_codes/1)
+      |> Enum.reject(&(&1 == <<>>))
+      |> NALuParser.prefix_nalus_payloads(engine.input_stream_structure)
       |> Utils.prepend_payload(payload)
 
     engine = %{
@@ -331,6 +339,38 @@ defmodule Membrane.H26x.ParsingEngine do
     }
 
     parse(engine, payload, timestamps, _flush? = false)
+  end
+
+  @spec without_start_codes(binary()) :: binary()
+  defp without_start_codes(parameter_set) do
+    case strip_start_codes(parameter_set) do
+      ^parameter_set ->
+        parameter_set
+
+      stripped ->
+        Membrane.Logger.warning(
+          "Removed an Annex B start code from a parameter set given to the parser"
+        )
+
+        stripped
+    end
+  end
+
+  @spec strip_start_codes(binary()) :: binary()
+  defp strip_start_codes(<<0, 0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+  defp strip_start_codes(<<0, 0, 1, rest::binary>>), do: strip_start_codes(rest)
+
+  defp strip_start_codes(parameter_set) do
+    cond do
+      String.ends_with?(parameter_set, <<0, 0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 4))
+
+      String.ends_with?(parameter_set, <<0, 0, 1>>) ->
+        strip_start_codes(binary_part(parameter_set, 0, byte_size(parameter_set) - 3))
+
+      true ->
+        parameter_set
+    end
   end
 
   @doc """
@@ -367,6 +407,8 @@ defmodule Membrane.H26x.ParsingEngine do
         engine.au_splitter
       )
 
+    access_units = Enum.map(access_units, &reject_unparsable_nalus(engine, &1))
+
     engine = %{
       engine
       | nalu_splitter: nalu_splitter,
@@ -399,6 +441,23 @@ defmodule Membrane.H26x.ParsingEngine do
       end)
 
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
+  end
+
+  @spec reject_unparsable_nalus(t(), AUSplitter.access_unit()) :: AUSplitter.access_unit()
+  defp reject_unparsable_nalus(engine, nalus) do
+    Enum.reject(nalus, fn nalu ->
+      reject? =
+        nalu.status == :error and
+          (ParameterSetCache.parameter_set?(nalu) or not engine.skip_damaged_access_units)
+
+      if reject? do
+        Membrane.Logger.warning(
+          "Ignoring a #{nalu.type} NALu that cannot be parsed: #{inspect(nalu.payload)}"
+        )
+      end
+
+      reject?
+    end)
   end
 
   @spec decodable?(t(), AUSplitter.access_unit()) :: boolean()

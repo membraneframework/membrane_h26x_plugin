@@ -18,6 +18,7 @@ defmodule Membrane.H26x.Utils do
           output_alignment: :au | :nalu,
           skip_until_keyframe: boolean(),
           repeat_parameter_sets: boolean(),
+          skip_damaged_access_units: boolean(),
           initial_parameter_sets: [binary()],
           output_stream_structure: ParsingEngine.stream_structure() | nil,
           framerate: term() | nil
@@ -29,7 +30,7 @@ defmodule Membrane.H26x.Utils do
   Builds the initial element state.
 
   Expects the codec and the element options (`output_alignment`, `skip_until_keyframe`,
-  `repeat_parameter_sets`, `initial_parameter_sets`, `output_stream_structure`,
+  `repeat_parameter_sets`, `skip_damaged_access_units`, `initial_parameter_sets`, `output_stream_structure`,
   `generate_best_effort_timestamps`, `infer_dts_from_pts`). The `ParsingEngine` itself is created once
   the first stream format reveals the input structure and alignment.
   """
@@ -43,6 +44,7 @@ defmodule Membrane.H26x.Utils do
       output_alignment: opts[:output_alignment],
       skip_until_keyframe: opts[:skip_until_keyframe],
       repeat_parameter_sets: opts[:repeat_parameter_sets],
+      skip_damaged_access_units: Keyword.get(opts, :skip_damaged_access_units, false),
       initial_parameter_sets: opts[:initial_parameter_sets],
       output_stream_structure: opts[:output_stream_structure],
       framerate: framerate(opts[:generate_best_effort_timestamps])
@@ -116,6 +118,7 @@ defmodule Membrane.H26x.Utils do
         input_alignment: input_alignment,
         output_stream_structure: state.output_stream_structure,
         repeat_parameter_sets: state.repeat_parameter_sets,
+        skip_damaged_access_units: state.skip_damaged_access_units,
         initial_parameter_sets: state.initial_parameter_sets,
         generate_best_effort_timestamps: state.generate_best_effort_timestamps,
         infer_dts_from_pts: state.infer_dts_from_pts
