@@ -44,7 +44,7 @@ defmodule Membrane.H26x.Utils do
       output_alignment: opts[:output_alignment],
       skip_until_keyframe: opts[:skip_until_keyframe],
       repeat_parameter_sets: opts[:repeat_parameter_sets],
-      skip_damaged_access_units: Keyword.get(opts, :skip_damaged_access_units, true),
+      skip_damaged_access_units: Keyword.get(opts, :skip_damaged_access_units, false),
       initial_parameter_sets: opts[:initial_parameter_sets],
       output_stream_structure: opts[:output_stream_structure],
       framerate: framerate(opts[:generate_best_effort_timestamps])

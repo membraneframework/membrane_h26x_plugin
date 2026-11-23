@@ -85,13 +85,13 @@ defmodule Membrane.H265.Parser do
               ],
               skip_damaged_access_units: [
                 spec: boolean(),
-                default: true,
+                default: false,
                 description: """
                 Determines what happens to an access unit with a slice that cannot be parsed.
 
-                If `true`, the whole access unit is dropped, so the frame is skipped.
                 If `false`, only that slice is dropped and the rest of the access unit
                 is sent, so a decoder may show a damaged frame.
+                If `true`, the whole access unit is dropped, so the frame is skipped.
                 """
               ],
               repeat_parameter_sets: [

@@ -98,28 +98,28 @@ defmodule Membrane.H264.UnusableNALusTest do
   end
 
   describe "a slice in the stream that cannot be parsed" do
-    test "has its access unit dropped by default", %{access_units: access_units} do
+    test "is left out of its access unit by default", %{access_units: access_units} do
       {head, tail} = Enum.split(nalus(), 20)
 
       {parsed, log} = with_log(fn -> parse(head ++ [<<0x41>>] ++ tail) end)
 
       assert parsed == access_units
-      assert log =~ "Dropping an access unit containing NALus that failed to parse"
-      refute log =~ "Ignoring a non_idr NALu that cannot be parsed"
+      assert log =~ "Ignoring a non_idr NALu that cannot be parsed"
+      refute log =~ "Dropping an access unit containing NALus that failed to parse"
     end
 
-    test "is left out of its access unit when skip_damaged_access_units is false",
+    test "has its access unit dropped when skip_damaged_access_units is true",
          %{access_units: access_units} do
       {head, tail} = Enum.split(nalus(), 20)
 
       {parsed, log} =
         with_log(fn ->
-          parse(head ++ [<<0x41>>] ++ tail, skip_damaged_access_units: false)
+          parse(head ++ [<<0x41>>] ++ tail, skip_damaged_access_units: true)
         end)
 
       assert parsed == access_units
-      assert log =~ "Ignoring a non_idr NALu that cannot be parsed"
-      refute log =~ "Dropping an access unit containing NALus that failed to parse"
+      assert log =~ "Dropping an access unit containing NALus that failed to parse"
+      refute log =~ "Ignoring a non_idr NALu that cannot be parsed"
     end
   end
 

@@ -5,11 +5,11 @@ defmodule Membrane.H26x.ParsingEngine do
   Splits incoming payloads into NAL units, parses them and groups them into
   access units, optionally generating best-effort timestamps. The access units
   are returned interleaved with parameter set change notifications - see
-  `t:event/0`. Parameter sets that failed to parse are left out of their access
-  units. Access units with no VCL NALu are dropped (their parameter sets are
-  still taken into account), and so are the ones with a VCL NALu that failed to
-  parse, unless `:skip_damaged_access_units` is `false`. Depending on the configured output stream structure, the
-  engine also repeats the active parameter sets on keyframes or strips them from
+  `t:event/0`. NALus that failed to parse are left out of their access units.
+  Access units with no VCL NALu are dropped (their parameter sets are still
+  taken into account), and so are the ones with a VCL NALu that failed to parse
+  if `:skip_damaged_access_units` is `true`. Depending on the configured output
+  stream structure, the engine also repeats the active parameter sets on keyframes or strips them from
   the access units altogether (for the structures carrying them out-of-band).
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
@@ -119,7 +119,7 @@ defmodule Membrane.H26x.ParsingEngine do
   * `:infer_dts_from_pts` - see `t:infer_dts_from_pts/0`. Defaults to `false`.
   * `:skip_damaged_access_units` - if `true`, an access unit with a VCL NALu that
     failed to parse is dropped. If `false`, only that NALu is left out and the rest
-    of the access unit is returned. Defaults to `true`.
+    of the access unit is returned. Defaults to `false`.
   """
   @type config :: %{
           :codec => codec(),
@@ -217,7 +217,7 @@ defmodule Membrane.H26x.ParsingEngine do
       output_stream_structure:
         Map.get(config, :output_stream_structure) || input_stream_structure,
       repeat_parameter_sets: Map.get(config, :repeat_parameter_sets, false),
-      skip_damaged_access_units: Map.get(config, :skip_damaged_access_units, true),
+      skip_damaged_access_units: Map.get(config, :skip_damaged_access_units, false),
       nalu_parser_mod: nalu_parser_mod(config.codec),
       au_splitter_mod: au_splitter_mod(config.codec),
       au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
