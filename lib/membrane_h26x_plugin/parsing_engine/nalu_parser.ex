@@ -87,12 +87,12 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
           {[nalu], state}
 
         :too_short ->
-          {[], log_too_short_nalu(nalu_payload, state)}
+          {[], maybe_log_too_short_nalu(nalu_payload, state)}
       end
     end)
   end
 
-  defp log_too_short_nalu(nalu_payload, %__MODULE__{too_short_nalu_logged?: false} = state) do
+  defp maybe_log_too_short_nalu(nalu_payload, %__MODULE__{too_short_nalu_logged?: false} = state) do
     Membrane.Logger.warning("""
     Ignoring a NALu too short to hold a header: #{inspect(nalu_payload)}. \
     Further ones will be logged at the debug level.
@@ -101,7 +101,7 @@ defmodule Membrane.H26x.ParsingEngine.NALuParser do
     %__MODULE__{state | too_short_nalu_logged?: true}
   end
 
-  defp log_too_short_nalu(nalu_payload, state) do
+  defp maybe_log_too_short_nalu(nalu_payload, state) do
     Membrane.Logger.debug("Ignoring a NALu too short to hold a header: #{inspect(nalu_payload)}")
     state
   end
