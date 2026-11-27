@@ -94,6 +94,17 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
       perform_test(pid, File.read!(@in_path), :au, {:avc3, 4}, {:avc3, 4})
     end
 
+    test "without the ones redefined by the bytestream under the same id" do
+      stale_sps =
+        Base.decode16!(
+          "674D40208D8D402803CFF80B7010101400000FA00001D4C3A1804900001312D2EF2E343009200002625A5DE5C280"
+        )
+
+      source = %H26x.Support.TestSource{alignment: :bytestream}
+      pid = make_pipeline(source, [stale_sps])
+      perform_test(pid, File.read!(@ref_path))
+    end
+
     test "when bytestream has variable parameter sets" do
       in_path = "./test/fixtures/h264/input-vp-sps-pps.h264"
       ref_path = "./test/fixtures/h264/reference-vp-sps-pps.h264"

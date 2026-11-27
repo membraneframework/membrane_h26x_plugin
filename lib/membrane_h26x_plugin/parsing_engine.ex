@@ -449,6 +449,12 @@ defmodule Membrane.H26x.ParsingEngine do
         Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
 
       keyframe? ->
+        nalus =
+          Enum.reject(
+            nalus,
+            &(ParameterSetCache.parameter_set?(&1) and &1 not in active_parameter_sets)
+          )
+
         nalus = if engine.repeat_parameter_sets, do: active_parameter_sets ++ nalus, else: nalus
         Enum.uniq_by(nalus, & &1.payload)
 
