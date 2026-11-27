@@ -2,27 +2,32 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   @moduledoc false
 
   # Tracks the parameter set NALus (VPS/SPS/PPS) of a stream, keyed by their type
-  # and id, and decides which of them should be attached to an access unit. A
-  # parameter set redefined under an already used id replaces the cached one, so
-  # the cache always holds only the currently active set per id, in the order in
-  # which the ids first appeared.
+  # and id, and decides which of them should be attached to an access unit - none
+  # for the output stream structures carrying them out-of-band. A parameter set
+  # redefined under an already used id replaces the cached one, so the cache
+  # always holds only the currently active set per id, in the order in which the
+  # ids first appeared.
 
-  alias Membrane.H26x.NALu
+  alias Membrane.H26x.{NALu, ParsingEngine}
 
   @parameter_set_types [:vps, :sps, :pps]
 
-  @enforce_keys [:repeat_parameter_sets]
+  @enforce_keys [:repeat_parameter_sets, :out_of_band?]
   defstruct @enforce_keys ++ [active: [], pending: []]
 
   @type t :: %__MODULE__{
           repeat_parameter_sets: boolean(),
+          out_of_band?: boolean(),
           active: [NALu.t()],
           pending: [NALu.t()]
         }
 
-  @spec new(boolean()) :: t()
-  def new(repeat_parameter_sets) do
-    %__MODULE__{repeat_parameter_sets: repeat_parameter_sets}
+  @spec new(boolean(), ParsingEngine.stream_structure()) :: t()
+  def new(repeat_parameter_sets, output_stream_structure) do
+    %__MODULE__{
+      repeat_parameter_sets: repeat_parameter_sets,
+      out_of_band?: out_of_band?(output_stream_structure)
+    }
   end
 
   @spec parameter_set?(NALu.t()) :: boolean()
@@ -41,13 +46,26 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   @doc """
   Returns the parameter sets to attach to the next output access unit: the ones put since
   the previous call, or all the active ones for a keyframe when repeating is enabled.
+  None are returned when the output stream structure carries them out-of-band.
   """
   @spec take(t(), keyframe? :: boolean()) :: {[NALu.t()], t()}
   def take(cache, keyframe?) do
     parameter_sets =
-      if cache.repeat_parameter_sets and keyframe?, do: cache.active, else: cache.pending
+      cond do
+        cache.out_of_band? -> []
+        cache.repeat_parameter_sets and keyframe? -> cache.active
+        true -> cache.pending
+      end
 
     {parameter_sets, %{cache | pending: []}}
+  end
+
+  defp out_of_band?(:annexb) do
+    false
+  end
+
+  defp out_of_band?({codec_tag, _nalu_length_size}) do
+    codec_tag in [:avc1, :hvc1]
   end
 
   defp upsert(parameter_sets, new_ps) do

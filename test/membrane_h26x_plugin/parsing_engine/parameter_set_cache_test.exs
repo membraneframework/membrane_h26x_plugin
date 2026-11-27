@@ -20,8 +20,8 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCacheTest do
   defp sps(id, payload), do: nalu(:sps, %{seq_parameter_set_id: id}, payload)
   defp pps(id, payload), do: nalu(:pps, %{pic_parameter_set_id: id}, payload)
 
-  defp new_cache(repeat_parameter_sets \\ false) do
-    ParameterSetCache.new(repeat_parameter_sets)
+  defp new_cache(repeat_parameter_sets \\ false, output_stream_structure \\ :annexb) do
+    ParameterSetCache.new(repeat_parameter_sets, output_stream_structure)
   end
 
   describe "put/2" do
@@ -95,6 +95,16 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCacheTest do
       {_parameter_sets, cache} = ParameterSetCache.take(cache, true)
 
       assert {[], cache} = ParameterSetCache.take(cache, false)
+
+      assert {[%NALu{payload: <<7>>}, %NALu{payload: <<1>>}], _cache} =
+               ParameterSetCache.take(cache, true)
+    end
+
+    test "returns nothing when the output stream structure carries the parameter sets out-of-band" do
+      cache = ParameterSetCache.put(new_cache(true, {:avc1, 4}), [sps(0, <<7>>), pps(0, <<1>>)])
+      assert {[], _cache} = ParameterSetCache.take(cache, true)
+
+      cache = ParameterSetCache.put(new_cache(true, {:avc3, 4}), [sps(0, <<7>>), pps(0, <<1>>)])
 
       assert {[%NALu{payload: <<7>>}, %NALu{payload: <<1>>}], _cache} =
                ParameterSetCache.take(cache, true)

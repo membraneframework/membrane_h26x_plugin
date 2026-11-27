@@ -196,17 +196,24 @@ defmodule Membrane.H26x.ParsingEngine do
         generate_best_effort_timestamps || %{}
       )
 
+    output_stream_structure = Map.get(config, :output_stream_structure) || input_stream_structure
+
+    parameter_set_cache =
+      ParameterSetCache.new(
+        Map.get(config, :repeat_parameter_sets, false),
+        output_stream_structure
+      )
+
     %__MODULE__{
       codec: codec,
       nalu_splitter: NALuSplitter.new(input_stream_structure),
       nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
-      parameter_set_cache: ParameterSetCache.new(Map.get(config, :repeat_parameter_sets, false)),
+      parameter_set_cache: parameter_set_cache,
       input_alignment: config.input_alignment,
       input_stream_structure: input_stream_structure,
-      output_stream_structure:
-        Map.get(config, :output_stream_structure) || input_stream_structure,
+      output_stream_structure: output_stream_structure,
       nalu_parser_mod: nalu_parser_mod(config.codec),
       au_splitter_mod: au_splitter_mod(config.codec),
       au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
@@ -434,7 +441,6 @@ defmodule Membrane.H26x.ParsingEngine do
   defp build_access_unit(engine, nalus, timestamps, parameter_set_cache) do
     keyframe? = keyframe?(engine.codec, nalus)
     {parameter_sets, parameter_set_cache} = ParameterSetCache.take(parameter_set_cache, keyframe?)
-    parameter_sets = if strip_parameter_sets?(engine), do: [], else: parameter_sets
 
     nalus =
       nalus
@@ -460,16 +466,6 @@ defmodule Membrane.H26x.ParsingEngine do
   defp attach_parameter_sets(nalus, parameter_sets) do
     parameter_sets ++ nalus
   end
-
-  defp strip_parameter_sets?(%{output_stream_structure: :annexb}), do: false
-
-  defp strip_parameter_sets?(engine) do
-    {codec_tag, _nalu_length_size} = engine.output_stream_structure
-    codec_tag in out_of_band_parameter_sets_codec_tags(engine.codec)
-  end
-
-  defp out_of_band_parameter_sets_codec_tags(:h264), do: [:avc1]
-  defp out_of_band_parameter_sets_codec_tags(:h265), do: [:hvc1]
 
   @spec maybe_generate_timestamps([AUSplitter.access_unit()], boolean(), t()) ::
           {[{AUSplitter.access_unit(), NALu.timestamps()}], t()}
