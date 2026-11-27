@@ -444,6 +444,8 @@ defmodule Membrane.H26x.ParsingEngine do
   @spec finalize_access_unit_nalus(t(), AUSplitter.access_unit(), boolean(), [NALu.t()]) ::
           AUSplitter.access_unit()
   defp finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets) do
+    nalus = ParameterSetCache.reject_inactive(active_parameter_sets, nalus)
+
     cond do
       strip_parameter_sets?(engine) ->
         Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
