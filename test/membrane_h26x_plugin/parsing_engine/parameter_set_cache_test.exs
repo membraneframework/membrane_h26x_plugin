@@ -56,13 +56,13 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCacheTest do
     end
   end
 
-  describe "reject_substituted/2" do
+  describe "reject_inactive/2" do
     test "drops the parameter sets redefined under the same id, keeping the other NALus" do
       idr = nalu(:idr, %{}, <<5>>)
       nalus = [sps(0, <<7>>), pps(0, <<1>>), sps(0, <<8>>), idr]
       cache = ParameterSetCache.put(ParameterSetCache.new(), nalus)
 
-      assert ParameterSetCache.reject_substituted(cache, nalus) ==
+      assert ParameterSetCache.reject_inactive(cache, nalus) ==
                [pps(0, <<1>>), sps(0, <<8>>), idr]
     end
   end

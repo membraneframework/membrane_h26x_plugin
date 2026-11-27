@@ -30,8 +30,8 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
     end)
   end
 
-  @spec reject_substituted(t(), [NALu.t()]) :: [NALu.t()]
-  def reject_substituted(cache, nalus),
+  @spec reject_inactive(t(), [NALu.t()]) :: [NALu.t()]
+  def reject_inactive(cache, nalus),
     do: Enum.reject(nalus, &(parameter_set?(&1) and &1 not in cache))
 
   defp parameter_set_id(%NALu{type: type, parsed_fields: fields}) do
