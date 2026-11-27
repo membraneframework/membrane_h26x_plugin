@@ -384,31 +384,35 @@ defmodule Membrane.H26x.ParsingEngine do
       Enum.flat_map_reduce(access_units, engine.parameter_set_cache, fn {nalus, timestamps},
                                                                         cache ->
         updated_cache = ParameterSetCache.put(cache, nalus)
+        parameter_sets_events = parameter_sets_events(engine, cache, updated_cache)
 
-        parameter_sets_events =
-          if updated_cache.active == cache.active do
-            []
-          else
-            parameter_sets = %{
-              output_raw_stream_structure:
-                output_raw_stream_structure(engine, updated_cache.active),
-              active: updated_cache.active
-            }
+        {access_unit_events, updated_cache} =
+          access_unit_events(engine, nalus, timestamps, updated_cache)
 
-            [parameter_sets: parameter_sets]
-          end
-
-        if decodable?(engine, nalus) do
-          {access_unit, updated_cache} =
-            build_access_unit(engine, nalus, timestamps, updated_cache)
-
-          {parameter_sets_events ++ [access_unit: access_unit], updated_cache}
-        else
-          {parameter_sets_events, updated_cache}
-        end
+        {parameter_sets_events ++ access_unit_events, updated_cache}
       end)
 
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
+  end
+
+  defp parameter_sets_events(_engine, %{active: active}, %{active: active}), do: []
+
+  defp parameter_sets_events(engine, _old_cache, %{active: active}) do
+    [
+      parameter_sets: %{
+        output_raw_stream_structure: output_raw_stream_structure(engine, active),
+        active: active
+      }
+    ]
+  end
+
+  defp access_unit_events(engine, nalus, timestamps, cache) do
+    if decodable?(engine, nalus) do
+      {access_unit, cache} = build_access_unit(engine, nalus, timestamps, cache)
+      {[access_unit: access_unit], cache}
+    else
+      {[], cache}
+    end
   end
 
   @spec decodable?(t(), AUSplitter.access_unit()) :: boolean()
