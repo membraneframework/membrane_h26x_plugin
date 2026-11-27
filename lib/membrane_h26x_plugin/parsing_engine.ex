@@ -444,21 +444,22 @@ defmodule Membrane.H26x.ParsingEngine do
   @spec finalize_access_unit_nalus(t(), AUSplitter.access_unit(), boolean(), [NALu.t()]) ::
           AUSplitter.access_unit()
   defp finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets) do
-    if strip_parameter_sets?(engine) do
-      Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
-    else
-      nalus =
-        Enum.reject(
-          nalus,
-          &(ParameterSetCache.parameter_set?(&1) and &1 not in active_parameter_sets)
-        )
+    nalus =
+      Enum.reject(
+        nalus,
+        &(ParameterSetCache.parameter_set?(&1) and &1 not in active_parameter_sets)
+      )
 
-      if keyframe? do
+    cond do
+      strip_parameter_sets?(engine) ->
+        Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
+
+      keyframe? ->
         nalus = if engine.repeat_parameter_sets, do: active_parameter_sets ++ nalus, else: nalus
         Enum.uniq_by(nalus, & &1.payload)
-      else
+
+      true ->
         nalus
-      end
     end
   end
 
