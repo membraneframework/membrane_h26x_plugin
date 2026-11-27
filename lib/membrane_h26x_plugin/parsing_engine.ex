@@ -462,7 +462,6 @@ defmodule Membrane.H26x.ParsingEngine do
     {access_unit, parameter_set_cache}
   end
 
-  # An access unit delimiter has to remain the first NALu of the access unit.
   defp attach_parameter_sets([%NALu{type: :aud} = aud | nalus], parameter_sets) do
     [aud | parameter_sets ++ nalus]
   end

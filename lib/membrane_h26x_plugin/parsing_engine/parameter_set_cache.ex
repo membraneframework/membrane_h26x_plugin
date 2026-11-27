@@ -37,7 +37,6 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
     nalus
     |> Enum.filter(&parameter_set?/1)
     |> Enum.reduce(cache, fn new_ps, cache ->
-      # A parameter set put again unchanged is pending as well, so that a stream repeating its parameter sets keeps them.
       %{cache | active: upsert(cache.active, new_ps), pending: upsert(cache.pending, new_ps)}
     end)
   end
