@@ -128,6 +128,24 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
   end
 
+  describe "A parameter set redefined by the bytestream under the same id" do
+    test "is dropped from a non-keyframe access unit" do
+      in_path = "test/fixtures/h264/input-sps-pps-non-idr.h264"
+
+      spec =
+        child(:source, %Membrane.File.Source{location: in_path})
+        |> child(:parser, %H264.Parser{spss: [@stale_sps], skip_until_keyframe: false})
+        |> child(:sink, Sink)
+
+      pid = Pipeline.start_link_supervised!(spec: spec)
+
+      assert_sink_buffer(pid, :sink, buffer)
+      assert String.starts_with?(File.read!(in_path), buffer.payload)
+
+      Pipeline.terminate(pid)
+    end
+  end
+
   describe "A malformed parameter set" do
     test "is tolerated and marked as erroneous instead of crashing the parser" do
       payload = File.read!("./test/fixtures/h264/input-30-240p-vp-sps-pps.h264")
