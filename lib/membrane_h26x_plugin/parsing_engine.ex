@@ -7,9 +7,10 @@ defmodule Membrane.H26x.ParsingEngine do
   are returned interleaved with parameter set change notifications - see
   `t:event/0`. Access units that are not decodable - containing NALus that
   failed to parse or no VCL NALu - are dropped (their parameter sets are still
-  taken into account and attached to the next access unit). Depending on the configured output stream structure, the
-  engine also repeats the active parameter sets on keyframes or strips them from
-  the access units altogether (for the structures carrying them out-of-band).
+  taken into account and attached to the next access unit). Depending on the
+  configuration, the engine also repeats the active parameter sets on keyframes.
+  For the output stream structures carrying the parameter sets out-of-band, they
+  are stripped from the access units altogether and never attached.
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
   """
 
