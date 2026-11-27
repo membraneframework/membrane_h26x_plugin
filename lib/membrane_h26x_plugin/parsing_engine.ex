@@ -200,7 +200,7 @@ defmodule Membrane.H26x.ParsingEngine do
 
     parameter_set_cache =
       ParameterSetCache.new(
-        Map.get(config, :repeat_parameter_sets, false),
+        Map.get(config, :repeat_parameter_sets) || false,
         output_stream_structure
       )
 
