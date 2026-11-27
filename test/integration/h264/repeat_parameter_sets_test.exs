@@ -16,6 +16,9 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
 
   @sps <<103, 100, 0, 21, 172, 217, 65, 177, 254, 255, 252, 5, 0, 5, 4, 64, 0, 0, 3, 0, 64, 0, 0,
          15, 3, 197, 139, 101, 128>>
+  @stale_sps <<103, 77, 64, 32, 141, 141, 64, 40, 3, 207, 248, 11, 112, 16, 16, 20, 0, 0, 15, 160,
+               0, 1, 212, 195, 161, 128, 73, 0, 0, 19, 18, 210, 239, 46, 52, 48, 9, 32, 0, 2, 98,
+               90, 93, 229, 194, 128>>
   @pps <<104, 235, 227, 203, 34, 192>>
   @dcr <<1, 100, 0, 21, 255, 225, 0, 29, 103, 100, 0, 21, 172, 217, 65, 177, 254, 255, 252, 5, 0,
          5, 4, 64, 0, 0, 3, 0, 64, 0, 0, 15, 3, 197, 139, 101, 128, 1, 0, 6, 104, 235, 227, 203,
@@ -95,13 +98,8 @@ defmodule Membrane.H264.RepeatParameterSetsTest do
     end
 
     test "without the ones redefined by the bytestream under the same id" do
-      stale_sps =
-        Base.decode16!(
-          "674D40208D8D402803CFF80B7010101400000FA00001D4C3A1804900001312D2EF2E343009200002625A5DE5C280"
-        )
-
       source = %H26x.Support.TestSource{alignment: :bytestream}
-      pid = make_pipeline(source, [stale_sps])
+      pid = make_pipeline(source, [@stale_sps])
       perform_test(pid, File.read!(@ref_path))
     end
 
