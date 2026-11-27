@@ -7,7 +7,7 @@ defmodule Membrane.H26x.ParsingEngine do
   are returned interleaved with parameter set change notifications - see
   `t:event/0`. Access units that are not decodable - containing NALus that
   failed to parse or no VCL NALu - are dropped (their parameter sets are still
-  taken into account). Depending on the configured output stream structure, the
+  taken into account and attached to the next access unit). Depending on the configured output stream structure, the
   engine also repeats the active parameter sets on keyframes or strips them from
   the access units altogether (for the structures carrying them out-of-band).
   Codec-specific behaviour is selected via the `:codec` field of `t:config/0`.
@@ -138,7 +138,6 @@ defmodule Membrane.H26x.ParsingEngine do
             input_alignment: input_alignment(),
             input_stream_structure: stream_structure(),
             output_stream_structure: stream_structure(),
-            repeat_parameter_sets: boolean(),
             previous_buffer_timestamps: NALu.timestamps() | nil,
             pending_parameter_sets: [binary()],
             nalu_parser_mod: module(),
@@ -156,7 +155,6 @@ defmodule Membrane.H26x.ParsingEngine do
     :input_alignment,
     :input_stream_structure,
     :output_stream_structure,
-    :repeat_parameter_sets,
     :nalu_parser_mod,
     :au_splitter_mod,
     :au_timestamp_generator_mod
@@ -204,12 +202,11 @@ defmodule Membrane.H26x.ParsingEngine do
       nalu_parser: NALuParser.new(input_stream_structure),
       au_splitter: AUSplitter.new(),
       au_timestamp_generator: au_timestamp_generator,
-      parameter_set_cache: ParameterSetCache.new(),
+      parameter_set_cache: ParameterSetCache.new(Map.get(config, :repeat_parameter_sets, false)),
       input_alignment: config.input_alignment,
       input_stream_structure: input_stream_structure,
       output_stream_structure:
         Map.get(config, :output_stream_structure) || input_stream_structure,
-      repeat_parameter_sets: Map.get(config, :repeat_parameter_sets, false),
       nalu_parser_mod: nalu_parser_mod(config.codec),
       au_splitter_mod: au_splitter_mod(config.codec),
       au_timestamp_generator_mod: au_timestamp_generator_mod(config.codec)
@@ -297,7 +294,7 @@ defmodule Membrane.H26x.ParsingEngine do
         nalu_parser: %{engine.nalu_parser | input_stream_structure: input_stream_structure}
     }
 
-    active_payloads = Enum.map(engine.parameter_set_cache, & &1.payload)
+    active_payloads = Enum.map(engine.parameter_set_cache.active, & &1.payload)
     {events, prepend_parameter_sets(engine, parameter_sets -- active_payloads)}
   end
 
@@ -381,20 +378,26 @@ defmodule Membrane.H26x.ParsingEngine do
                                                                         cache ->
         updated_cache = ParameterSetCache.put(cache, nalus)
 
-        au_events =
-          if decodable?(engine, nalus),
-            do: [{:access_unit, build_access_unit(engine, nalus, timestamps, updated_cache)}],
-            else: []
+        parameter_sets_events =
+          if updated_cache.active == cache.active do
+            []
+          else
+            parameter_sets = %{
+              output_raw_stream_structure:
+                output_raw_stream_structure(engine, updated_cache.active),
+              active: updated_cache.active
+            }
 
-        if updated_cache == cache do
-          {au_events, cache}
+            [parameter_sets: parameter_sets]
+          end
+
+        if decodable?(engine, nalus) do
+          {access_unit, updated_cache} =
+            build_access_unit(engine, nalus, timestamps, updated_cache)
+
+          {parameter_sets_events ++ [access_unit: access_unit], updated_cache}
         else
-          parameter_sets = %{
-            output_raw_stream_structure: output_raw_stream_structure(engine, updated_cache),
-            active: updated_cache
-          }
-
-          {[{:parameter_sets, parameter_sets} | au_events], updated_cache}
+          {parameter_sets_events, updated_cache}
         end
       end)
 
@@ -426,37 +429,36 @@ defmodule Membrane.H26x.ParsingEngine do
     {codec_tag, dcr_module(engine.codec).generate(parameter_sets, engine.output_stream_structure)}
   end
 
-  @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), [NALu.t()]) ::
-          AccessUnit.t()
-  defp build_access_unit(engine, nalus, timestamps, active_parameter_sets) do
+  @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), ParameterSetCache.t()) ::
+          {AccessUnit.t(), ParameterSetCache.t()}
+  defp build_access_unit(engine, nalus, timestamps, parameter_set_cache) do
     keyframe? = keyframe?(engine.codec, nalus)
-    nalus = finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets)
+    {parameter_sets, parameter_set_cache} = ParameterSetCache.take(parameter_set_cache, keyframe?)
+    parameter_sets = if strip_parameter_sets?(engine), do: [], else: parameter_sets
 
-    %AccessUnit{
+    nalus =
+      nalus
+      |> Enum.reject(&ParameterSetCache.parameter_set?/1)
+      |> attach_parameter_sets(parameter_sets)
+
+    access_unit = %AccessUnit{
       nalus: nalus,
       nalus_payloads:
         Enum.map(nalus, &NALuParser.get_prefixed_nalu_payload(&1, engine.output_stream_structure)),
       timestamps: timestamps,
       keyframe?: keyframe?
     }
+
+    {access_unit, parameter_set_cache}
   end
 
-  @spec finalize_access_unit_nalus(t(), AUSplitter.access_unit(), boolean(), [NALu.t()]) ::
-          AUSplitter.access_unit()
-  defp finalize_access_unit_nalus(engine, nalus, keyframe?, active_parameter_sets) do
-    nalus = ParameterSetCache.reject_inactive(active_parameter_sets, nalus)
+  # An access unit delimiter has to remain the first NALu of the access unit.
+  defp attach_parameter_sets([%NALu{type: :aud} = aud | nalus], parameter_sets) do
+    [aud | parameter_sets ++ nalus]
+  end
 
-    cond do
-      strip_parameter_sets?(engine) ->
-        Enum.reject(nalus, &ParameterSetCache.parameter_set?/1)
-
-      keyframe? ->
-        nalus = if engine.repeat_parameter_sets, do: active_parameter_sets ++ nalus, else: nalus
-        Enum.uniq_by(nalus, & &1.payload)
-
-      true ->
-        nalus
-    end
+  defp attach_parameter_sets(nalus, parameter_sets) do
+    parameter_sets ++ nalus
   end
 
   defp strip_parameter_sets?(%{output_stream_structure: :annexb}), do: false
