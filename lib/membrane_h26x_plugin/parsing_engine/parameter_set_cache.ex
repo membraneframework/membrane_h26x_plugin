@@ -30,7 +30,9 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   end
 
   @spec parameter_set?(NALu.t()) :: boolean()
-  def parameter_set?(nalu), do: nalu.type in @parameter_set_types
+  def parameter_set?(nalu) do
+    nalu.type in @parameter_set_types
+  end
 
   @spec put(t(), [NALu.t()]) :: t()
   def put(cache, nalus) do

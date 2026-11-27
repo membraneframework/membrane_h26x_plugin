@@ -395,7 +395,9 @@ defmodule Membrane.H26x.ParsingEngine do
     {events, %{engine | parameter_set_cache: parameter_set_cache}}
   end
 
-  defp parameter_sets_events(_engine, %{active: active}, %{active: active}), do: []
+  defp parameter_sets_events(_engine, %{active: active}, %{active: active}) do
+    []
+  end
 
   defp parameter_sets_events(engine, _old_cache, %{active: active}) do
     [
@@ -408,7 +410,9 @@ defmodule Membrane.H26x.ParsingEngine do
 
   defp access_unit_events(engine, nalus, timestamps, cache) do
     if decodable?(engine, nalus) do
-      {access_unit, cache} = build_access_unit(engine, nalus, timestamps, cache)
+      keyframe? = keyframe?(engine.codec, nalus)
+      {parameter_sets, cache} = ParameterSetCache.take(cache, keyframe?)
+      access_unit = build_access_unit(engine, nalus, timestamps, keyframe?, parameter_sets)
       {[access_unit: access_unit], cache}
     else
       {[], cache}
@@ -440,26 +444,21 @@ defmodule Membrane.H26x.ParsingEngine do
     {codec_tag, dcr_module(engine.codec).generate(parameter_sets, engine.output_stream_structure)}
   end
 
-  @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), ParameterSetCache.t()) ::
-          {AccessUnit.t(), ParameterSetCache.t()}
-  defp build_access_unit(engine, nalus, timestamps, parameter_set_cache) do
-    keyframe? = keyframe?(engine.codec, nalus)
-    {parameter_sets, parameter_set_cache} = ParameterSetCache.take(parameter_set_cache, keyframe?)
-
+  @spec build_access_unit(t(), AUSplitter.access_unit(), NALu.timestamps(), boolean(), [NALu.t()]) ::
+          AccessUnit.t()
+  defp build_access_unit(engine, nalus, timestamps, keyframe?, parameter_sets) do
     nalus =
       nalus
       |> Enum.reject(&ParameterSetCache.parameter_set?/1)
       |> attach_parameter_sets(parameter_sets)
 
-    access_unit = %AccessUnit{
+    %AccessUnit{
       nalus: nalus,
       nalus_payloads:
         Enum.map(nalus, &NALuParser.get_prefixed_nalu_payload(&1, engine.output_stream_structure)),
       timestamps: timestamps,
       keyframe?: keyframe?
     }
-
-    {access_unit, parameter_set_cache}
   end
 
   defp attach_parameter_sets([%NALu{type: :aud} = aud | nalus], parameter_sets) do
