@@ -2,11 +2,10 @@ defmodule Membrane.H26x.ParsingEngine.ParameterSetCache do
   @moduledoc false
 
   # Tracks the parameter set NALus (VPS/SPS/PPS) of a stream, keyed by their type
-  # and id, and decides which of them should be attached to an access unit. With
-  # the `:avc1` and `:hvc1` output stream structures the parameter sets travel
-  # only in the DCR, so none are attached. A parameter set redefined under an
-  # already used id replaces the cached one, so the cache always holds only the
-  # currently active set per id, in the order in which the ids first appeared.
+  # and id, and decides which of them should be attached to an access unit. A
+  # parameter set redefined under an already used id replaces the cached one, so
+  # the cache always holds only the currently active set per id, in the order in
+  # which the ids first appeared.
 
   alias Membrane.H26x.{NALu, ParsingEngine}
 
